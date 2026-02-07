@@ -245,6 +245,33 @@ pub fn update_session_worktree(
 }
 
 #[tauri::command]
+pub fn create_group(name: String, default_path: String) -> Result<(), String> {
+    let path = db_path();
+    let conn = Connection::open(&path)
+        .map_err(|e| format!("Failed to open agent-deck DB: {}", e))?;
+
+    // Use name as path (agent-deck convention)
+    let group_path = name.clone();
+
+    // Get max sort_order to append at end
+    let max_sort: i32 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM groups",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(-1);
+
+    conn.execute(
+        "INSERT INTO groups (path, name, expanded, sort_order, default_path) VALUES (?1, ?2, 1, ?3, ?4)",
+        rusqlite::params![group_path, name, max_sort + 1, default_path],
+    )
+    .map_err(|e| format!("Failed to create group: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn move_session(session_id: String, new_group_path: String) -> Result<(), String> {
     let path = db_path();
     let conn = Connection::open(&path)

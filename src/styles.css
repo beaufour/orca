@@ -758,6 +758,13 @@ body {
   margin-bottom: 16px;
 }
 
+.modal-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
 .modal-input {
   width: 100%;
   padding: 8px 10px;
