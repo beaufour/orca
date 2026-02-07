@@ -9,6 +9,8 @@ interface SessionCardProps {
   isSelected?: boolean;
   isFocused?: boolean;
   onClick?: () => void;
+  confirmingRemove?: boolean;
+  onConfirmingRemoveChange?: (confirming: boolean) => void;
 }
 
 const ATTENTION_CONFIG: Record<
@@ -49,10 +51,20 @@ function formatTime(epoch: number): string {
   return `${diffDays}d ago`;
 }
 
-export function SessionCard({ session, groupName, isSelected, isFocused, onClick }: SessionCardProps) {
+export function SessionCard({
+  session,
+  groupName,
+  isSelected,
+  isFocused,
+  onClick,
+  confirmingRemove: confirmingRemoveProp,
+  onConfirmingRemoveChange,
+}: SessionCardProps) {
   const queryClient = useQueryClient();
   const cardRef = useRef<HTMLDivElement>(null);
-  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [confirmingRemoveInternal, setConfirmingRemoveInternal] = useState(false);
+  const confirmingRemove = confirmingRemoveProp ?? confirmingRemoveInternal;
+  const setConfirmingRemove = onConfirmingRemoveChange ?? setConfirmingRemoveInternal;
   const [showAddWorktree, setShowAddWorktree] = useState(false);
   const [branchName, setBranchName] = useState("");
 

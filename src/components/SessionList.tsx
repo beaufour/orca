@@ -10,6 +10,8 @@ interface SessionListProps {
   isLoading?: boolean;
   error?: Error | null;
   onRetry?: () => void;
+  confirmingRemoveId?: string | null;
+  onConfirmingRemoveChange?: (sessionId: string | null) => void;
 }
 
 export function SessionList({
@@ -21,6 +23,8 @@ export function SessionList({
   isLoading,
   error,
   onRetry,
+  confirmingRemoveId,
+  onConfirmingRemoveChange,
 }: SessionListProps) {
   if (error) {
     return (
@@ -62,6 +66,8 @@ export function SessionList({
             isSelected={session.id === selectedSessionId}
             isFocused={index === focusedIndex}
             onClick={() => onSelectSession(session)}
+            confirmingRemove={confirmingRemoveId != null ? session.id === confirmingRemoveId : undefined}
+            onConfirmingRemoveChange={onConfirmingRemoveChange ? (c) => onConfirmingRemoveChange(c ? session.id : null) : undefined}
           />
         ))}
       </div>

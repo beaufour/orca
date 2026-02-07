@@ -24,6 +24,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchVisible, setSearchVisible] = useState(false);
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const addSessionBarRef = useRef<AddSessionBarHandle>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -126,6 +127,7 @@ function App() {
     focusedIndex,
     searchVisible,
     showShortcutHelp,
+    confirmingRemoveId,
     groups,
   });
   kbStateRef.current = {
@@ -134,13 +136,14 @@ function App() {
     focusedIndex,
     searchVisible,
     showShortcutHelp,
+    confirmingRemoveId,
     groups,
   };
 
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const { terminalOpen, filteredSessions, focusedIndex, searchVisible, showShortcutHelp, groups } =
+      const { terminalOpen, filteredSessions, focusedIndex, searchVisible, showShortcutHelp, confirmingRemoveId, groups } =
         kbStateRef.current;
 
       // When terminal is open, don't handle any shortcuts
@@ -166,7 +169,7 @@ function App() {
       }
 
       // Modal guard: only Escape works when a modal is open
-      const anyModalOpen = showShortcutHelp;
+      const anyModalOpen = showShortcutHelp || confirmingRemoveId !== null;
       if (anyModalOpen && e.key !== "Escape") return;
 
       const count = filteredSessions?.length ?? 0;
@@ -196,6 +199,8 @@ function App() {
           e.preventDefault();
           if (showShortcutHelp) {
             setShowShortcutHelp(false);
+          } else if (confirmingRemoveId !== null) {
+            setConfirmingRemoveId(null);
           } else if (searchVisible) {
             setSearchQuery("");
             setSearchVisible(false);
@@ -211,6 +216,12 @@ function App() {
           e.preventDefault();
           setSearchVisible(true);
           setTimeout(() => searchInputRef.current?.focus(), 0);
+          break;
+        case "d":
+          e.preventDefault();
+          if (filteredSessions && focusedIndex >= 0 && focusedIndex < count) {
+            setConfirmingRemoveId(filteredSessions[focusedIndex].id);
+          }
           break;
         case "?":
           e.preventDefault();
@@ -241,6 +252,11 @@ function App() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  // Clear confirming remove when focus changes
+  useEffect(() => {
+    setConfirmingRemoveId(null);
+  }, [focusedIndex]);
 
   // Clamp focused index when session count changes
   useEffect(() => {
@@ -301,6 +317,8 @@ function App() {
                 isLoading={sessionsLoading}
                 error={sessionsError}
                 onRetry={() => refetchSessions()}
+                confirmingRemoveId={confirmingRemoveId}
+                onConfirmingRemoveChange={setConfirmingRemoveId}
               />
             </main>
             {selectedGroup && (
