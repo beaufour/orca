@@ -7,6 +7,7 @@ import { AddSessionBar, type AddSessionBarHandle } from "./components/AddSession
 import { TerminalView } from "./components/TerminalView";
 import { ShortcutHelp } from "./components/ShortcutHelp";
 import { RenameModal } from "./components/RenameModal";
+import { MoveSessionModal } from "./components/MoveSessionModal";
 import type { Group, Session } from "./types";
 
 const MIN_SIDEBAR_WIDTH = 48;
@@ -27,6 +28,7 @@ function App() {
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
   const [renamingSession, setRenamingSession] = useState<Session | null>(null);
+  const [movingSession, setMovingSession] = useState<Session | null>(null);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const addSessionBarRef = useRef<AddSessionBarHandle>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -131,6 +133,7 @@ function App() {
     showShortcutHelp,
     confirmingRemoveId,
     renamingSession,
+    movingSession,
     groups,
   });
   kbStateRef.current = {
@@ -141,13 +144,14 @@ function App() {
     showShortcutHelp,
     confirmingRemoveId,
     renamingSession,
+    movingSession,
     groups,
   };
 
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const { terminalOpen, filteredSessions, focusedIndex, searchVisible, showShortcutHelp, confirmingRemoveId, renamingSession, groups } =
+      const { terminalOpen, filteredSessions, focusedIndex, searchVisible, showShortcutHelp, confirmingRemoveId, renamingSession, movingSession, groups } =
         kbStateRef.current;
 
       // When terminal is open, don't handle any shortcuts
@@ -173,7 +177,7 @@ function App() {
       }
 
       // Modal guard: only Escape works when a modal is open
-      const anyModalOpen = showShortcutHelp || confirmingRemoveId !== null || renamingSession !== null;
+      const anyModalOpen = showShortcutHelp || confirmingRemoveId !== null || renamingSession !== null || movingSession !== null;
       if (anyModalOpen && e.key !== "Escape") return;
 
       const count = filteredSessions?.length ?? 0;
@@ -203,6 +207,8 @@ function App() {
           e.preventDefault();
           if (showShortcutHelp) {
             setShowShortcutHelp(false);
+          } else if (movingSession !== null) {
+            setMovingSession(null);
           } else if (renamingSession !== null) {
             setRenamingSession(null);
           } else if (confirmingRemoveId !== null) {
@@ -233,6 +239,12 @@ function App() {
           e.preventDefault();
           if (filteredSessions && focusedIndex >= 0 && focusedIndex < count) {
             setRenamingSession(filteredSessions[focusedIndex]);
+          }
+          break;
+        case "m":
+          e.preventDefault();
+          if (filteredSessions && focusedIndex >= 0 && focusedIndex < count && groups) {
+            setMovingSession(filteredSessions[focusedIndex]);
           }
           break;
         case "?":
@@ -352,6 +364,13 @@ function App() {
         <RenameModal
           session={renamingSession}
           onClose={() => setRenamingSession(null)}
+        />
+      )}
+      {movingSession && groups && (
+        <MoveSessionModal
+          session={movingSession}
+          groups={groups}
+          onClose={() => setMovingSession(null)}
         />
       )}
     </div>

@@ -819,3 +819,45 @@ body {
   text-align: center;
 }
 
+/* Group select */
+.group-select-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.group-select-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.group-select-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.group-select-item:disabled {
+  cursor: default;
+}
+
+.group-select-current {
+  opacity: 0.5;
+}
+
+.group-select-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+

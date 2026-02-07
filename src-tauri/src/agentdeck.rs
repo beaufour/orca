@@ -245,6 +245,30 @@ pub fn update_session_worktree(
 }
 
 #[tauri::command]
+pub fn move_session(session_id: String, new_group_path: String) -> Result<(), String> {
+    let path = db_path();
+    let conn = Connection::open(&path)
+        .map_err(|e| format!("Failed to open agent-deck DB: {}", e))?;
+
+    // Get max sort_order in target group to append at end
+    let max_sort: i32 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(sort_order), -1) FROM instances WHERE group_path = ?1",
+            [&new_group_path],
+            |row| row.get(0),
+        )
+        .unwrap_or(-1);
+
+    conn.execute(
+        "UPDATE instances SET group_path = ?1, sort_order = ?2 WHERE id = ?3",
+        rusqlite::params![new_group_path, max_sort + 1, session_id],
+    )
+    .map_err(|e| format!("Failed to move session: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn rename_session(session_id: String, new_title: String) -> Result<(), String> {
     let path = db_path();
     let conn = Connection::open(&path)
