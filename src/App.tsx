@@ -49,6 +49,14 @@ function App() {
     queryFn: () => invoke("get_groups"),
   });
 
+  const groupNames = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const g of groups ?? []) {
+      map[g.path] = g.name;
+    }
+    return map;
+  }, [groups]);
+
   const filteredSessions = useMemo(() => {
     if (!sessions) return undefined;
     if (!searchQuery) return sessions;
@@ -199,7 +207,7 @@ function App() {
           setSelectedGroup(null);
           setSelectedSession(null);
           setNeedsActionFilter(false);
-          setFocusedIndex(-1);
+          setFocusedIndex(0);
           break;
         default:
           if (e.key >= "1" && e.key <= "9" && groups) {
@@ -209,7 +217,7 @@ function App() {
               setSelectedGroup(groups[idx]);
               setSelectedSession(null);
               setNeedsActionFilter(false);
-              setFocusedIndex(-1);
+              setFocusedIndex(0);
             }
           }
           break;
@@ -236,13 +244,13 @@ function App() {
           setSelectedGroup(g);
           setSelectedSession(null);
           setNeedsActionFilter(false);
-          setFocusedIndex(-1);
+          setFocusedIndex(0);
         }}
         onSelectNeedsAction={() => {
           setSelectedGroup(null);
           setSelectedSession(null);
           setNeedsActionFilter(true);
-          setFocusedIndex(-1);
+          setFocusedIndex(0);
         }}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
@@ -272,6 +280,7 @@ function App() {
               )}
               <SessionList
                 sessions={filteredSessions}
+                groupNames={needsActionFilter || !selectedGroup ? groupNames : undefined}
                 onSelectSession={setSelectedSession}
                 selectedSessionId={null}
                 focusedIndex={focusedIndex}

@@ -5,6 +5,7 @@ import type { Session, SessionSummary, AttentionStatus } from "../types";
 
 interface SessionCardProps {
   session: Session;
+  groupName?: string;
   isSelected?: boolean;
   isFocused?: boolean;
   onClick?: () => void;
@@ -48,7 +49,7 @@ function formatTime(epoch: number): string {
   return `${diffDays}d ago`;
 }
 
-export function SessionCard({ session, isSelected, isFocused, onClick }: SessionCardProps) {
+export function SessionCard({ session, groupName, isSelected, isFocused, onClick }: SessionCardProps) {
   const queryClient = useQueryClient();
   const cardRef = useRef<HTMLDivElement>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
@@ -220,7 +221,10 @@ export function SessionCard({ session, isSelected, isFocused, onClick }: Session
             {summary.last_text}
           </div>
         )}
-        <div className="session-path">{formatPath(session.project_path)}</div>
+        <div className="session-path">
+          {groupName && <span className="session-group">{groupName}</span>}
+          {formatPath(session.project_path)}
+        </div>
       </div>
       {mutationError && (
         <div className="session-wt-error">{String(mutationError)}</div>

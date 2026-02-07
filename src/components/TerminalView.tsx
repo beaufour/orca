@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { invoke, Channel } from "@tauri-apps/api/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -74,7 +73,6 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     fitAddonRef.current = fitAddon;
 
     const sessionId = session.id;
-    let unlisten: UnlistenFn | null = null;
 
     // Defer attach until the container is fully laid out
     const setup = async () => {
@@ -91,9 +89,9 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       const cols = terminal.cols;
       const rows = terminal.rows;
 
-      // Listen for PTY output events
-      unlisten = await listen<string>(`pty-output-${sessionId}`, (event) => {
-        const bytes = Uint8Array.from(atob(event.payload), (c) =>
+      // Stream PTY output via Channel
+      const onOutput = new Channel<string>((encoded) => {
+        const bytes = Uint8Array.from(atob(encoded), (c) =>
           c.charCodeAt(0)
         );
         terminal.write(bytes);
@@ -105,6 +103,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         tmuxSession: session.tmux_session,
         cols,
         rows,
+        onOutput,
       });
 
       terminal.focus();
@@ -154,18 +153,21 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     container.addEventListener("wheel", handleWheel, { passive: true });
 
     // Fit on container resize (handles window resize + sidebar resize)
+    // Debounce to prevent rapid resize events from overwhelming the PTY
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const resizeObserver = new ResizeObserver(() => {
-      fitAddon.fit();
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => fitAddon.fit(), 200);
     });
     resizeObserver.observe(container);
 
     // Cleanup function
     cleanupRef.current = () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       container.removeEventListener("wheel", handleWheel);
       onDataDisposable.dispose();
       onResizeDisposable.dispose();
-      if (unlisten) unlisten();
       invoke("close_pty", { sessionId }).catch(() => {});
       terminal.dispose();
       terminalRef.current = null;

@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, State};
+use tauri::ipc::Channel;
+use tauri::State;
 
 struct PtySession {
     writer: Box<dyn Write + Send>,
@@ -20,12 +21,12 @@ pub struct PtyManager {
 
 #[tauri::command]
 pub fn attach_pty(
-    app: AppHandle,
     state: State<'_, PtyManager>,
     session_id: String,
     tmux_session: String,
     cols: u16,
     rows: u16,
+    on_output: Channel<String>,
 ) -> Result<(), String> {
     let pty_system = native_pty_system();
 
@@ -37,6 +38,12 @@ pub fn attach_pty(
             pixel_height: 0,
         })
         .map_err(|e| format!("Failed to open PTY: {}", e))?;
+
+    // Set window-size to "latest" so our attach doesn't shrink the session
+    // when another client (e.g. a regular terminal) is also attached
+    let _ = std::process::Command::new("tmux")
+        .args(["set-option", "-t", &tmux_session, "window-size", "latest"])
+        .output();
 
     let mut cmd = CommandBuilder::new("tmux");
     cmd.env("TERM", "xterm-256color");
@@ -62,9 +69,9 @@ pub fn attach_pty(
 
     let shutdown = Arc::new(AtomicBool::new(false));
     let shutdown_clone = shutdown.clone();
-    let event_name = format!("pty-output-{}", session_id);
+    let sid = session_id.clone();
 
-    // Spawn reader thread
+    // Spawn reader thread — streams PTY output via Channel
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
         loop {
@@ -75,13 +82,15 @@ pub fn attach_pty(
                 Ok(0) => break,
                 Ok(n) => {
                     let encoded = BASE64.encode(&buf[..n]);
-                    let _ = app.emit(&event_name, encoded);
+                    if on_output.send(encoded).is_err() {
+                        break;
+                    }
                 }
                 Err(e) => {
                     if shutdown_clone.load(Ordering::Relaxed) {
                         break;
                     }
-                    log::error!("PTY read error for {}: {}", event_name, e);
+                    log::error!("PTY read error for {}: {}", sid, e);
                     break;
                 }
             }

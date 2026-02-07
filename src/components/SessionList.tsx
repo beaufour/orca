@@ -3,6 +3,7 @@ import { SessionCard } from "./SessionCard";
 
 interface SessionListProps {
   sessions: Session[] | undefined;
+  groupNames?: Record<string, string>;
   onSelectSession: (session: Session) => void;
   selectedSessionId: string | null;
   focusedIndex?: number;
@@ -13,6 +14,7 @@ interface SessionListProps {
 
 export function SessionList({
   sessions,
+  groupNames,
   onSelectSession,
   selectedSessionId,
   focusedIndex = -1,
@@ -56,6 +58,7 @@ export function SessionList({
           <SessionCard
             key={session.id}
             session={session}
+            groupName={groupNames?.[session.group_path]}
             isSelected={session.id === selectedSessionId}
             isFocused={index === focusedIndex}
             onClick={() => onSelectSession(session)}

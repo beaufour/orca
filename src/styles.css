@@ -451,6 +451,11 @@ body {
   white-space: nowrap;
 }
 
+.session-group {
+  color: var(--accent);
+  margin-right: 6px;
+}
+
 .session-wt-error {
   font-size: 11px;
   color: var(--status-error);
