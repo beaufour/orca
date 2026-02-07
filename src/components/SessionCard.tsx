@@ -52,6 +52,8 @@ export function SessionCard({ session, isSelected, isFocused, onClick }: Session
   const queryClient = useQueryClient();
   const cardRef = useRef<HTMLDivElement>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [showAddWorktree, setShowAddWorktree] = useState(false);
+  const [branchName, setBranchName] = useState("");
 
   // Scroll focused card into view
   useEffect(() => {
@@ -118,15 +120,36 @@ export function SessionCard({ session, isSelected, isFocused, onClick }: Session
     },
   });
 
+  const addWorktreeMutation = useMutation({
+    mutationFn: async () => {
+      const worktreePath = await invoke<string>("add_worktree", {
+        repoPath,
+        branch: branchName,
+      });
+      await invoke("update_session_worktree", {
+        sessionId: session.id,
+        worktreePath,
+        worktreeRepo: repoPath,
+        worktreeBranch: branchName,
+      });
+    },
+    onSuccess: () => {
+      setShowAddWorktree(false);
+      setBranchName("");
+      invalidateWorktrees();
+    },
+  });
+
   const attention: AttentionStatus =
     summary?.attention ?? fallbackAttention(session.status);
   const statusInfo = ATTENTION_CONFIG[attention];
   const isPending =
     rebaseMutation.isPending ||
     mergeMutation.isPending ||
-    removeMutation.isPending;
+    removeMutation.isPending ||
+    addWorktreeMutation.isPending;
   const mutationError =
-    rebaseMutation.error ?? mergeMutation.error ?? removeMutation.error;
+    rebaseMutation.error ?? mergeMutation.error ?? removeMutation.error ?? addWorktreeMutation.error;
 
   return (
     <div
@@ -142,13 +165,52 @@ export function SessionCard({ session, isSelected, isFocused, onClick }: Session
               wt:{session.worktree_branch}
             </span>
           ) : (
-            <span className="wt-badge wt-badge-no">no wt</span>
+            <span
+              className="wt-badge wt-badge-no wt-badge-clickable"
+              title="Click to create worktree"
+              onClick={(e) => { e.stopPropagation(); setShowAddWorktree(true); }}
+            >
+              no wt
+            </span>
           )}
         </div>
         <span className={`status-badge ${statusInfo.className}`}>
           {statusInfo.label}
         </span>
       </div>
+      {showAddWorktree && (
+        <div className="wt-add-form" onClick={(e) => e.stopPropagation()}>
+          <input
+            className="wt-input"
+            type="text"
+            placeholder="branch name"
+            value={branchName}
+            onChange={(e) => setBranchName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && branchName.trim()) {
+                addWorktreeMutation.mutate();
+              } else if (e.key === "Escape") {
+                setShowAddWorktree(false);
+                setBranchName("");
+              }
+            }}
+            autoFocus
+          />
+          <button
+            className="wt-btn wt-btn-add"
+            onClick={() => addWorktreeMutation.mutate()}
+            disabled={!branchName.trim() || isPending}
+          >
+            Create
+          </button>
+          <button
+            className="wt-btn wt-btn-cancel"
+            onClick={() => { setShowAddWorktree(false); setBranchName(""); }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
       <div className="session-card-body">
         {summary?.summary && (
           <div className="session-summary">{summary.summary}</div>

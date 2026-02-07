@@ -224,6 +224,26 @@ pub fn get_attention_sessions() -> Result<Vec<Session>, String> {
     Ok(result)
 }
 
+#[tauri::command]
+pub fn update_session_worktree(
+    session_id: String,
+    worktree_path: String,
+    worktree_repo: String,
+    worktree_branch: String,
+) -> Result<(), String> {
+    let path = db_path();
+    let conn = Connection::open(&path)
+        .map_err(|e| format!("Failed to open agent-deck DB: {}", e))?;
+
+    conn.execute(
+        "UPDATE instances SET worktree_path = ?1, worktree_repo = ?2, worktree_branch = ?3, project_path = ?1 WHERE id = ?4",
+        rusqlite::params![worktree_path, worktree_repo, worktree_branch, session_id],
+    )
+    .map_err(|e| format!("Failed to update session worktree: {}", e))?;
+
+    Ok(())
+}
+
 fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
     let tool_data_str: String = row.get(12)?;
     let claude_session_id = serde_json::from_str::<serde_json::Value>(&tool_data_str)

@@ -26,6 +26,7 @@ pub fn run() {
             agentdeck::create_session,
             agentdeck::remove_session,
             agentdeck::restart_session,
+            agentdeck::update_session_worktree,
             claude_logs::get_session_summary,
             git::list_worktrees,
             git::add_worktree,
