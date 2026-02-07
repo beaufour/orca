@@ -2,11 +2,12 @@ mod agentdeck;
 mod claude_logs;
 mod git;
 mod models;
-mod tmux;
+mod pty;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(pty::PtyManager::default())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -20,15 +21,21 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             agentdeck::get_groups,
             agentdeck::get_sessions,
+            agentdeck::get_attention_counts,
+            agentdeck::get_attention_sessions,
             agentdeck::create_session,
+            agentdeck::remove_session,
+            agentdeck::restart_session,
             claude_logs::get_session_summary,
             git::list_worktrees,
             git::add_worktree,
             git::remove_worktree,
             git::merge_worktree,
             git::rebase_worktree,
-            tmux::capture_pane,
-            tmux::send_keys,
+            pty::attach_pty,
+            pty::write_pty,
+            pty::resize_pty,
+            pty::close_pty,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useState, useImperativeHandle } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session } from "../types";
 
+export interface AddSessionBarHandle {
+  toggleForm: () => void;
+}
+
 interface AddSessionBarProps {
+  ref?: React.Ref<AddSessionBarHandle>;
   repoPath: string;
   groupPath: string;
   groupName: string;
@@ -14,11 +19,15 @@ type SessionMode = "worktree" | "plain";
 type SessionTool = "claude" | "shell";
 
 export function AddSessionBar({
+  ref,
   repoPath,
   groupPath,
   groupName,
   sessions,
 }: AddSessionBarProps) {
+  useImperativeHandle(ref, () => ({
+    toggleForm: () => setShowForm((prev) => !prev),
+  }));
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [branchName, setBranchName] = useState("");

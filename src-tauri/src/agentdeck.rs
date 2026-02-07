@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use std::path::PathBuf;
 
-use crate::models::{Group, Session};
+use crate::models::{AttentionCounts, Group, Session};
 
 fn db_path() -> PathBuf {
     let home = dirs::home_dir().expect("could not find home directory");
@@ -121,6 +121,107 @@ pub fn create_session(
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+pub fn restart_session(session_id: String) -> Result<(), String> {
+    let output = std::process::Command::new("agent-deck")
+        .args(["session", "start", &session_id])
+        .output()
+        .map_err(|e| format!("Failed to run agent-deck: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("agent-deck session start failed: {}", stderr.trim()));
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn remove_session(session_id: String) -> Result<(), String> {
+    // Try agent-deck remove first
+    let _ = std::process::Command::new("agent-deck")
+        .args(["remove", &session_id])
+        .output();
+
+    // agent-deck remove has a bug where worktree removal failure prevents
+    // the DB deletion even though it reports success. Fall back to direct
+    // DB deletion if the session still exists.
+    let path = db_path();
+    let conn = Connection::open(&path)
+        .map_err(|e| format!("Failed to open agent-deck DB: {}", e))?;
+
+    conn.execute("DELETE FROM instances WHERE id = ?1", [&session_id])
+        .map_err(|e| format!("Failed to delete session: {}", e))?;
+
+    // Also clean up heartbeats
+    let _ = conn.execute("DELETE FROM instance_heartbeats WHERE instance_id = ?1", [&session_id]);
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_attention_counts() -> Result<AttentionCounts, String> {
+    let path = db_path();
+    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
+
+    // Get per-group worst status (waiting > error) and total count
+    let mut stmt = conn
+        .prepare(
+            "SELECT group_path, status, COUNT(*) FROM instances \
+             WHERE status IN ('waiting', 'error') GROUP BY group_path, status",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let mut groups = std::collections::HashMap::new();
+    let mut total = 0u32;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, u32>(2)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
+    for row in rows {
+        let (group_path, status, count) = row.map_err(|e| e.to_string())?;
+        total += count;
+        // "waiting" takes priority over "error"
+        let current = groups.get(&group_path);
+        if current.is_none() || (current == Some(&"error".to_string()) && status == "waiting") {
+            groups.insert(group_path, status);
+        }
+    }
+
+    Ok(AttentionCounts { total, groups })
+}
+
+#[tauri::command]
+pub fn get_attention_sessions() -> Result<Vec<Session>, String> {
+    let path = db_path();
+    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, title, project_path, group_path, sort_order, status, tmux_session, \
+             created_at, last_accessed, worktree_path, worktree_repo, worktree_branch, tool_data \
+             FROM instances WHERE status IN ('waiting', 'error') ORDER BY group_path, sort_order",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let result = stmt
+        .query_map([], |row| map_session_row(row))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(result)
 }
 
 fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {

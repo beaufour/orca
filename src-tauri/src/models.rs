@@ -1,4 +1,13 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttentionCounts {
+    /// Total number of sessions needing action (waiting or error).
+    pub total: u32,
+    /// Per-group worst status: "waiting" (needs input) or "error".
+    pub groups: HashMap<String, String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Group {

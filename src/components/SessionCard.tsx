@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session, SessionSummary, AttentionStatus } from "../types";
@@ -5,6 +6,7 @@ import type { Session, SessionSummary, AttentionStatus } from "../types";
 interface SessionCardProps {
   session: Session;
   isSelected?: boolean;
+  isFocused?: boolean;
   onClick?: () => void;
 }
 
@@ -46,8 +48,17 @@ function formatTime(epoch: number): string {
   return `${diffDays}d ago`;
 }
 
-export function SessionCard({ session, isSelected, onClick }: SessionCardProps) {
+export function SessionCard({ session, isSelected, isFocused, onClick }: SessionCardProps) {
   const queryClient = useQueryClient();
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+
+  // Scroll focused card into view
+  useEffect(() => {
+    if (isFocused && cardRef.current) {
+      cardRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [isFocused]);
   const isWorktree = !!session.worktree_branch;
   const repoPath = session.worktree_repo || session.project_path;
 
@@ -88,12 +99,23 @@ export function SessionCard({ session, isSelected, onClick }: SessionCardProps) 
   });
 
   const removeMutation = useMutation({
-    mutationFn: () =>
-      invoke("remove_worktree", {
-        repoPath,
-        worktreePath: session.worktree_path,
-      }),
-    onSuccess: invalidateWorktrees,
+    mutationFn: async () => {
+      if (isWorktree) {
+        try {
+          await invoke("remove_worktree", {
+            repoPath,
+            worktreePath: session.worktree_path,
+          });
+        } catch {
+          // Worktree may already be gone — continue with session removal
+        }
+      }
+      await invoke("remove_session", { sessionId: session.id });
+    },
+    onSuccess: () => {
+      setConfirmingRemove(false);
+      invalidateWorktrees();
+    },
   });
 
   const attention: AttentionStatus =
@@ -108,7 +130,8 @@ export function SessionCard({ session, isSelected, onClick }: SessionCardProps) 
 
   return (
     <div
-      className={`session-card attention-${attention}${isSelected ? " session-card-selected" : ""}`}
+      ref={cardRef}
+      className={`session-card attention-${attention}${isSelected ? " session-card-selected" : ""}${isFocused ? " session-card-focused" : ""}`}
       onClick={onClick}
     >
       <div className="session-card-header">
@@ -141,38 +164,54 @@ export function SessionCard({ session, isSelected, onClick }: SessionCardProps) 
         <div className="session-wt-error">{String(mutationError)}</div>
       )}
       <div className="session-card-footer">
-        {isWorktree && (
-          <div className="session-wt-actions">
-            <button
-              className="wt-btn wt-btn-action"
-              onClick={() => rebaseMutation.mutate()}
-              disabled={isPending}
-              title="Rebase on main"
-            >
-              Rebase
-            </button>
-            <button
-              className="wt-btn wt-btn-action"
-              onClick={() => mergeMutation.mutate()}
-              disabled={isPending}
-              title="Merge into main and remove"
-            >
-              Merge
-            </button>
+        <div className="session-wt-actions">
+          {isWorktree && (
+            <>
+              <button
+                className="wt-btn wt-btn-action"
+                onClick={(e) => { e.stopPropagation(); rebaseMutation.mutate(); }}
+                disabled={isPending}
+                title="Rebase on main"
+              >
+                Rebase
+              </button>
+              <button
+                className="wt-btn wt-btn-action"
+                onClick={(e) => { e.stopPropagation(); mergeMutation.mutate(); }}
+                disabled={isPending}
+                title="Merge into main and remove"
+              >
+                Merge
+              </button>
+            </>
+          )}
+          {confirmingRemove ? (
+            <>
+              <button
+                className="wt-btn wt-btn-danger"
+                onClick={(e) => { e.stopPropagation(); removeMutation.mutate(); }}
+                disabled={isPending}
+              >
+                Confirm
+              </button>
+              <button
+                className="wt-btn wt-btn-cancel"
+                onClick={(e) => { e.stopPropagation(); setConfirmingRemove(false); }}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
             <button
               className="wt-btn wt-btn-danger"
-              onClick={() => {
-                if (confirm(`Remove worktree '${session.worktree_branch}'?`)) {
-                  removeMutation.mutate();
-                }
-              }}
+              onClick={(e) => { e.stopPropagation(); setConfirmingRemove(true); }}
               disabled={isPending}
-              title="Remove worktree and delete branch"
+              title={isWorktree ? "Remove worktree and session" : "Remove session"}
             >
               Remove
             </button>
-          </div>
-        )}
+          )}
+        </div>
         <span className="session-time">
           {formatTime(session.last_accessed)}
         </span>

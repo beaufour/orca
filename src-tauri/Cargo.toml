@@ -22,3 +22,5 @@ tauri = { version = "2.10.0", features = [] }
 tauri-plugin-log = "2"
 rusqlite = { version = "0.31", features = ["bundled"] }
 dirs = "6"
+portable-pty = "0.8"
+base64 = "0.22"
