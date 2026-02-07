@@ -13,8 +13,9 @@ const SHORTCUTS = [
   { key: "g", desc: "Create new group" },
   { key: "n", desc: "New session" },
   { key: "/", desc: "Search sessions" },
-  { key: "0", desc: "All sessions" },
-  { key: "1-9", desc: "Switch to group" },
+  { key: "0", desc: "Needs Action" },
+  { key: "1", desc: "All sessions" },
+  { key: "2-9", desc: "Switch to group" },
   { key: "Ctrl+Q", desc: "Close terminal" },
   { key: "?", desc: "Show this help" },
 ];

@@ -53,12 +53,6 @@ export function Sidebar({
       {!collapsed && (
         <nav className="sidebar-nav">
           <button
-            className={`sidebar-item ${!needsActionActive && selectedGroupPath === null ? "active" : ""}`}
-            onClick={() => onSelectGroup(null)}
-          >
-            All Sessions
-          </button>
-          <button
             className={`sidebar-item sidebar-item-attention ${needsActionActive ? "active" : ""}`}
             onClick={onSelectNeedsAction}
           >
@@ -66,6 +60,12 @@ export function Sidebar({
             {(attentionCounts?.total ?? 0) > 0 && (
               <span className="attention-count">{attentionCounts!.total}</span>
             )}
+          </button>
+          <button
+            className={`sidebar-item ${!needsActionActive && selectedGroupPath === null ? "active" : ""}`}
+            onClick={() => onSelectGroup(null)}
+          >
+            All Sessions
           </button>
           {isLoading && (
             <div className="sidebar-loading loading-row">

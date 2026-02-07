@@ -265,12 +265,19 @@ function App() {
           e.preventDefault();
           setSelectedGroup(null);
           setSelectedSession(null);
+          setNeedsActionFilter(true);
+          setFocusedIndex(0);
+          break;
+        case "1":
+          e.preventDefault();
+          setSelectedGroup(null);
+          setSelectedSession(null);
           setNeedsActionFilter(false);
           setFocusedIndex(0);
           break;
         default:
-          if (e.key >= "1" && e.key <= "9" && groups) {
-            const idx = parseInt(e.key) - 1;
+          if (e.key >= "2" && e.key <= "9" && groups) {
+            const idx = parseInt(e.key) - 2;
             if (idx < groups.length) {
               e.preventDefault();
               setSelectedGroup(groups[idx]);
