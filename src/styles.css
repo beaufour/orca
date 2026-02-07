@@ -758,6 +758,29 @@ body {
   margin-bottom: 16px;
 }
 
+.modal-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+  margin-bottom: 12px;
+}
+
+.modal-input:focus {
+  border-color: var(--accent);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 /* Shortcut help */
 .shortcut-list {
   display: flex;

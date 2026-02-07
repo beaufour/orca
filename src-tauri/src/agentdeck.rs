@@ -244,6 +244,21 @@ pub fn update_session_worktree(
     Ok(())
 }
 
+#[tauri::command]
+pub fn rename_session(session_id: String, new_title: String) -> Result<(), String> {
+    let path = db_path();
+    let conn = Connection::open(&path)
+        .map_err(|e| format!("Failed to open agent-deck DB: {}", e))?;
+
+    conn.execute(
+        "UPDATE instances SET title = ?1 WHERE id = ?2",
+        rusqlite::params![new_title, session_id],
+    )
+    .map_err(|e| format!("Failed to rename session: {}", e))?;
+
+    Ok(())
+}
+
 fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
     let tool_data_str: String = row.get(12)?;
     let claude_session_id = serde_json::from_str::<serde_json::Value>(&tool_data_str)
