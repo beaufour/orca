@@ -5,6 +5,7 @@ import { Sidebar } from "./components/Sidebar";
 import { SessionList } from "./components/SessionList";
 import { AddSessionBar, type AddSessionBarHandle } from "./components/AddSessionBar";
 import { TerminalView } from "./components/TerminalView";
+import { ShortcutHelp } from "./components/ShortcutHelp";
 import type { Group, Session } from "./types";
 
 const MIN_SIDEBAR_WIDTH = 48;
@@ -22,6 +23,7 @@ function App() {
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchVisible, setSearchVisible] = useState(false);
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const addSessionBarRef = useRef<AddSessionBarHandle>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -123,6 +125,7 @@ function App() {
     filteredSessions,
     focusedIndex,
     searchVisible,
+    showShortcutHelp,
     groups,
   });
   kbStateRef.current = {
@@ -130,13 +133,14 @@ function App() {
     filteredSessions,
     focusedIndex,
     searchVisible,
+    showShortcutHelp,
     groups,
   };
 
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const { terminalOpen, filteredSessions, focusedIndex, searchVisible, groups } =
+      const { terminalOpen, filteredSessions, focusedIndex, searchVisible, showShortcutHelp, groups } =
         kbStateRef.current;
 
       // When terminal is open, don't handle any shortcuts
@@ -160,6 +164,10 @@ function App() {
         }
         return;
       }
+
+      // Modal guard: only Escape works when a modal is open
+      const anyModalOpen = showShortcutHelp;
+      if (anyModalOpen && e.key !== "Escape") return;
 
       const count = filteredSessions?.length ?? 0;
 
@@ -186,7 +194,9 @@ function App() {
           break;
         case "Escape":
           e.preventDefault();
-          if (searchVisible) {
+          if (showShortcutHelp) {
+            setShowShortcutHelp(false);
+          } else if (searchVisible) {
             setSearchQuery("");
             setSearchVisible(false);
           } else {
@@ -201,6 +211,10 @@ function App() {
           e.preventDefault();
           setSearchVisible(true);
           setTimeout(() => searchInputRef.current?.focus(), 0);
+          break;
+        case "?":
+          e.preventDefault();
+          setShowShortcutHelp(true);
           break;
         case "0":
           e.preventDefault();
@@ -301,6 +315,9 @@ function App() {
           </>
         )}
       </div>
+      {showShortcutHelp && (
+        <ShortcutHelp onClose={() => setShowShortcutHelp(false)} />
+      )}
     </div>
   );
 }
