@@ -24,3 +24,4 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 dirs = "6"
 portable-pty = "0.8"
 base64 = "0.22"
+tauri-plugin-dialog = "2.6.0"

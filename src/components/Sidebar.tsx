@@ -7,6 +7,7 @@ interface SidebarProps {
   needsActionActive: boolean;
   onSelectGroup: (group: Group | null) => void;
   onSelectNeedsAction: () => void;
+  onCreateGroup: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
   width: number;
@@ -17,6 +18,7 @@ export function Sidebar({
   needsActionActive,
   onSelectGroup,
   onSelectNeedsAction,
+  onCreateGroup,
   collapsed,
   onToggleCollapse,
   width,
@@ -95,6 +97,12 @@ export function Sidebar({
               )}
             </button>
           ))}
+          <button
+            className="sidebar-item sidebar-add-group"
+            onClick={onCreateGroup}
+          >
+            + Add Group
+          </button>
         </nav>
       )}
     </aside>

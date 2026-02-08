@@ -354,6 +354,7 @@ function App() {
           setNeedsActionFilter(true);
           setFocusedIndex(0);
         }}
+        onCreateGroup={() => setShowCreateGroup(true)}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
         width={effectiveWidth}
