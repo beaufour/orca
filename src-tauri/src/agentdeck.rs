@@ -101,6 +101,9 @@ pub fn create_session(
         project_path
     };
 
+    // For bare worktree repos, place worktrees as siblings of .bare/
+    let is_bare_worktree = crate::git::find_bare_root(&effective_path).is_some();
+
     let mut args = vec![
         "add".to_string(),
         effective_path,
@@ -118,6 +121,10 @@ pub fn create_session(
         args.push(branch);
         if new_branch {
             args.push("-b".to_string());
+        }
+        if is_bare_worktree {
+            args.push("--location".to_string());
+            args.push("sibling".to_string());
         }
     }
 
