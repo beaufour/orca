@@ -3,6 +3,7 @@ mod claude_logs;
 mod git;
 mod models;
 mod pty;
+mod tmux;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -31,11 +32,14 @@ pub fn run() {
             agentdeck::move_session,
             agentdeck::create_group,
             claude_logs::get_session_summary,
+            git::get_default_branch,
             git::list_worktrees,
             git::add_worktree,
             git::remove_worktree,
             git::merge_worktree,
             git::rebase_worktree,
+            git::get_branch_diff,
+            tmux::list_tmux_sessions,
             pty::attach_pty,
             pty::write_pty,
             pty::resize_pty,

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session, SessionSummary, AttentionStatus } from "../types";
+import { DiffViewer } from "./DiffViewer";
 
 interface SessionCardProps {
   session: Session;
@@ -11,6 +12,7 @@ interface SessionCardProps {
   onClick?: () => void;
   confirmingRemove?: boolean;
   onConfirmingRemoveChange?: (confirming: boolean) => void;
+  tmuxAlive?: boolean;
 }
 
 const ATTENTION_CONFIG: Record<
@@ -59,6 +61,7 @@ export function SessionCard({
   onClick,
   confirmingRemove: confirmingRemoveProp,
   onConfirmingRemoveChange,
+  tmuxAlive = true,
 }: SessionCardProps) {
   const queryClient = useQueryClient();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -66,6 +69,7 @@ export function SessionCard({
   const confirmingRemove = confirmingRemoveProp ?? confirmingRemoveInternal;
   const setConfirmingRemove = onConfirmingRemoveChange ?? setConfirmingRemoveInternal;
   const [showAddWorktree, setShowAddWorktree] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
   const [branchName, setBranchName] = useState("");
 
   // Scroll focused card into view
@@ -93,25 +97,6 @@ export function SessionCard({
     queryClient.invalidateQueries({ queryKey: ["worktrees", repoPath] });
     queryClient.invalidateQueries({ queryKey: ["sessions"] });
   };
-
-  const rebaseMutation = useMutation({
-    mutationFn: () =>
-      invoke("rebase_worktree", {
-        worktreePath: session.worktree_path,
-        mainBranch: null,
-      }),
-    onSuccess: invalidateWorktrees,
-  });
-
-  const mergeMutation = useMutation({
-    mutationFn: () =>
-      invoke("merge_worktree", {
-        repoPath,
-        branch: session.worktree_branch,
-        mainBranch: null,
-      }),
-    onSuccess: invalidateWorktrees,
-  });
 
   const removeMutation = useMutation({
     mutationFn: async () => {
@@ -157,12 +142,10 @@ export function SessionCard({
     summary?.attention ?? fallbackAttention(session.status);
   const statusInfo = ATTENTION_CONFIG[attention];
   const isPending =
-    rebaseMutation.isPending ||
-    mergeMutation.isPending ||
     removeMutation.isPending ||
     addWorktreeMutation.isPending;
   const mutationError =
-    rebaseMutation.error ?? mergeMutation.error ?? removeMutation.error ?? addWorktreeMutation.error;
+    removeMutation.error ?? addWorktreeMutation.error;
 
   return (
     <div
@@ -187,9 +170,16 @@ export function SessionCard({
             </span>
           )}
         </div>
-        <span className={`status-badge ${statusInfo.className}`}>
-          {statusInfo.label}
-        </span>
+        <div className="session-badges">
+          {!tmuxAlive && (
+            <span className="status-badge status-tmux-dead" title="Tmux session not found">
+              tmux dead
+            </span>
+          )}
+          <span className={`status-badge ${statusInfo.className}`}>
+            {statusInfo.label}
+          </span>
+        </div>
       </div>
       {showAddWorktree && (
         <div className="wt-add-form" onClick={(e) => e.stopPropagation()}>
@@ -247,19 +237,11 @@ export function SessionCard({
             <>
               <button
                 className="wt-btn wt-btn-action"
-                onClick={(e) => { e.stopPropagation(); rebaseMutation.mutate(); }}
+                onClick={(e) => { e.stopPropagation(); setShowDiff(true); }}
                 disabled={isPending}
-                title="Rebase on main"
+                title="Show diff vs main"
               >
-                Rebase
-              </button>
-              <button
-                className="wt-btn wt-btn-action"
-                onClick={(e) => { e.stopPropagation(); mergeMutation.mutate(); }}
-                disabled={isPending}
-                title="Merge into main and remove"
-              >
-                Merge
+                Diff
               </button>
             </>
           )}
@@ -294,6 +276,7 @@ export function SessionCard({
           {formatTime(session.last_accessed)}
         </span>
       </div>
+      {showDiff && <DiffViewer session={session} onClose={() => setShowDiff(false)} />}
     </div>
   );
 }

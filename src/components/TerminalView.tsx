@@ -21,12 +21,21 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
   onCloseRef.current = onClose;
   const [attachFailed, setAttachFailed] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [terminalReady, setTerminalReady] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!containerRef.current || !session.tmux_session) return;
 
     setAttachFailed(false);
+    setTerminalReady(false);
+
+    // Debounce: reveal terminal after initial data burst settles
+    let readyTimer: ReturnType<typeof setTimeout> | null = null;
+    const markReady = () => {
+      if (readyTimer) clearTimeout(readyTimer);
+      readyTimer = setTimeout(() => setTerminalReady(true), 100);
+    };
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -89,12 +98,25 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       const cols = terminal.cols;
       const rows = terminal.rows;
 
+      // Pre-check: verify tmux session exists before attaching
+      try {
+        const liveSessions = await invoke<string[]>("list_tmux_sessions");
+        if (!liveSessions.includes(session.tmux_session!)) {
+          throw new Error(`can't find session: ${session.tmux_session}`);
+        }
+      } catch (e) {
+        // If the check itself found the session missing, re-throw
+        if (String(e).includes("can't find session")) throw e;
+        // Otherwise (e.g. command not available), skip the check and try attaching anyway
+      }
+
       // Stream PTY output via Channel
       const onOutput = new Channel<string>((encoded) => {
         const bytes = Uint8Array.from(atob(encoded), (c) =>
           c.charCodeAt(0)
         );
         terminal.write(bytes);
+        markReady();
       });
 
       // Attach to tmux session via PTY
@@ -111,6 +133,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
 
     setup().catch((err) => {
       const msg = String(err);
+      setTerminalReady(true);
       if (msg.includes("can't find session") || msg.includes("no server running")) {
         terminal.write(
           `\r\n  \x1b[33mTmux session '${session.tmux_session}' not found.\x1b[0m\r\n` +
@@ -163,6 +186,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
 
     // Cleanup function
     cleanupRef.current = () => {
+      if (readyTimer) clearTimeout(readyTimer);
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       container.removeEventListener("wheel", handleWheel);
@@ -204,11 +228,20 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       <div className="terminal-view">
         <div className="terminal-header">
           <span className="terminal-title">{session.title}</span>
+          <button
+            className="wt-btn wt-btn-add"
+            onClick={handleRestart}
+            disabled={restarting}
+          >
+            {restarting ? "Restarting..." : "Restart"}
+          </button>
           <button className="terminal-close" onClick={onClose}>
             Close
           </button>
         </div>
-        <div className="terminal-no-tmux">No tmux session available</div>
+        <div className="terminal-no-tmux">
+          No tmux session found. Click Restart to create a new one.
+        </div>
       </div>
     );
   }
@@ -231,7 +264,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
           Close
         </button>
       </div>
-      <div className="xterm-container" ref={containerRef} />
+      <div className={`xterm-container ${terminalReady ? "" : "xterm-container-loading"}`} ref={containerRef} />
     </div>
   );
 }

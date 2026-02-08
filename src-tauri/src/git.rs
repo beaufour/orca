@@ -167,6 +167,38 @@ pub fn rebase_worktree(worktree_path: String, main_branch: Option<String>) -> Re
     Ok(())
 }
 
+fn get_default_branch_inner(repo_path: &str) -> Result<String, String> {
+    // Try symbolic-ref of origin/HEAD first
+    if let Ok(output) = run_git(repo_path, &["symbolic-ref", "refs/remotes/origin/HEAD"]) {
+        let trimmed = output.trim();
+        if let Some(branch) = trimmed.strip_prefix("refs/remotes/origin/") {
+            return Ok(branch.to_string());
+        }
+    }
+
+    // Fallback: check if "main" or "master" branches exist
+    if run_git(repo_path, &["rev-parse", "--verify", "main"]).is_ok() {
+        return Ok("main".to_string());
+    }
+    if run_git(repo_path, &["rev-parse", "--verify", "master"]).is_ok() {
+        return Ok("master".to_string());
+    }
+
+    Ok("main".to_string())
+}
+
+#[tauri::command]
+pub fn get_default_branch(repo_path: String) -> Result<String, String> {
+    get_default_branch_inner(&repo_path)
+}
+
+#[tauri::command]
+pub fn get_branch_diff(worktree_path: String, branch: String) -> Result<String, String> {
+    let default_branch = get_default_branch_inner(&worktree_path)?;
+    let range = format!("{}...{}", default_branch, branch);
+    run_git(&worktree_path, &["diff", &range])
+}
+
 fn find_repo_root(path: &str) -> Result<String, String> {
     // Use git rev-parse to find the toplevel or bare repo
     let output = Command::new("git")

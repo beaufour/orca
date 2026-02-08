@@ -58,6 +58,17 @@ function App() {
     queryFn: () => invoke("get_groups"),
   });
 
+  const { data: liveTmuxSessions } = useQuery<string[]>({
+    queryKey: ["tmuxSessions"],
+    queryFn: () => invoke("list_tmux_sessions"),
+    refetchInterval: 5_000,
+  });
+
+  const liveTmuxSet = useMemo(
+    () => new Set(liveTmuxSessions ?? []),
+    [liveTmuxSessions],
+  );
+
   const groupNames = useMemo(() => {
     const map: Record<string, string> = {};
     for (const g of groups ?? []) {
@@ -360,6 +371,9 @@ function App() {
                 onRetry={() => refetchSessions()}
                 confirmingRemoveId={confirmingRemoveId}
                 onConfirmingRemoveChange={setConfirmingRemoveId}
+                groupPath={selectedGroup?.path}
+                repoPath={selectedGroup?.default_path}
+                liveTmuxSessions={liveTmuxSet}
               />
             </main>
             {selectedGroup && (

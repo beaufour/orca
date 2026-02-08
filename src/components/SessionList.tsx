@@ -1,5 +1,6 @@
 import type { Session } from "../types";
 import { SessionCard } from "./SessionCard";
+import { MainSessionGhost } from "./MainSessionGhost";
 
 interface SessionListProps {
   sessions: Session[] | undefined;
@@ -12,6 +13,9 @@ interface SessionListProps {
   onRetry?: () => void;
   confirmingRemoveId?: string | null;
   onConfirmingRemoveChange?: (sessionId: string | null) => void;
+  groupPath?: string;
+  repoPath?: string;
+  liveTmuxSessions?: Set<string>;
 }
 
 export function SessionList({
@@ -25,6 +29,9 @@ export function SessionList({
   onRetry,
   confirmingRemoveId,
   onConfirmingRemoveChange,
+  groupPath,
+  repoPath,
+  liveTmuxSessions,
 }: SessionListProps) {
   if (error) {
     return (
@@ -55,9 +62,21 @@ export function SessionList({
     return <div className="session-list-empty">No sessions found</div>;
   }
 
+  const hasMainSession = sessions.some(
+    (s) =>
+      !s.worktree_branch ||
+      s.worktree_branch === "main" ||
+      s.worktree_branch === "master",
+  );
+
+  const showGhost = groupPath && repoPath && !hasMainSession;
+
   return (
     <div className="session-list">
       <div className="session-grid">
+        {showGhost && (
+          <MainSessionGhost repoPath={repoPath} groupPath={groupPath} />
+        )}
         {sessions.map((session, index) => (
           <SessionCard
             key={session.id}
@@ -68,6 +87,7 @@ export function SessionList({
             onClick={() => onSelectSession(session)}
             confirmingRemove={confirmingRemoveId != null ? session.id === confirmingRemoveId : undefined}
             onConfirmingRemoveChange={onConfirmingRemoveChange ? (c) => onConfirmingRemoveChange(c ? session.id : null) : undefined}
+            tmuxAlive={!session.tmux_session || liveTmuxSessions?.has(session.tmux_session) !== false}
           />
         ))}
       </div>
