@@ -14,6 +14,29 @@ struct PtySession {
     shutdown: Arc<AtomicBool>,
 }
 
+/// Cleanly shut down a PtySession.
+///
+/// IMPORTANT: PtySession must NEVER be dropped without calling this first.
+/// If a PtySession is dropped while its child process is still alive (e.g.
+/// by HashMap::insert replacing an existing entry), portable-pty's
+/// UnixMasterWriter::Drop will write `\n` + EOF (Ctrl-D) to the PTY master.
+/// The still-alive child (`tmux attach-session`) reads that `\n` from its
+/// stdin and forwards it to the tmux pane, injecting a visible newline.
+///
+/// This function prevents that by killing the child and waiting for it to
+/// fully exit before the PtySession is dropped. Once the child is dead, its
+/// PTY slave fd is closed, so the `\n` written by the writer's Drop goes
+/// into a dead kernel buffer that nobody reads.
+///
+/// See `docs/bug-newlines-research.md` for the full investigation.
+fn shutdown_session(mut session: PtySession) {
+    session.shutdown.store(true, Ordering::Relaxed);
+    let _ = session.child.kill();
+    let _ = session.child.wait();
+    // session drops here: writer Drop sends \n + EOF, but child is dead
+    // so the bytes go into a dead PTY buffer that nobody reads
+}
+
 #[derive(Default)]
 pub struct PtyManager {
     sessions: Arc<Mutex<HashMap<String, PtySession>>>,
@@ -104,11 +127,28 @@ pub fn attach_pty(
         shutdown,
     };
 
-    state
+    // CRITICAL: Clean up any existing session before inserting the new one.
+    // Without this, HashMap::insert silently drops the old PtySession, which
+    // triggers portable-pty's UnixMasterWriter::Drop to write \n + EOF into
+    // the PTY while the old tmux attach child is still alive — injecting a
+    // newline into the tmux pane on every open. This commonly happens due to
+    // React strict mode double-firing effects in development. See
+    // shutdown_session() docs and docs/bug-newlines-research.md for details.
+    let mut sessions = state
         .sessions
         .lock()
-        .map_err(|e| format!("Lock error: {e}"))?
-        .insert(session_id, session);
+        .map_err(|e| format!("Lock error: {e}"))?;
+    if let Some(old) = sessions.remove(&session_id) {
+        // Drop lock before blocking on shutdown to avoid holding it during wait()
+        drop(sessions);
+        shutdown_session(old);
+        // Re-acquire for insert
+        sessions = state
+            .sessions
+            .lock()
+            .map_err(|e| format!("Lock error: {e}"))?;
+    }
+    sessions.insert(session_id, session);
 
     Ok(())
 }
@@ -181,16 +221,9 @@ pub fn close_pty(state: State<'_, PtyManager>, session_id: String) -> Result<(),
         .lock()
         .map_err(|e| format!("Lock error: {e}"))?;
 
-    if let Some(mut session) = sessions.remove(&session_id) {
-        session.shutdown.store(true, Ordering::Relaxed);
-        let _ = session.child.kill();
-        // Wait for child to fully exit before the session is dropped.
-        // portable-pty's UnixMasterWriter::Drop writes \n + EOF to the PTY
-        // master. If the child (tmux attach) is still alive, it forwards
-        // that \n to the tmux pane — causing the extra-newline-on-every-open
-        // bug. Waiting ensures the slave fd is closed first, so the \n goes
-        // into a dead buffer that nobody reads.
-        let _ = session.child.wait();
+    if let Some(session) = sessions.remove(&session_id) {
+        drop(sessions);
+        shutdown_session(session);
     }
 
     Ok(())
