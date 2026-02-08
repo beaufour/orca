@@ -75,7 +75,7 @@ export function SessionList({
     <div className="session-list">
       <div className="session-grid">
         {showGhost && (
-          <MainSessionGhost repoPath={repoPath} groupPath={groupPath} />
+          <MainSessionGhost repoPath={repoPath} groupPath={groupPath} onSessionReady={onSelectSession} />
         )}
         {sessions.map((session, index) => (
           <SessionCard
