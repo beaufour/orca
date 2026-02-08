@@ -77,6 +77,17 @@ function App() {
     return map;
   }, [groups]);
 
+  // Keep selectedSession in sync with latest query data
+  // (e.g., after restart updates tmux_session)
+  useEffect(() => {
+    if (selectedSession && sessions) {
+      const updated = sessions.find((s) => s.id === selectedSession.id);
+      if (updated && updated.tmux_session !== selectedSession.tmux_session) {
+        setSelectedSession(updated);
+      }
+    }
+  }, [sessions, selectedSession]);
+
   const filteredSessions = useMemo(() => {
     if (!sessions) return undefined;
     if (!searchQuery) return sessions;

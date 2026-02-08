@@ -210,10 +210,9 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     setRestarting(true);
     try {
       await invoke("restart_session", { sessionId: session.id });
-      // Invalidate sessions to pick up new tmux_session value
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      // Close and let the user re-open with the new tmux session
-      onClose();
+      // Invalidate and wait for refetch; the parent syncs selectedSession
+      // from query data, which re-triggers our setup effect with the new tmux_session
+      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
     } catch (err) {
       terminalRef.current?.write(
         `\r\n  \x1b[31mRestart failed:\x1b[0m ${String(err)}\r\n`
@@ -221,7 +220,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     } finally {
       setRestarting(false);
     }
-  }, [session.id, queryClient, onClose]);
+  }, [session.id, queryClient]);
 
   if (!session.tmux_session) {
     return (
