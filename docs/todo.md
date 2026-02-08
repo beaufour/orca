@@ -12,7 +12,7 @@
 
 - [x] **Investigate embedded true terminal** - Researched native terminal embedding (Alacritty, Ghostty, SwiftTerm, etc.). Not feasible on macOS due to cross-process NSView limitations. Improved existing xterm.js: switched to Tauri Channels, added resize debouncing, set tmux window-size latest. See `docs/terminal-embedding-research.md`.
 
-- [ ] **Keyboard shortcut help overlay** - Add a `?` key shortcut that shows an overlay listing all available keyboard shortcuts. Currently there's no way for users to discover them.
+- [X] **Keyboard shortcut help overlay** - Add a `?` key shortcut that shows an overlay listing all available keyboard shortcuts. Currently there's no way for users to discover them.
 
 - [ ] **`d` shortcut to remove focused session** - Trigger the remove confirmation flow on the currently focused session card via keyboard. Requires lifting or bridging the confirm state from SessionCard.
 
@@ -59,6 +59,8 @@
 - [ ] **Remove session safety logic** - Define clear rules for session removal: should we allow removing a worktree with unmerged branches? With uncommitted changes? Currently removal can leave behind orphaned branches and uncommitted work. Add pre-removal checks (dirty working tree, unmerged branch, unpushed commits) and either warn/block or offer to clean up. Goal: prevent accumulation of orphaned branches and lost work.
 
 - [ ] **Agent-deck version tracking** - Maintain a log of which agent-deck versions Orca supports. Document the current version's CLI interface, DB schema, and behaviors we depend on. When a new agent-deck version is released, diff against the documented version to identify breaking changes and adjust our logic (CLI args, DB queries, output parsing, etc.).
+
+- [ ] **More logging** - Add more detailed logging throughout the Rust backend for git operations, tmux interactions, agent-deck commands, and error cases. This will help with debugging and understanding the app's behavior in production.
 
 ## Upstream Bugs
 

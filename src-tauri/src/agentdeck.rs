@@ -95,14 +95,50 @@ pub fn create_session(
 
     // If the project_path is a bare repo (has .bare subdir), resolve to an
     // existing worktree so agent-deck can find the git repo.
-    let effective_path = if Path::new(&project_path).join(".bare").is_dir() {
+    let mut effective_path = if Path::new(&project_path).join(".bare").is_dir() {
         find_worktree_in_bare(&project_path)?
     } else {
         project_path
     };
 
-    // For bare worktree repos, place worktrees as siblings of .bare/
-    let is_bare_worktree = crate::git::find_bare_root(&effective_path).is_some();
+    let bare_root = crate::git::find_bare_root(&effective_path);
+
+    // For bare worktree repos, create the worktree ourselves so it lands at
+    // <bare_root>/<branch> instead of agent-deck's default <dir>-<branch>.
+    let bare_worktree_info = if bare_root.is_some() {
+        if let Some(ref branch) = worktree_branch {
+            let root = bare_root.as_ref().unwrap();
+            let wt_path = root.join(branch);
+            let wt_str = wt_path.to_string_lossy().to_string();
+            let repo_root = effective_path.clone();
+
+            let mut git_args = vec!["worktree", "add", &wt_str];
+            if new_branch {
+                git_args.push("-b");
+            }
+            git_args.push(branch);
+
+            log::info!("git {} (cwd: {})", git_args.join(" "), effective_path);
+            let output = std::process::Command::new("git")
+                .current_dir(&effective_path)
+                .args(&git_args)
+                .output()
+                .map_err(|e| format!("Failed to create worktree: {}", e))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                log::error!("git worktree add failed (exit {}): {}", output.status, stderr.trim());
+                return Err(format!("Failed to create worktree: {}", stderr.trim()));
+            }
+            log::debug!("git worktree add succeeded: {}", wt_str);
+
+            effective_path = wt_str.clone();
+            Some((wt_str, repo_root, branch.clone()))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     let mut args = vec![
         "add".to_string(),
@@ -116,18 +152,18 @@ pub fn create_session(
         "-json".to_string(),
     ];
 
-    if let Some(branch) = worktree_branch {
-        args.push("-w".to_string());
-        args.push(branch);
-        if new_branch {
-            args.push("-b".to_string());
-        }
-        if is_bare_worktree {
-            args.push("--location".to_string());
-            args.push("sibling".to_string());
+    // Only let agent-deck handle worktree creation for non-bare repos
+    if bare_worktree_info.is_none() {
+        if let Some(branch) = worktree_branch {
+            args.push("-w".to_string());
+            args.push(branch);
+            if new_branch {
+                args.push("-b".to_string());
+            }
         }
     }
 
+    log::info!("agent-deck {}", args.join(" "));
     let output = std::process::Command::new("agent-deck")
         .args(&args)
         .output()
@@ -135,16 +171,21 @@ pub fn create_session(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!("agent-deck add failed (exit {}): {}", output.status, stderr.trim());
         return Err(format!("agent-deck add failed: {}", stderr.trim()));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    log::debug!("agent-deck add succeeded: {}", stdout);
 
     // Parse session ID from output
     let session_id;
 
-    // Try JSON output first (normal creation)
-    if let Some(id) = serde_json::from_str::<serde_json::Value>(&stdout)
+    // Try JSON output first (normal creation).
+    // agent-deck may prefix the JSON with text like "Created worktree at: ...",
+    // so find the first '{' and parse from there.
+    let json_str = stdout.find('{').map(|i| &stdout[i..]).unwrap_or(&stdout);
+    if let Some(id) = serde_json::from_str::<serde_json::Value>(json_str)
         .ok()
         .and_then(|json| json["id"].as_str().map(String::from))
     {
@@ -161,8 +202,15 @@ pub fn create_session(
         return Err(format!("Could not parse session ID from agent-deck output: {}", stdout));
     }
 
+    // For bare repos where we created the worktree ourselves, update the
+    // session's worktree metadata in the DB.
+    if let Some((wt_path, wt_repo, wt_branch)) = bare_worktree_info {
+        update_session_worktree(session_id.clone(), wt_path, wt_repo, wt_branch)?;
+    }
+
     // Optionally start the session immediately
     if start.unwrap_or(false) {
+        log::info!("agent-deck session start {}", session_id);
         let start_output = std::process::Command::new("agent-deck")
             .args(["session", "start", &session_id])
             .output()
@@ -170,8 +218,10 @@ pub fn create_session(
 
         if !start_output.status.success() {
             let stderr = String::from_utf8_lossy(&start_output.stderr);
+            log::error!("agent-deck session start failed (exit {}): {}", start_output.status, stderr.trim());
             return Err(format!("agent-deck session start failed: {}", stderr.trim()));
         }
+        log::debug!("agent-deck session start succeeded for {}", session_id);
     }
 
     Ok(session_id)
@@ -179,6 +229,7 @@ pub fn create_session(
 
 #[tauri::command]
 pub fn restart_session(session_id: String) -> Result<(), String> {
+    log::info!("agent-deck session start {}", session_id);
     let output = std::process::Command::new("agent-deck")
         .args(["session", "start", &session_id])
         .output()
@@ -186,18 +237,32 @@ pub fn restart_session(session_id: String) -> Result<(), String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!("agent-deck session start failed (exit {}): {}", output.status, stderr.trim());
         return Err(format!("agent-deck session start failed: {}", stderr.trim()));
     }
 
+    log::debug!("agent-deck session start succeeded for {}", session_id);
     Ok(())
 }
 
 #[tauri::command]
 pub fn remove_session(session_id: String) -> Result<(), String> {
     // Try agent-deck remove first
-    let _ = std::process::Command::new("agent-deck")
+    log::info!("agent-deck remove {}", session_id);
+    let remove_result = std::process::Command::new("agent-deck")
         .args(["remove", &session_id])
         .output();
+    match &remove_result {
+        Ok(output) if output.status.success() => {
+            log::debug!("agent-deck remove succeeded for {}", session_id);
+        }
+        Ok(output) => {
+            log::error!("agent-deck remove failed (exit {}): {}", output.status, String::from_utf8_lossy(&output.stderr).trim());
+        }
+        Err(e) => {
+            log::error!("agent-deck remove failed to execute: {}", e);
+        }
+    }
 
     // agent-deck remove has a bug where worktree removal failure prevents
     // the DB deletion even though it reports success. Fall back to direct
@@ -390,20 +455,25 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
 /// For bare worktree repos, find an existing worktree path that agent-deck
 /// can use (it needs a real working tree, not the bare root).
 fn find_worktree_in_bare(bare_path: &str) -> Result<String, String> {
+    let cwd = Path::new(bare_path).join(".bare");
+    log::info!("git worktree list --porcelain (cwd: {})", cwd.display());
     let output = std::process::Command::new("git")
-        .current_dir(Path::new(bare_path).join(".bare"))
+        .current_dir(&cwd)
         .args(["worktree", "list", "--porcelain"])
         .output()
         .map_err(|e| format!("Failed to list worktrees: {}", e))?;
 
     if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!("git worktree list failed (exit {}): {}", output.status, stderr.trim());
         return Err(format!(
             "Failed to list worktrees in bare repo: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
+            stderr.trim()
         ));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    log::debug!("git worktree list succeeded: {}", stdout.trim());
     let mut found_bare = false;
 
     for line in stdout.lines() {
