@@ -11,6 +11,7 @@ pub struct Worktree {
 }
 
 fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
+    log::info!("git {} (cwd: {})", args.join(" "), repo_path);
     let output = Command::new("git")
         .current_dir(repo_path)
         .args(args)
@@ -19,10 +20,13 @@ fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!("git {} failed (exit {}): {}", args.join(" "), output.status, stderr.trim());
         return Err(format!("git {} failed: {}", args.join(" "), stderr.trim()));
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    log::debug!("git {} succeeded: {}", args.join(" "), stdout.trim());
+    Ok(stdout)
 }
 
 #[tauri::command]
@@ -207,6 +211,7 @@ pub fn get_branch_diff(worktree_path: String, branch: String) -> Result<String, 
 fn find_repo_root(path: &str) -> Result<String, String> {
     // Validate this is a git repository by checking rev-parse succeeds.
     // Returns the input path since git commands work from any worktree.
+    log::info!("git rev-parse --git-common-dir (cwd: {})", path);
     let output = Command::new("git")
         .current_dir(path)
         .args(["rev-parse", "--git-common-dir"])
@@ -214,9 +219,11 @@ fn find_repo_root(path: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to run git: {}", e))?;
 
     if !output.status.success() {
+        log::error!("git rev-parse --git-common-dir failed (exit {}): not a git repo at {}", output.status, path);
         return Err(format!("Not a git repository: {}", path));
     }
 
+    log::debug!("git rev-parse --git-common-dir succeeded: {}", String::from_utf8_lossy(&output.stdout).trim());
     Ok(path.to_string())
 }
 
