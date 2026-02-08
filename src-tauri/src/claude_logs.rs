@@ -156,17 +156,22 @@ fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> Att
                 if item.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
                     let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
 
-                    // Explicit user-facing questions
-                    if name == "AskUserQuestion" || name == "ExitPlanMode" {
+                    // Explicit user-facing prompts — these tools always
+                    // require user interaction regardless of auto-approve
+                    // settings.
+                    if name == "AskUserQuestion"
+                        || name == "ExitPlanMode"
+                        || name == "EnterPlanMode"
+                    {
                         return AttentionStatus::NeedsInput;
                     }
 
-                    // Any tool_use as the last message means Claude emitted a tool
-                    // call but no tool_result has been logged yet — the CLI is
-                    // waiting for the user to approve/deny the tool permission.
-                    if agentdeck_status == "running" && !has_matching_tool_result(&relevant, item) {
-                        return AttentionStatus::NeedsInput;
-                    }
+                    // NOTE: We do NOT flag generic tool_use-without-result as
+                    // NeedsInput.  A missing tool_result can mean either
+                    // "waiting for user approval" or "tool currently executing"
+                    // — we can't tell which from JSONL alone.  False "Needs
+                    // Input" during every tool execution is worse than showing
+                    // "Running" during an actual permission prompt.
                 }
             }
         }
@@ -201,37 +206,6 @@ fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> Att
     AttentionStatus::Idle
 }
 
-/// Check if there is a user tool_result message that matches a given tool_use item's id.
-/// The tool_result must appear AFTER the tool_use in the conversation.
-fn has_matching_tool_result(relevant: &[&serde_json::Value], tool_use_item: &serde_json::Value) -> bool {
-    let tool_use_id = match tool_use_item.get("id").and_then(|v| v.as_str()) {
-        Some(id) => id,
-        None => return false,
-    };
-
-    // Since the tool_use is in the last assistant message, we only need to check
-    // if there's a subsequent user message with a matching tool_result.
-    // The last message is the assistant message containing this tool_use,
-    // so there can't be a later user message — that's the whole point.
-    // But to be safe, check all user messages after finding this tool_use's parent.
-    for entry in relevant.iter().rev() {
-        let msg = entry.get("message").unwrap_or(entry);
-        if msg.get("role").and_then(|v| v.as_str()) != Some("user") {
-            continue;
-        }
-        if let Some(content) = msg.get("content").and_then(|v| v.as_array()) {
-            for item in content {
-                if item.get("type").and_then(|v| v.as_str()) == Some("tool_result") {
-                    if item.get("tool_use_id").and_then(|v| v.as_str()) == Some(tool_use_id) {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-
-    false
-}
 
 fn extract_last_text(lines: &[serde_json::Value]) -> Option<String> {
     for line in lines.iter().rev() {
