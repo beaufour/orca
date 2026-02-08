@@ -252,34 +252,49 @@ pub fn compute_attention(
     project_path: &str,
     claude_session_id: Option<&str>,
     agentdeck_status: &str,
+    tmux_session: Option<&str>,
 ) -> AttentionStatus {
     let claude_session_id = match claude_session_id {
         Some(id) => id,
         None => {
-            return match agentdeck_status {
+            let attention = match agentdeck_status {
                 "running" => AttentionStatus::Running,
                 "waiting" => AttentionStatus::Idle,
                 "error" => AttentionStatus::Error,
                 _ => AttentionStatus::Unknown,
             };
+            return refine_with_tmux(attention, tmux_session);
         }
     };
 
     let jsonl_path = match find_jsonl_path(project_path, claude_session_id) {
         Some(p) => p,
         None => {
-            return match agentdeck_status {
+            let attention = match agentdeck_status {
                 "running" => AttentionStatus::Running,
                 "waiting" => AttentionStatus::Idle,
                 "error" => AttentionStatus::Error,
                 "idle" => AttentionStatus::Idle,
                 _ => AttentionStatus::Unknown,
             };
+            return refine_with_tmux(attention, tmux_session);
         }
     };
 
     let lines = read_tail_lines(&jsonl_path, 256 * 1024);
-    extract_attention(&lines, agentdeck_status)
+    refine_with_tmux(extract_attention(&lines, agentdeck_status), tmux_session)
+}
+
+/// Refine a Running status by checking the tmux pane for a permission prompt.
+fn refine_with_tmux(attention: AttentionStatus, tmux_session: Option<&str>) -> AttentionStatus {
+    if matches!(attention, AttentionStatus::Running) {
+        if let Some(ts) = tmux_session {
+            if !ts.is_empty() && crate::tmux::is_waiting_for_input(ts) {
+                return AttentionStatus::NeedsInput;
+            }
+        }
+    }
+    attention
 }
 
 #[tauri::command]
@@ -287,20 +302,22 @@ pub fn get_session_summary(
     project_path: String,
     claude_session_id: String,
     agentdeck_status: String,
+    tmux_session: Option<String>,
 ) -> SessionSummary {
     let jsonl_path = match find_jsonl_path(&project_path, &claude_session_id) {
         Some(p) => p,
         None => {
+            let attention = match agentdeck_status.as_str() {
+                "running" => AttentionStatus::Running,
+                // No JSONL file means no conversation yet — just the initial prompt
+                "waiting" => AttentionStatus::Idle,
+                "error" => AttentionStatus::Error,
+                "idle" => AttentionStatus::Idle,
+                _ => AttentionStatus::Unknown,
+            };
             return SessionSummary {
                 summary: None,
-                attention: match agentdeck_status.as_str() {
-                    "running" => AttentionStatus::Running,
-                    // No JSONL file means no conversation yet — just the initial prompt
-                    "waiting" => AttentionStatus::Idle,
-                    "error" => AttentionStatus::Error,
-                    "idle" => AttentionStatus::Idle,
-                    _ => AttentionStatus::Unknown,
-                },
+                attention: refine_with_tmux(attention, tmux_session.as_deref()),
                 last_tool: None,
                 last_text: None,
             };
@@ -309,10 +326,11 @@ pub fn get_session_summary(
 
     // Read last 256KB of the file
     let lines = read_tail_lines(&jsonl_path, 256 * 1024);
+    let attention = extract_attention(&lines, &agentdeck_status);
 
     SessionSummary {
         summary: extract_summary(&lines),
-        attention: extract_attention(&lines, &agentdeck_status),
+        attention: refine_with_tmux(attention, tmux_session.as_deref()),
         last_tool: extract_last_tool(&lines),
         last_text: extract_last_text(&lines),
     }

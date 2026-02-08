@@ -328,10 +328,12 @@ pub fn get_attention_counts() -> Result<AttentionCounts, String> {
         let (project_path, group_path, status, claude_session_id) =
             row.map_err(|e| e.to_string())?;
 
+        // tmux check not needed — this query only covers "waiting"/"error"
         let attention = claude_logs::compute_attention(
             &project_path,
             claude_session_id.as_deref(),
             &status,
+            None,
         );
 
         let refined_status = match attention {
@@ -377,10 +379,12 @@ pub fn get_attention_sessions() -> Result<Vec<Session>, String> {
     let result = candidates
         .into_iter()
         .filter(|s| {
+            // tmux check not needed — this query only covers "waiting"/"error"
             let attention = claude_logs::compute_attention(
                 &s.project_path,
                 s.claude_session_id.as_deref(),
                 &s.status,
+                None,
             );
             matches!(attention, AttentionStatus::NeedsInput | AttentionStatus::Error)
         })

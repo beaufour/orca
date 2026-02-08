@@ -1,5 +1,21 @@
 use std::process::Command;
 
+/// Check if a tmux session is showing a Claude Code permission prompt
+/// ("Do you want to proceed?").  Captures the last 20 lines of the pane
+/// and looks for the distinctive prompt text.
+pub fn is_waiting_for_input(tmux_session: &str) -> bool {
+    let output = match Command::new("tmux")
+        .args(["capture-pane", "-t", tmux_session, "-p", "-l", "20"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return false,
+    };
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.contains("Do you want to proceed?")
+}
+
 #[tauri::command]
 pub fn list_tmux_sessions() -> Result<Vec<String>, String> {
     log::debug!("tmux list-sessions -F #{{session_name}}");
