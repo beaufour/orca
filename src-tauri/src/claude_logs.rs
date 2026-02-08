@@ -112,14 +112,12 @@ fn extract_summary(lines: &[serde_json::Value]) -> Option<String> {
 }
 
 fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> AttentionStatus {
-    // Use agent-deck status as primary signal
-    match agentdeck_status {
-        "running" => return AttentionStatus::Running,
-        "waiting" => return AttentionStatus::NeedsInput,
-        _ => {}
+    // Use agent-deck "waiting" as definitive signal
+    if agentdeck_status == "waiting" {
+        return AttentionStatus::NeedsInput;
     }
 
-    // For idle/error, refine using JSONL
+    // For all statuses (including "running"), refine using JSONL
     let relevant: Vec<&serde_json::Value> = lines
         .iter()
         .filter(|l| {
@@ -129,7 +127,12 @@ fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> Att
         .collect();
 
     if relevant.is_empty() {
-        return AttentionStatus::Unknown;
+        // No JSONL data — trust agent-deck status
+        return match agentdeck_status {
+            "running" => AttentionStatus::Running,
+            "error" => AttentionStatus::Error,
+            _ => AttentionStatus::Unknown,
+        };
     }
 
     let last = relevant.last().unwrap();
@@ -139,11 +142,19 @@ fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> Att
 
     if role == "assistant" {
         if let Some(content_arr) = content {
-            // Check for AskUserQuestion tool use
             for item in content_arr {
                 if item.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
                     let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
+
+                    // Explicit user-facing questions
                     if name == "AskUserQuestion" || name == "ExitPlanMode" {
+                        return AttentionStatus::NeedsInput;
+                    }
+
+                    // Any tool_use as the last message means Claude emitted a tool
+                    // call but no tool_result has been logged yet — the CLI is
+                    // waiting for the user to approve/deny the tool permission.
+                    if agentdeck_status == "running" && !has_matching_tool_result(&relevant, item) {
                         return AttentionStatus::NeedsInput;
                     }
                 }
@@ -175,11 +186,47 @@ fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> Att
         }
     }
 
+    if agentdeck_status == "running" {
+        return AttentionStatus::Running;
+    }
+
     if agentdeck_status == "error" {
         return AttentionStatus::Error;
     }
 
     AttentionStatus::Idle
+}
+
+/// Check if there is a user tool_result message that matches a given tool_use item's id.
+/// The tool_result must appear AFTER the tool_use in the conversation.
+fn has_matching_tool_result(relevant: &[&serde_json::Value], tool_use_item: &serde_json::Value) -> bool {
+    let tool_use_id = match tool_use_item.get("id").and_then(|v| v.as_str()) {
+        Some(id) => id,
+        None => return false,
+    };
+
+    // Since the tool_use is in the last assistant message, we only need to check
+    // if there's a subsequent user message with a matching tool_result.
+    // The last message is the assistant message containing this tool_use,
+    // so there can't be a later user message — that's the whole point.
+    // But to be safe, check all user messages after finding this tool_use's parent.
+    for entry in relevant.iter().rev() {
+        let msg = entry.get("message").unwrap_or(entry);
+        if msg.get("role").and_then(|v| v.as_str()) != Some("user") {
+            continue;
+        }
+        if let Some(content) = msg.get("content").and_then(|v| v.as_array()) {
+            for item in content {
+                if item.get("type").and_then(|v| v.as_str()) == Some("tool_result") {
+                    if item.get("tool_use_id").and_then(|v| v.as_str()) == Some(tool_use_id) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    false
 }
 
 fn extract_last_text(lines: &[serde_json::Value]) -> Option<String> {
