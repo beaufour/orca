@@ -173,6 +173,8 @@ export function AddSessionBar({
                 placeholder="branch-name"
                 value={branchName}
                 onChange={(e) => setBranchName(e.target.value)}
+                spellCheck={false}
+                autoCapitalize="off"
                 autoFocus
               />
             )}
