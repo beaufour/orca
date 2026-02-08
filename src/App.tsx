@@ -383,6 +383,13 @@ function App() {
                 groupPath={selectedGroup.path}
                 groupName={selectedGroup.name}
                 sessions={sessions ?? []}
+                onSessionCreated={async (sessionId) => {
+                  const { data } = await refetchSessions();
+                  const newSession = data?.find((s) => s.id === sessionId);
+                  if (newSession) {
+                    setSelectedSession(newSession);
+                  }
+                }}
               />
             )}
           </>
