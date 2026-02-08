@@ -112,12 +112,7 @@ fn extract_summary(lines: &[serde_json::Value]) -> Option<String> {
 }
 
 fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> AttentionStatus {
-    // Use agent-deck "waiting" as definitive signal
-    if agentdeck_status == "waiting" {
-        return AttentionStatus::NeedsInput;
-    }
-
-    // For all statuses (including "running"), refine using JSONL
+    // For all statuses (including "running" and "waiting"), refine using JSONL
     let relevant: Vec<&serde_json::Value> = lines
         .iter()
         .filter(|l| {
@@ -125,6 +120,21 @@ fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> Att
             t == "assistant" || t == "user"
         })
         .collect();
+
+    // Agent-deck "waiting" means the CLI is at a prompt, but only flag as
+    // NeedsInput if there has been an actual conversation (assistant messages).
+    // A fresh session with no assistant messages is just the initial prompt — Idle.
+    if agentdeck_status == "waiting" {
+        let has_assistant = relevant.iter().any(|entry| {
+            let msg = entry.get("message").unwrap_or(entry);
+            msg.get("role").and_then(|v| v.as_str()) == Some("assistant")
+        });
+        if has_assistant {
+            return AttentionStatus::NeedsInput;
+        } else {
+            return AttentionStatus::Idle;
+        }
+    }
 
     if relevant.is_empty() {
         // No JSONL data — trust agent-deck status
@@ -282,7 +292,8 @@ pub fn get_session_summary(
                 summary: None,
                 attention: match agentdeck_status.as_str() {
                     "running" => AttentionStatus::Running,
-                    "waiting" => AttentionStatus::NeedsInput,
+                    // No JSONL file means no conversation yet — just the initial prompt
+                    "waiting" => AttentionStatus::Idle,
                     "error" => AttentionStatus::Error,
                     "idle" => AttentionStatus::Idle,
                     _ => AttentionStatus::Unknown,
