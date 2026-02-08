@@ -224,13 +224,17 @@ pub fn create_session(
         }
         log::debug!("agent-deck session start succeeded for {}", session_id);
 
-        // Send prompt to the tmux session if provided
+        // Send prompt to the tmux session in the background so we don't
+        // block the UI while waiting for Claude Code to start up.
         if let Some(ref prompt_text) = prompt {
             if !prompt_text.trim().is_empty() {
-                if let Err(e) = send_prompt_to_session(&session_id, prompt_text) {
-                    log::error!("Failed to send prompt to session {}: {}", session_id, e);
-                    // Don't fail the whole create — session was created successfully
-                }
+                let sid = session_id.clone();
+                let pt = prompt_text.clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = send_prompt_to_session(&sid, &pt) {
+                        log::error!("Failed to send prompt to session {}: {}", sid, e);
+                    }
+                });
             }
         }
     }
@@ -477,65 +481,55 @@ fn get_tmux_session_name(session_id: &str) -> Result<String, String> {
     .map_err(|e| format!("Failed to get tmux session name for {}: {}", session_id, e))
 }
 
-/// Send a prompt to a session's tmux session. Waits for Claude Code
-/// to be ready (showing its input prompt) before sending.
+/// Send a prompt to a session's tmux session. Waits for the tmux session
+/// to exist and for Claude Code to start rendering before sending.
+/// Runs on a background thread — must not block the UI.
 fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> {
     let tmux_name = get_tmux_session_name(session_id)?;
     log::info!("Sending prompt to tmux session '{}' for session {}", tmux_name, session_id);
 
-    // Wait for Claude Code to be ready by polling the pane content.
-    // Claude Code shows a ">" prompt when ready for input.
     let max_attempts = 60;
     let delay = std::time::Duration::from_millis(500);
+    let mut session_ready = false;
+
     for attempt in 0..max_attempts {
+        // Use capture-pane: if the session doesn't exist it fails,
+        // if it does we can check whether Claude has started rendering.
         let capture = std::process::Command::new("tmux")
             .args(["capture-pane", "-t", &tmux_name, "-p"])
             .output();
         match capture {
             Ok(output) if output.status.success() => {
                 let content = String::from_utf8_lossy(&output.stdout);
-                // Claude Code shows ">" at the start of a line when ready for input
-                if content.lines().any(|line| line.trim_start().starts_with('>')) {
+                // Wait until the pane has non-whitespace content — means
+                // Claude Code has started and rendered something.
+                if content.chars().any(|c| !c.is_whitespace()) {
                     log::debug!(
-                        "Claude Code ready in tmux session '{}' after {} attempts",
+                        "Claude Code rendering in tmux session '{}' after {} attempts",
                         tmux_name,
                         attempt + 1
                     );
+                    session_ready = true;
                     break;
                 }
-                if attempt == max_attempts - 1 {
-                    return Err(format!(
-                        "Claude Code not ready in tmux session '{}' after {}s",
-                        tmux_name,
-                        max_attempts as u64 * 500 / 1000
-                    ));
-                }
-                log::debug!(
-                    "Waiting for Claude Code to be ready in '{}' (attempt {})",
-                    tmux_name,
-                    attempt + 1
-                );
-                std::thread::sleep(delay);
             }
-            Ok(_) => {
-                // tmux session doesn't exist yet, keep waiting
-                if attempt == max_attempts - 1 {
-                    return Err(format!(
-                        "tmux session '{}' not available after {}s",
-                        tmux_name,
-                        max_attempts as u64 * 500 / 1000
-                    ));
-                }
-                std::thread::sleep(delay);
-            }
-            Err(e) => {
-                if attempt == max_attempts - 1 {
-                    return Err(format!("Failed to check tmux pane: {}", e));
-                }
-                std::thread::sleep(delay);
-            }
+            _ => {} // tmux session doesn't exist yet or command failed
+        }
+        if attempt < max_attempts - 1 {
+            std::thread::sleep(delay);
         }
     }
+
+    if !session_ready {
+        return Err(format!(
+            "Claude Code not ready in tmux session '{}' after {}s",
+            tmux_name,
+            max_attempts as u64 * 500 / 1000
+        ));
+    }
+
+    // Give Claude Code a moment to finish initializing after first render
+    std::thread::sleep(std::time::Duration::from_secs(2));
 
     // Send the prompt text followed by Enter
     log::info!("tmux send-keys -t {} -- <prompt> Enter", tmux_name);
