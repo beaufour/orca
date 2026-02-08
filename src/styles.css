@@ -469,6 +469,19 @@ body {
   color: var(--status-stale);
 }
 
+.status-dismissed {
+  background: rgba(107, 114, 128, 0.15);
+  color: var(--status-stale);
+}
+
+.status-badge-clickable {
+  cursor: pointer;
+}
+
+.status-badge-clickable:hover {
+  filter: brightness(1.3);
+}
+
 .session-summary {
   font-size: 13px;
   color: var(--text-secondary);

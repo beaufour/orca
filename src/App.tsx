@@ -31,6 +31,28 @@ function App() {
   const [renamingSession, setRenamingSession] = useState<Session | null>(null);
   const [movingSession, setMovingSession] = useState<Session | null>(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const handleDismiss = useCallback((sessionId: string) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) {
+        next.delete(sessionId);
+      } else {
+        next.add(sessionId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleUndismiss = useCallback((sessionId: string) => {
+    setDismissedIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+  }, []);
+
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const addSessionBarRef = useRef<AddSessionBarHandle>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -169,6 +191,7 @@ function App() {
     movingSession,
     showCreateGroup,
     groups,
+    dismissedIds,
   });
   kbStateRef.current = {
     terminalOpen,
@@ -181,6 +204,7 @@ function App() {
     movingSession,
     showCreateGroup,
     groups,
+    dismissedIds,
   };
 
   // Global keyboard shortcuts
@@ -272,6 +296,12 @@ function App() {
             setConfirmingRemoveId(filteredSessions[focusedIndex].id);
           }
           break;
+        case "x":
+          e.preventDefault();
+          if (filteredSessions && focusedIndex >= 0 && focusedIndex < count) {
+            handleDismiss(filteredSessions[focusedIndex].id);
+          }
+          break;
         case "R":
           e.preventDefault();
           if (filteredSessions && focusedIndex >= 0 && focusedIndex < count) {
@@ -358,6 +388,7 @@ function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
         width={effectiveWidth}
+        dismissedCount={dismissedIds.size}
       />
       <div className="resize-handle" onMouseDown={handleMouseDown} />
       <div className="main-area">
@@ -395,6 +426,9 @@ function App() {
                 groupPath={selectedGroup?.path}
                 repoPath={selectedGroup?.default_path}
                 liveTmuxSessions={liveTmuxSet}
+                dismissedIds={dismissedIds}
+                onDismiss={handleDismiss}
+                onUndismiss={handleUndismiss}
               />
             </main>
             {selectedGroup && (

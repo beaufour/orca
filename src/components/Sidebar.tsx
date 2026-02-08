@@ -11,6 +11,7 @@ interface SidebarProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   width: number;
+  dismissedCount?: number;
 }
 
 export function Sidebar({
@@ -22,6 +23,7 @@ export function Sidebar({
   collapsed,
   onToggleCollapse,
   width,
+  dismissedCount = 0,
 }: SidebarProps) {
   const {
     data: groups,
@@ -59,8 +61,8 @@ export function Sidebar({
             onClick={onSelectNeedsAction}
           >
             Needs Action
-            {(attentionCounts?.total ?? 0) > 0 && (
-              <span className="attention-count">{attentionCounts!.total}</span>
+            {((attentionCounts?.total ?? 0) - dismissedCount) > 0 && (
+              <span className="attention-count">{(attentionCounts?.total ?? 0) - dismissedCount}</span>
             )}
           </button>
           <button

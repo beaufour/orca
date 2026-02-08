@@ -13,6 +13,9 @@ interface SessionCardProps {
   confirmingRemove?: boolean;
   onConfirmingRemoveChange?: (confirming: boolean) => void;
   tmuxAlive?: boolean;
+  isDismissed?: boolean;
+  onDismiss?: () => void;
+  onUndismiss?: () => void;
 }
 
 const ATTENTION_CONFIG: Record<
@@ -62,6 +65,9 @@ export function SessionCard({
   confirmingRemove: confirmingRemoveProp,
   onConfirmingRemoveChange,
   tmuxAlive = true,
+  isDismissed,
+  onDismiss,
+  onUndismiss,
 }: SessionCardProps) {
   const queryClient = useQueryClient();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -140,7 +146,18 @@ export function SessionCard({
 
   const attention: AttentionStatus =
     summary?.attention ?? fallbackAttention(session.status);
-  const statusInfo = ATTENTION_CONFIG[attention];
+
+  // Auto-undismiss when session is no longer needs_input
+  useEffect(() => {
+    if (isDismissed && attention !== "needs_input") {
+      onUndismiss?.();
+    }
+  }, [isDismissed, attention, onUndismiss]);
+
+  const effectiveAttention = (attention === "needs_input" && isDismissed) ? "stale" : attention;
+  const statusInfo = isDismissed && attention === "needs_input"
+    ? { label: "Dismissed", className: "status-dismissed" }
+    : ATTENTION_CONFIG[attention];
   const isPending =
     removeMutation.isPending ||
     addWorktreeMutation.isPending;
@@ -150,7 +167,7 @@ export function SessionCard({
   return (
     <div
       ref={cardRef}
-      className={`session-card attention-${attention}${isSelected ? " session-card-selected" : ""}${isFocused ? " session-card-focused" : ""}`}
+      className={`session-card attention-${effectiveAttention}${isSelected ? " session-card-selected" : ""}${isFocused ? " session-card-focused" : ""}`}
       onClick={onClick}
     >
       <div className="session-card-header">
@@ -176,7 +193,11 @@ export function SessionCard({
               tmux dead
             </span>
           )}
-          <span className={`status-badge ${statusInfo.className}`}>
+          <span
+            className={`status-badge ${statusInfo.className}${attention === "needs_input" && onDismiss ? " status-badge-clickable" : ""}`}
+            onClick={attention === "needs_input" && onDismiss ? (e) => { e.stopPropagation(); onDismiss(); } : undefined}
+            title={attention === "needs_input" && !isDismissed ? "Click to dismiss" : undefined}
+          >
             {statusInfo.label}
           </span>
         </div>

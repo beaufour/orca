@@ -8,6 +8,7 @@ const SHORTCUTS = [
   { key: "Enter", desc: "Open focused session terminal" },
   { key: "Esc", desc: "Close modal / clear search / unfocus" },
   { key: "d", desc: "Remove focused session" },
+  { key: "x", desc: "Dismiss/undismiss needs input" },
   { key: "R", desc: "Rename focused session" },
   { key: "m", desc: "Move session to group" },
   { key: "g", desc: "Create new group" },

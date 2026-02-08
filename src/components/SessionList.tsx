@@ -16,6 +16,9 @@ interface SessionListProps {
   groupPath?: string;
   repoPath?: string;
   liveTmuxSessions?: Set<string>;
+  dismissedIds?: Set<string>;
+  onDismiss?: (sessionId: string) => void;
+  onUndismiss?: (sessionId: string) => void;
 }
 
 export function SessionList({
@@ -32,6 +35,9 @@ export function SessionList({
   groupPath,
   repoPath,
   liveTmuxSessions,
+  dismissedIds,
+  onDismiss,
+  onUndismiss,
 }: SessionListProps) {
   if (error) {
     return (
@@ -88,6 +94,9 @@ export function SessionList({
             confirmingRemove={confirmingRemoveId != null ? session.id === confirmingRemoveId : undefined}
             onConfirmingRemoveChange={onConfirmingRemoveChange ? (c) => onConfirmingRemoveChange(c ? session.id : null) : undefined}
             tmuxAlive={!session.tmux_session || liveTmuxSessions?.has(session.tmux_session) !== false}
+            isDismissed={dismissedIds?.has(session.id)}
+            onDismiss={onDismiss ? () => onDismiss(session.id) : undefined}
+            onUndismiss={onUndismiss ? () => onUndismiss(session.id) : undefined}
           />
         ))}
       </div>
