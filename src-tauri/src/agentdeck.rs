@@ -1,5 +1,5 @@
 use rusqlite::Connection;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::models::{AttentionCounts, Group, Session};
 
@@ -91,9 +91,18 @@ pub fn create_session(
     new_branch: bool,
 ) -> Result<String, String> {
     let tool_name = tool.unwrap_or_else(|| "claude".to_string());
+
+    // If the project_path is a bare repo (has .bare subdir), resolve to an
+    // existing worktree so agent-deck can find the git repo.
+    let effective_path = if Path::new(&project_path).join(".bare").is_dir() {
+        find_worktree_in_bare(&project_path)?
+    } else {
+        project_path
+    };
+
     let mut args = vec![
         "add".to_string(),
-        project_path,
+        effective_path,
         "-g".to_string(),
         group,
         "-t".to_string(),
@@ -331,4 +340,44 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
         worktree_branch: row.get(11)?,
         claude_session_id,
     })
+}
+
+/// For bare worktree repos, find an existing worktree path that agent-deck
+/// can use (it needs a real working tree, not the bare root).
+fn find_worktree_in_bare(bare_path: &str) -> Result<String, String> {
+    let output = std::process::Command::new("git")
+        .current_dir(Path::new(bare_path).join(".bare"))
+        .args(["worktree", "list", "--porcelain"])
+        .output()
+        .map_err(|e| format!("Failed to list worktrees: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Failed to list worktrees in bare repo: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut found_bare = false;
+
+    for line in stdout.lines() {
+        if line == "bare" {
+            found_bare = true;
+            continue;
+        }
+        if line.starts_with("worktree ") {
+            if found_bare {
+                // This is the first non-bare worktree
+                return Ok(line.strip_prefix("worktree ").unwrap().to_string());
+            }
+            // Reset bare flag for next entry
+            found_bare = false;
+        }
+    }
+
+    Err(format!(
+        "No worktrees found in bare repo at {}",
+        bare_path
+    ))
 }
