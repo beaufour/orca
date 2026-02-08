@@ -172,20 +172,12 @@ fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> Att
         }
     }
 
-    if role == "user" && agentdeck_status != "running" {
-        if let Some(content_arr) = content {
-            // Check for error in tool results — but only when Claude isn't
-            // still active.  A tool_result with is_error while running just
-            // means a tool call failed and Claude is handling it.
-            for item in content_arr {
-                if item.get("type").and_then(|v| v.as_str()) == Some("tool_result") {
-                    if item.get("is_error").and_then(|v| v.as_bool()) == Some(true) {
-                        return AttentionStatus::Error;
-                    }
-                }
-            }
-        }
-    }
+    // NOTE: We intentionally do NOT check tool_result is_error here.
+    // The is_error flag on tool_results covers normal workflow events like
+    // rejected tool calls, rejected plans (ExitPlanMode), and failed bash
+    // commands — none of which are session-level errors.  If the session
+    // truly errored out, agent-deck will report "error" status and the
+    // catch-all below handles it.
 
     // Check staleness based on timestamp
     if let Some(ts) = lines.last().and_then(|l| l.get("timestamp").and_then(|v| v.as_f64())) {
