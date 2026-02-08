@@ -477,31 +477,60 @@ fn get_tmux_session_name(session_id: &str) -> Result<String, String> {
     .map_err(|e| format!("Failed to get tmux session name for {}: {}", session_id, e))
 }
 
-/// Send a prompt to a session's tmux session. Waits for the tmux session
-/// to exist before sending.
+/// Send a prompt to a session's tmux session. Waits for Claude Code
+/// to be ready (showing its input prompt) before sending.
 fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> {
     let tmux_name = get_tmux_session_name(session_id)?;
     log::info!("Sending prompt to tmux session '{}' for session {}", tmux_name, session_id);
 
-    // Wait for the tmux session to exist (agent-deck may take a moment to create it)
-    let max_attempts = 30;
-    let delay = std::time::Duration::from_millis(200);
+    // Wait for Claude Code to be ready by polling the pane content.
+    // Claude Code shows a ">" prompt when ready for input.
+    let max_attempts = 60;
+    let delay = std::time::Duration::from_millis(500);
     for attempt in 0..max_attempts {
-        let check = std::process::Command::new("tmux")
-            .args(["has-session", "-t", &tmux_name])
+        let capture = std::process::Command::new("tmux")
+            .args(["capture-pane", "-t", &tmux_name, "-p"])
             .output();
-        match check {
+        match capture {
             Ok(output) if output.status.success() => {
-                log::debug!("tmux session '{}' found after {} attempts", tmux_name, attempt + 1);
-                break;
-            }
-            _ => {
+                let content = String::from_utf8_lossy(&output.stdout);
+                // Claude Code shows ">" at the start of a line when ready for input
+                if content.lines().any(|line| line.trim_start().starts_with('>')) {
+                    log::debug!(
+                        "Claude Code ready in tmux session '{}' after {} attempts",
+                        tmux_name,
+                        attempt + 1
+                    );
+                    break;
+                }
                 if attempt == max_attempts - 1 {
                     return Err(format!(
-                        "tmux session '{}' not found after {}ms",
+                        "Claude Code not ready in tmux session '{}' after {}s",
                         tmux_name,
-                        max_attempts * 200
+                        max_attempts as u64 * 500 / 1000
                     ));
+                }
+                log::debug!(
+                    "Waiting for Claude Code to be ready in '{}' (attempt {})",
+                    tmux_name,
+                    attempt + 1
+                );
+                std::thread::sleep(delay);
+            }
+            Ok(_) => {
+                // tmux session doesn't exist yet, keep waiting
+                if attempt == max_attempts - 1 {
+                    return Err(format!(
+                        "tmux session '{}' not available after {}s",
+                        tmux_name,
+                        max_attempts as u64 * 500 / 1000
+                    ));
+                }
+                std::thread::sleep(delay);
+            }
+            Err(e) => {
+                if attempt == max_attempts - 1 {
+                    return Err(format!("Failed to check tmux pane: {}", e));
                 }
                 std::thread::sleep(delay);
             }
