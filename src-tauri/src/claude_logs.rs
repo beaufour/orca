@@ -172,9 +172,11 @@ fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> Att
         }
     }
 
-    if role == "user" {
+    if role == "user" && agentdeck_status != "running" {
         if let Some(content_arr) = content {
-            // Check for error in tool results
+            // Check for error in tool results — but only when Claude isn't
+            // still active.  A tool_result with is_error while running just
+            // means a tool call failed and Claude is handling it.
             for item in content_arr {
                 if item.get("type").and_then(|v| v.as_str()) == Some("tool_result") {
                     if item.get("is_error").and_then(|v| v.as_bool()) == Some(true) {
