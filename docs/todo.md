@@ -12,13 +12,13 @@
 
 - [x] **Investigate embedded true terminal** - Researched native terminal embedding (Alacritty, Ghostty, SwiftTerm, etc.). Not feasible on macOS due to cross-process NSView limitations. Improved existing xterm.js: switched to Tauri Channels, added resize debouncing, set tmux window-size latest. See `docs/terminal-embedding-research.md`.
 
-- [X] **Keyboard shortcut help overlay** - Add a `?` key shortcut that shows an overlay listing all available keyboard shortcuts. Currently there's no way for users to discover them.
+- [x] **Keyboard shortcut help overlay** - Add a `?` key shortcut that shows an overlay listing all available keyboard shortcuts. Currently there's no way for users to discover them.
 
-- [ ] **`d` shortcut to remove focused session** - Trigger the remove confirmation flow on the currently focused session card via keyboard. Requires lifting or bridging the confirm state from SessionCard.
+- [x] **`d` shortcut to remove focused session** - Trigger the remove confirmation flow on the currently focused session card via keyboard. Requires lifting or bridging the confirm state from SessionCard.
 
-- [ ] **Session management shortcuts (`g`, `m`, `R`)** - Mirror remaining agent-deck shortcuts: `g` to create a new group, `m` to move a session between groups, `R` to rename a session/group. Requires implementing the underlying features first.
+- [x] **Session management shortcuts (`g`, `m`, `R`)** - Mirror remaining agent-deck shortcuts: `g` to create a new group, `m` to move a session between groups, `R` to rename a session/group. Requires implementing the underlying features first.
 
-- [ ] **Diff viewer** - Add a way to view git diffs for sessions/worktrees, showing what changed.
+- [x] **Diff viewer** - Add a way to view git diffs for sessions/worktrees, showing what changed.
 
 - [ ] **Terminal scroll storm when opening session with history** - Opening a tab that has terminal history causes excessive scrolling. Investigate whether we're auto-scrolling to bottom too aggressively or need to debounce/suppress scroll during initial attach.
 
@@ -28,7 +28,7 @@
 
 - [ ] **Welcome screen** - Add a first-run welcome screen that explains what Orca does: managing parallel Claude Code sessions across repos and git worktrees. Help new users understand the workflow and prerequisites (agent-deck, tmux, etc.).
 
-- [ ] **README** - Write a user-facing README covering what Orca is, screenshots, installation, prerequisites, and basic usage. Not developer docs.
+- [x] **README** - Write a user-facing README covering what Orca is, screenshots, installation, prerequisites, and basic usage. Not developer docs.
 
 - [ ] **Tests** - Add test coverage for both the Rust backend (unit tests for git/tmux/agentdeck commands) and the React frontend (component tests).
 
