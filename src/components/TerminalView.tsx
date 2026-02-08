@@ -98,16 +98,24 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       const cols = terminal.cols;
       const rows = terminal.rows;
 
-      // Pre-check: verify tmux session exists before attaching
-      try {
-        const liveSessions = await invoke<string[]>("list_tmux_sessions");
-        if (!liveSessions.includes(session.tmux_session!)) {
-          throw new Error(`can't find session: ${session.tmux_session}`);
+      // Pre-check: verify tmux session exists before attaching.
+      // Retry a few times since agent-deck session start may still be
+      // spinning up the tmux session (race between DB write and tmux creation).
+      let tmuxReady = false;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        try {
+          const liveSessions = await invoke<string[]>("list_tmux_sessions");
+          if (liveSessions.includes(session.tmux_session!)) {
+            tmuxReady = true;
+            break;
+          }
+        } catch {
+          // Ignore errors like "no server running" and retry
         }
-      } catch (e) {
-        // If the check itself found the session missing, re-throw
-        if (String(e).includes("can't find session")) throw e;
-        // Otherwise (e.g. command not available), skip the check and try attaching anyway
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      if (!tmuxReady) {
+        throw new Error(`can't find session: ${session.tmux_session}`);
       }
 
       // Stream PTY output via Channel
