@@ -16,11 +16,16 @@ fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
         .current_dir(repo_path)
         .args(args)
         .output()
-        .map_err(|e| format!("Failed to run git: {}", e))?;
+        .map_err(|e| format!("Failed to run git: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!("git {} failed (exit {}): {}", args.join(" "), output.status, stderr.trim());
+        log::error!(
+            "git {} failed (exit {}): {}",
+            args.join(" "),
+            output.status,
+            stderr.trim()
+        );
         return Err(format!("git {} failed: {}", args.join(" "), stderr.trim()));
     }
 
@@ -151,7 +156,7 @@ pub fn merge_worktree(
     let main_wt = worktrees
         .iter()
         .find(|w| w.branch == target)
-        .ok_or(format!("Could not find worktree for branch '{}'", target))?;
+        .ok_or(format!("Could not find worktree for branch '{target}'"))?;
 
     // Merge the branch into main from the main worktree
     run_git(&main_wt.path, &["merge", &branch])?;
@@ -204,26 +209,33 @@ pub fn get_default_branch(repo_path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn get_branch_diff(worktree_path: String, branch: String) -> Result<String, String> {
     let default_branch = get_default_branch_inner(&worktree_path)?;
-    let range = format!("{}...{}", default_branch, branch);
+    let range = format!("{default_branch}...{branch}");
     run_git(&worktree_path, &["diff", &range])
 }
 
 fn find_repo_root(path: &str) -> Result<String, String> {
     // Validate this is a git repository by checking rev-parse succeeds.
     // Returns the input path since git commands work from any worktree.
-    log::info!("git rev-parse --git-common-dir (cwd: {})", path);
+    log::info!("git rev-parse --git-common-dir (cwd: {path})");
     let output = Command::new("git")
         .current_dir(path)
         .args(["rev-parse", "--git-common-dir"])
         .output()
-        .map_err(|e| format!("Failed to run git: {}", e))?;
+        .map_err(|e| format!("Failed to run git: {e}"))?;
 
     if !output.status.success() {
-        log::error!("git rev-parse --git-common-dir failed (exit {}): not a git repo at {}", output.status, path);
-        return Err(format!("Not a git repository: {}", path));
+        log::error!(
+            "git rev-parse --git-common-dir failed (exit {}): not a git repo at {}",
+            output.status,
+            path
+        );
+        return Err(format!("Not a git repository: {path}"));
     }
 
-    log::debug!("git rev-parse --git-common-dir succeeded: {}", String::from_utf8_lossy(&output.stdout).trim());
+    log::debug!(
+        "git rev-parse --git-common-dir succeeded: {}",
+        String::from_utf8_lossy(&output.stdout).trim()
+    );
     Ok(path.to_string())
 }
 

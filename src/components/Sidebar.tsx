@@ -77,10 +77,7 @@ export function Sidebar({
           {error && (
             <div className="sidebar-error error-row">
               Failed to load groups
-              <button
-                className="retry-btn"
-                onClick={() => refetch()}
-              >
+              <button className="retry-btn" onClick={() => refetch()}>
                 Retry
               </button>
             </div>
@@ -93,14 +90,13 @@ export function Sidebar({
             >
               {group.name}
               {attentionCounts?.groups[group.path] && (
-                <span className={`attention-dot attention-dot-${attentionCounts.groups[group.path]}`} />
+                <span
+                  className={`attention-dot attention-dot-${attentionCounts.groups[group.path]}`}
+                />
               )}
             </button>
           ))}
-          <button
-            className="sidebar-item sidebar-add-group"
-            onClick={onCreateGroup}
-          >
+          <button className="sidebar-item sidebar-add-group" onClick={onCreateGroup}>
             + Add Group
           </button>
         </nav>

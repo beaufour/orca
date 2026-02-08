@@ -12,7 +12,7 @@
 
 - [x] **Investigate embedded true terminal** - Researched native terminal embedding (Alacritty, Ghostty, SwiftTerm, etc.). Not feasible on macOS due to cross-process NSView limitations. Improved existing xterm.js: switched to Tauri Channels, added resize debouncing, set tmux window-size latest. See `docs/terminal-embedding-research.md`.
 
-- [X] **Keyboard shortcut help overlay** - Add a `?` key shortcut that shows an overlay listing all available keyboard shortcuts. Currently there's no way for users to discover them.
+- [x] **Keyboard shortcut help overlay** - Add a `?` key shortcut that shows an overlay listing all available keyboard shortcuts. Currently there's no way for users to discover them.
 
 - [ ] **`d` shortcut to remove focused session** - Trigger the remove confirmation flow on the currently focused session card via keyboard. Requires lifting or bridging the confirm state from SessionCard.
 

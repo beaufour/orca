@@ -3,6 +3,7 @@
 ## Current Architecture
 
 Orca uses xterm.js v6 (WebGL addon) in the React frontend + portable-pty 0.8 on the Rust backend. Data flows:
+
 - **Output**: PTY reader thread → base64 encode → Tauri event → JS decode → xterm.js write
 - **Input**: xterm.js onData → base64 encode → invoke("write_pty") → PTY master write
 - **Resize**: FitAddon + ResizeObserver → invoke("resize_pty") → PTY resize
@@ -10,26 +11,27 @@ Orca uses xterm.js v6 (WebGL addon) in the React frontend + portable-pty 0.8 on 
 ## Native Terminal Embedding — Not Feasible
 
 ### Cross-process window embedding (Alacritty, Kitty, WezTerm, etc.)
+
 **Not possible on macOS.** Unlike Windows HWND handles, macOS does not support cross-process NSView reparenting. You cannot take an NSView from Alacritty's process and insert it into Tauri's view hierarchy.
 
 ### In-process options
 
-| Approach | Maturity | Effort | Notes |
-|---|---|---|---|
-| **alacritty_terminal** crate (v0.25) | Mature | High | Terminal emulation engine only — no renderer. You'd need to serialize grid state to webview or use egui/iced. Projects: egui_term, iced_term. |
-| **libghostty** (Zig) | Early | Medium (later) | VT parser available (libghostty-vt). GPU rendering & stable C API not yet shipped. Proof-of-concept: gpui-ghostty. Expected stable ~March 2026. |
-| **SwiftTerm** (NSView) | Mature | High | Native macOS terminal view by Miguel de Icaza. Could sit alongside webview via tauri-nssplitview plugin. Requires Swift-Rust bridging, layout/focus coordination. macOS-only. |
-| **WezTerm libs** | Fragmented | High | `wezterm-term` not published to crates.io. `termwiz` is for TUI apps, not embedding. |
-| **Overlay/companion window** | N/A | Low | Fragile UX — two separate windows, independent focus, no visual integration. |
+| Approach                             | Maturity   | Effort         | Notes                                                                                                                                                                         |
+| ------------------------------------ | ---------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **alacritty_terminal** crate (v0.25) | Mature     | High           | Terminal emulation engine only — no renderer. You'd need to serialize grid state to webview or use egui/iced. Projects: egui_term, iced_term.                                 |
+| **libghostty** (Zig)                 | Early      | Medium (later) | VT parser available (libghostty-vt). GPU rendering & stable C API not yet shipped. Proof-of-concept: gpui-ghostty. Expected stable ~March 2026.                               |
+| **SwiftTerm** (NSView)               | Mature     | High           | Native macOS terminal view by Miguel de Icaza. Could sit alongside webview via tauri-nssplitview plugin. Requires Swift-Rust bridging, layout/focus coordination. macOS-only. |
+| **WezTerm libs**                     | Fragmented | High           | `wezterm-term` not published to crates.io. `termwiz` is for TUI apps, not embedding.                                                                                          |
+| **Overlay/companion window**         | N/A        | Low            | Fragile UX — two separate windows, independent focus, no visual integration.                                                                                                  |
 
 ### Performance comparison
 
-| Terminal | Average Latency |
-|---|---|
-| Alacritty | ~7ms |
-| Kitty (tuned) | ~11ms |
-| WezTerm | ~26ms |
-| xterm.js (WebGL) | ~40ms |
+| Terminal         | Average Latency |
+| ---------------- | --------------- |
+| Alacritty        | ~7ms            |
+| Kitty (tuned)    | ~11ms           |
+| WezTerm          | ~26ms           |
+| xterm.js (WebGL) | ~40ms           |
 
 For viewing Claude Code sessions (mostly reading AI output), the 30ms gap is imperceptible.
 
@@ -55,6 +57,7 @@ For viewing Claude Code sessions (mostly reading AI output), the 30ms gap is imp
 ## Decision
 
 **Stick with xterm.js.** Improve the existing implementation:
+
 1. Switch from Tauri events to Channels for PTY streaming (eliminates base64 overhead)
 2. Add resize debouncing (200ms)
 3. Set `window-size latest` on tmux sessions

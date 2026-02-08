@@ -63,10 +63,7 @@ export function SessionList({
   }
 
   const hasMainSession = sessions.some(
-    (s) =>
-      !s.worktree_branch ||
-      s.worktree_branch === "main" ||
-      s.worktree_branch === "master",
+    (s) => !s.worktree_branch || s.worktree_branch === "main" || s.worktree_branch === "master",
   );
 
   const showGhost = groupPath && repoPath && !hasMainSession;
@@ -75,7 +72,11 @@ export function SessionList({
     <div className="session-list">
       <div className="session-grid">
         {showGhost && (
-          <MainSessionGhost repoPath={repoPath} groupPath={groupPath} onSessionReady={onSelectSession} />
+          <MainSessionGhost
+            repoPath={repoPath}
+            groupPath={groupPath}
+            onSessionReady={onSelectSession}
+          />
         )}
         {sessions.map((session, index) => (
           <SessionCard
@@ -85,9 +86,17 @@ export function SessionList({
             isSelected={session.id === selectedSessionId}
             isFocused={index === focusedIndex}
             onClick={() => onSelectSession(session)}
-            confirmingRemove={confirmingRemoveId != null ? session.id === confirmingRemoveId : undefined}
-            onConfirmingRemoveChange={onConfirmingRemoveChange ? (c) => onConfirmingRemoveChange(c ? session.id : null) : undefined}
-            tmuxAlive={!session.tmux_session || liveTmuxSessions?.has(session.tmux_session) !== false}
+            confirmingRemove={
+              confirmingRemoveId != null ? session.id === confirmingRemoveId : undefined
+            }
+            onConfirmingRemoveChange={
+              onConfirmingRemoveChange
+                ? (c) => onConfirmingRemoveChange(c ? session.id : null)
+                : undefined
+            }
+            tmuxAlive={
+              !session.tmux_session || liveTmuxSessions?.has(session.tmux_session) !== false
+            }
           />
         ))}
       </div>

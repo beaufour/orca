@@ -27,21 +27,18 @@ export function AddSessionBar({
   sessions,
   onSessionCreated,
 }: AddSessionBarProps) {
+  const [showForm, setShowForm] = useState(false);
   useImperativeHandle(ref, () => ({
     toggleForm: () => setShowForm((prev) => !prev),
   }));
   const queryClient = useQueryClient();
-  const [showForm, setShowForm] = useState(false);
   const [branchName, setBranchName] = useState("");
   const [title, setTitle] = useState("");
   const [mode, setMode] = useState<SessionMode>("worktree");
   const [tool, setTool] = useState<SessionTool>("claude");
 
   const hasMainSession = sessions.some(
-    (s) =>
-      !s.worktree_branch ||
-      s.worktree_branch === "main" ||
-      s.worktree_branch === "master",
+    (s) => !s.worktree_branch || s.worktree_branch === "main" || s.worktree_branch === "master",
   );
 
   const invalidate = () => {
@@ -186,9 +183,7 @@ export function AddSessionBar({
               className="wt-input"
               type="text"
               placeholder={
-                mode === "worktree"
-                  ? "title (defaults to branch name)"
-                  : "session title"
+                mode === "worktree" ? "title (defaults to branch name)" : "session title"
               }
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -205,20 +200,14 @@ export function AddSessionBar({
             >
               Create
             </button>
-            <button
-              className="wt-btn wt-btn-cancel"
-              type="button"
-              onClick={resetForm}
-            >
+            <button className="wt-btn wt-btn-cancel" type="button" onClick={resetForm}>
               Cancel
             </button>
           </div>
         </form>
       )}
 
-      {createMutation.error && (
-        <div className="wt-error">{String(createMutation.error)}</div>
-      )}
+      {createMutation.error && <div className="wt-error">{String(createMutation.error)}</div>}
     </div>
   );
 }

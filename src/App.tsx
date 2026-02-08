@@ -64,10 +64,7 @@ function App() {
     refetchInterval: 5_000,
   });
 
-  const liveTmuxSet = useMemo(
-    () => new Set(liveTmuxSessions ?? []),
-    [liveTmuxSessions],
-  );
+  const liveTmuxSet = useMemo(() => new Set(liveTmuxSessions ?? []), [liveTmuxSessions]);
 
   const groupNames = useMemo(() => {
     const map: Record<string, string> = {};
@@ -97,13 +94,15 @@ function App() {
         (s) =>
           s.title.toLowerCase().includes(q) ||
           s.project_path.toLowerCase().includes(q) ||
-          (s.worktree_branch && s.worktree_branch.toLowerCase().includes(q))
+          (s.worktree_branch && s.worktree_branch.toLowerCase().includes(q)),
       );
     }
     // Main session (no worktree, or on main/master branch) always first
     return [...list].sort((a, b) => {
-      const aMain = !a.worktree_branch || a.worktree_branch === "main" || a.worktree_branch === "master";
-      const bMain = !b.worktree_branch || b.worktree_branch === "main" || b.worktree_branch === "master";
+      const aMain =
+        !a.worktree_branch || a.worktree_branch === "main" || a.worktree_branch === "master";
+      const bMain =
+        !b.worktree_branch || b.worktree_branch === "main" || b.worktree_branch === "master";
       if (aMain !== bMain) return aMain ? -1 : 1;
       return 0;
     });
@@ -118,7 +117,7 @@ function App() {
       };
       setIsResizing(true);
     },
-    [sidebarWidth, sidebarCollapsed]
+    [sidebarWidth, sidebarCollapsed],
   );
 
   useEffect(() => {
@@ -129,7 +128,7 @@ function App() {
       const delta = e.clientX - resizeRef.current.startX;
       const newWidth = Math.max(
         MIN_SIDEBAR_WIDTH,
-        Math.min(MAX_SIDEBAR_WIDTH, resizeRef.current.startWidth + delta)
+        Math.min(MAX_SIDEBAR_WIDTH, resizeRef.current.startWidth + delta),
       );
       if (newWidth <= MIN_SIDEBAR_WIDTH + 20) {
         setSidebarCollapsed(true);
@@ -153,9 +152,7 @@ function App() {
   }, [isResizing]);
 
   const terminalOpen = selectedSession !== null;
-  const effectiveWidth = sidebarCollapsed
-    ? COLLAPSED_SIDEBAR_WIDTH
-    : sidebarWidth;
+  const effectiveWidth = sidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : sidebarWidth;
 
   // Ref to avoid stale closures in keyboard handler
   const kbStateRef = useRef({
@@ -170,6 +167,7 @@ function App() {
     showCreateGroup,
     groups,
   });
+  // eslint-disable-next-line react-hooks/refs -- intentional: sync ref to avoid stale closures in keyboard handler
   kbStateRef.current = {
     terminalOpen,
     filteredSessions,
@@ -186,8 +184,18 @@ function App() {
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const { terminalOpen, filteredSessions, focusedIndex, searchVisible, showShortcutHelp, confirmingRemoveId, renamingSession, movingSession, showCreateGroup, groups } =
-        kbStateRef.current;
+      const {
+        terminalOpen,
+        filteredSessions,
+        focusedIndex,
+        searchVisible,
+        showShortcutHelp,
+        confirmingRemoveId,
+        renamingSession,
+        movingSession,
+        showCreateGroup,
+        groups,
+      } = kbStateRef.current;
 
       // When terminal is open, don't handle any shortcuts
       // (Ctrl+Q is handled inside TerminalView)
@@ -195,9 +203,7 @@ function App() {
 
       const target = e.target as HTMLElement;
       const isInput =
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable;
+        target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 
       if (isInput) {
         if (e.key === "Escape") {
@@ -212,7 +218,12 @@ function App() {
       }
 
       // Modal guard: only Escape works when a modal is open
-      const anyModalOpen = showShortcutHelp || confirmingRemoveId !== null || renamingSession !== null || movingSession !== null || showCreateGroup;
+      const anyModalOpen =
+        showShortcutHelp ||
+        confirmingRemoveId !== null ||
+        renamingSession !== null ||
+        movingSession !== null ||
+        showCreateGroup;
       if (anyModalOpen && e.key !== "Escape") return;
 
       const count = filteredSessions?.length ?? 0;
@@ -362,10 +373,7 @@ function App() {
       <div className="resize-handle" onMouseDown={handleMouseDown} />
       <div className="main-area">
         {terminalOpen ? (
-          <TerminalView
-            session={selectedSession}
-            onClose={() => setSelectedSession(null)}
-          />
+          <TerminalView session={selectedSession} onClose={() => setSelectedSession(null)} />
         ) : (
           <>
             <main className="main-content">
@@ -416,14 +424,9 @@ function App() {
           </>
         )}
       </div>
-      {showShortcutHelp && (
-        <ShortcutHelp onClose={() => setShowShortcutHelp(false)} />
-      )}
+      {showShortcutHelp && <ShortcutHelp onClose={() => setShowShortcutHelp(false)} />}
       {renamingSession && (
-        <RenameModal
-          session={renamingSession}
-          onClose={() => setRenamingSession(null)}
-        />
+        <RenameModal session={renamingSession} onClose={() => setRenamingSession(null)} />
       )}
       {movingSession && groups && (
         <MoveSessionModal
@@ -432,9 +435,7 @@ function App() {
           onClose={() => setMovingSession(null)}
         />
       )}
-      {showCreateGroup && (
-        <CreateGroupModal onClose={() => setShowCreateGroup(false)} />
-      )}
+      {showCreateGroup && <CreateGroupModal onClose={() => setShowCreateGroup(false)} />}
     </div>
   );
 }

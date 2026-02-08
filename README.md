@@ -59,16 +59,16 @@ npx tauri dev
 
 ## Keyboard Shortcuts
 
-| Key | Action |
-|-----|--------|
-| `j` / `k` | Move focus between sessions |
-| `Enter` | Open terminal for focused session |
-| `Esc` | Close terminal / modal / search |
-| `/` | Search sessions |
-| `0`-`9` | Switch to group by number |
-| `n` | New session |
-| `d` | Remove focused session |
-| `R` | Rename session |
-| `m` | Move session to another group |
-| `g` | Create new group |
-| `?` | Show shortcuts help |
+| Key       | Action                            |
+| --------- | --------------------------------- |
+| `j` / `k` | Move focus between sessions       |
+| `Enter`   | Open terminal for focused session |
+| `Esc`     | Close terminal / modal / search   |
+| `/`       | Search sessions                   |
+| `0`-`9`   | Switch to group by number         |
+| `n`       | New session                       |
+| `d`       | Remove focused session            |
+| `R`       | Rename session                    |
+| `m`       | Move session to another group     |
+| `g`       | Create new group                  |
+| `?`       | Show shortcuts help               |
