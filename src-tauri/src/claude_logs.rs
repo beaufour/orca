@@ -151,36 +151,33 @@ fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> Att
                 if item.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
                     let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
 
-                    // Explicit user-facing questions
-                    if name == "AskUserQuestion" || name == "ExitPlanMode" {
+                    // Explicit user-facing prompts — these tools always
+                    // require user interaction regardless of auto-approve
+                    // settings.
+                    if name == "AskUserQuestion"
+                        || name == "ExitPlanMode"
+                        || name == "EnterPlanMode"
+                    {
                         return AttentionStatus::NeedsInput;
                     }
 
-                    // Any tool_use as the last message means Claude emitted a tool
-                    // call but no tool_result has been logged yet — the CLI is
-                    // waiting for the user to approve/deny the tool permission.
-                    if agentdeck_status == "running" && !has_matching_tool_result(&relevant, item) {
-                        return AttentionStatus::NeedsInput;
-                    }
+                    // NOTE: We do NOT flag generic tool_use-without-result as
+                    // NeedsInput.  A missing tool_result can mean either
+                    // "waiting for user approval" or "tool currently executing"
+                    // — we can't tell which from JSONL alone.  False "Needs
+                    // Input" during every tool execution is worse than showing
+                    // "Running" during an actual permission prompt.
                 }
             }
         }
     }
 
-    if role == "user" && agentdeck_status != "running" {
-        if let Some(content_arr) = content {
-            // Check for error in tool results — but only when Claude isn't
-            // still active.  A tool_result with is_error while running just
-            // means a tool call failed and Claude is handling it.
-            for item in content_arr {
-                if item.get("type").and_then(|v| v.as_str()) == Some("tool_result")
-                    && item.get("is_error").and_then(serde_json::Value::as_bool) == Some(true)
-                {
-                    return AttentionStatus::Error;
-                }
-            }
-        }
-    }
+    // NOTE: We intentionally do NOT check tool_result is_error here.
+    // The is_error flag on tool_results covers normal workflow events like
+    // rejected tool calls, rejected plans (ExitPlanMode), and failed bash
+    // commands — none of which are session-level errors.  If the session
+    // truly errored out, agent-deck will report "error" status and the
+    // catch-all below handles it.
 
     // Check staleness based on timestamp
     if let Some(ts) = lines
@@ -205,40 +202,6 @@ fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> Att
     }
 
     AttentionStatus::Idle
-}
-
-/// Check if there is a user tool_result message that matches a given tool_use item's id.
-/// The tool_result must appear AFTER the tool_use in the conversation.
-fn has_matching_tool_result(
-    relevant: &[&serde_json::Value],
-    tool_use_item: &serde_json::Value,
-) -> bool {
-    let Some(tool_use_id) = tool_use_item.get("id").and_then(|v| v.as_str()) else {
-        return false;
-    };
-
-    // Since the tool_use is in the last assistant message, we only need to check
-    // if there's a subsequent user message with a matching tool_result.
-    // The last message is the assistant message containing this tool_use,
-    // so there can't be a later user message — that's the whole point.
-    // But to be safe, check all user messages after finding this tool_use's parent.
-    for entry in relevant.iter().rev() {
-        let msg = entry.get("message").unwrap_or(entry);
-        if msg.get("role").and_then(|v| v.as_str()) != Some("user") {
-            continue;
-        }
-        if let Some(content) = msg.get("content").and_then(|v| v.as_array()) {
-            for item in content {
-                if item.get("type").and_then(|v| v.as_str()) == Some("tool_result")
-                    && item.get("tool_use_id").and_then(|v| v.as_str()) == Some(tool_use_id)
-                {
-                    return true;
-                }
-            }
-        }
-    }
-
-    false
 }
 
 fn extract_last_text(lines: &[serde_json::Value]) -> Option<String> {
@@ -286,28 +249,43 @@ pub fn compute_attention(
     project_path: &str,
     claude_session_id: Option<&str>,
     agentdeck_status: &str,
+    tmux_session: Option<&str>,
 ) -> AttentionStatus {
     let Some(claude_session_id) = claude_session_id else {
-        return match agentdeck_status {
+        let attention = match agentdeck_status {
             "running" => AttentionStatus::Running,
             "waiting" => AttentionStatus::Idle,
             "error" => AttentionStatus::Error,
             _ => AttentionStatus::Unknown,
         };
+        return refine_with_tmux(attention, tmux_session);
     };
 
     let Some(jsonl_path) = find_jsonl_path(project_path, claude_session_id) else {
-        return match agentdeck_status {
+        let attention = match agentdeck_status {
             "running" => AttentionStatus::Running,
             "waiting" => AttentionStatus::Idle,
             "error" => AttentionStatus::Error,
             "idle" => AttentionStatus::Idle,
             _ => AttentionStatus::Unknown,
         };
+        return refine_with_tmux(attention, tmux_session);
     };
 
     let lines = read_tail_lines(&jsonl_path, 256 * 1024);
-    extract_attention(&lines, agentdeck_status)
+    refine_with_tmux(extract_attention(&lines, agentdeck_status), tmux_session)
+}
+
+/// Refine a Running status by checking the tmux pane for a permission prompt.
+fn refine_with_tmux(attention: AttentionStatus, tmux_session: Option<&str>) -> AttentionStatus {
+    if matches!(attention, AttentionStatus::Running) {
+        if let Some(ts) = tmux_session {
+            if !ts.is_empty() && crate::tmux::is_waiting_for_input(ts) {
+                return AttentionStatus::NeedsInput;
+            }
+        }
+    }
+    attention
 }
 
 #[tauri::command]
@@ -315,18 +293,20 @@ pub fn get_session_summary(
     project_path: String,
     claude_session_id: String,
     agentdeck_status: String,
+    tmux_session: Option<String>,
 ) -> SessionSummary {
     let Some(jsonl_path) = find_jsonl_path(&project_path, &claude_session_id) else {
+        let attention = match agentdeck_status.as_str() {
+            "running" => AttentionStatus::Running,
+            // No JSONL file means no conversation yet — just the initial prompt
+            "waiting" => AttentionStatus::Idle,
+            "error" => AttentionStatus::Error,
+            "idle" => AttentionStatus::Idle,
+            _ => AttentionStatus::Unknown,
+        };
         return SessionSummary {
             summary: None,
-            attention: match agentdeck_status.as_str() {
-                "running" => AttentionStatus::Running,
-                // No JSONL file means no conversation yet — just the initial prompt
-                "waiting" => AttentionStatus::Idle,
-                "error" => AttentionStatus::Error,
-                "idle" => AttentionStatus::Idle,
-                _ => AttentionStatus::Unknown,
-            },
+            attention: refine_with_tmux(attention, tmux_session.as_deref()),
             last_tool: None,
             last_text: None,
         };
@@ -334,10 +314,11 @@ pub fn get_session_summary(
 
     // Read last 256KB of the file
     let lines = read_tail_lines(&jsonl_path, 256 * 1024);
+    let attention = extract_attention(&lines, &agentdeck_status);
 
     SessionSummary {
         summary: extract_summary(&lines),
-        attention: extract_attention(&lines, &agentdeck_status),
+        attention: refine_with_tmux(attention, tmux_session.as_deref()),
         last_tool: extract_last_tool(&lines),
         last_text: extract_last_text(&lines),
     }

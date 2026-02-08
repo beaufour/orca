@@ -91,6 +91,7 @@ export function SessionCard({
         projectPath: session.project_path,
         claudeSessionId: session.claude_session_id ?? "",
         agentdeckStatus: session.status,
+        tmuxSession: session.tmux_session || null,
       }),
     refetchInterval: 10_000,
     enabled: !!session.claude_session_id,
