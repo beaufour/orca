@@ -90,6 +90,7 @@ pub fn create_session(
     worktree_branch: Option<String>,
     new_branch: bool,
     start: Option<bool>,
+    prompt: Option<String>,
 ) -> Result<String, String> {
     let tool_name = tool.unwrap_or_else(|| "claude".to_string());
 
@@ -222,6 +223,16 @@ pub fn create_session(
             return Err(format!("agent-deck session start failed: {}", stderr.trim()));
         }
         log::debug!("agent-deck session start succeeded for {}", session_id);
+
+        // Send prompt to the tmux session if provided
+        if let Some(ref prompt_text) = prompt {
+            if !prompt_text.trim().is_empty() {
+                if let Err(e) = send_prompt_to_session(&session_id, prompt_text) {
+                    log::error!("Failed to send prompt to session {}: {}", session_id, e);
+                    // Don't fail the whole create — session was created successfully
+                }
+            }
+        }
     }
 
     Ok(session_id)
@@ -450,6 +461,67 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
         worktree_branch: row.get(11)?,
         claude_session_id,
     })
+}
+
+/// Look up the tmux session name for a given session ID from the agent-deck DB.
+fn get_tmux_session_name(session_id: &str) -> Result<String, String> {
+    let path = db_path();
+    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| format!("Failed to open agent-deck DB: {}", e))?;
+
+    conn.query_row(
+        "SELECT tmux_session FROM instances WHERE id = ?1",
+        [session_id],
+        |row| row.get::<_, String>(0),
+    )
+    .map_err(|e| format!("Failed to get tmux session name for {}: {}", session_id, e))
+}
+
+/// Send a prompt to a session's tmux session. Waits for the tmux session
+/// to exist before sending.
+fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> {
+    let tmux_name = get_tmux_session_name(session_id)?;
+    log::info!("Sending prompt to tmux session '{}' for session {}", tmux_name, session_id);
+
+    // Wait for the tmux session to exist (agent-deck may take a moment to create it)
+    let max_attempts = 30;
+    let delay = std::time::Duration::from_millis(200);
+    for attempt in 0..max_attempts {
+        let check = std::process::Command::new("tmux")
+            .args(["has-session", "-t", &tmux_name])
+            .output();
+        match check {
+            Ok(output) if output.status.success() => {
+                log::debug!("tmux session '{}' found after {} attempts", tmux_name, attempt + 1);
+                break;
+            }
+            _ => {
+                if attempt == max_attempts - 1 {
+                    return Err(format!(
+                        "tmux session '{}' not found after {}ms",
+                        tmux_name,
+                        max_attempts * 200
+                    ));
+                }
+                std::thread::sleep(delay);
+            }
+        }
+    }
+
+    // Send the prompt text followed by Enter
+    log::info!("tmux send-keys -t {} -- <prompt> Enter", tmux_name);
+    let output = std::process::Command::new("tmux")
+        .args(["send-keys", "-t", &tmux_name, "--", prompt, "Enter"])
+        .output()
+        .map_err(|e| format!("Failed to send prompt via tmux: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tmux send-keys failed: {}", stderr.trim()));
+    }
+
+    log::debug!("Prompt sent successfully to tmux session '{}'", tmux_name);
+    Ok(())
 }
 
 /// For bare worktree repos, find an existing worktree path that agent-deck
