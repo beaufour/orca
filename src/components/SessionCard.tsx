@@ -40,7 +40,7 @@ function formatPath(path: string): string {
 }
 
 function formatTime(epoch: number): string {
-  if (epoch === 0) return "never";
+  if (epoch <= 0) return "never";
   const date = new Date(epoch * 1000);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
