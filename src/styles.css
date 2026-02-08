@@ -752,6 +752,8 @@ body {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  border-left: 3px solid var(--accent);
+  box-shadow: inset 3px 0 12px rgba(74, 158, 255, 0.08);
 }
 
 .terminal-header {
@@ -759,8 +761,19 @@ body {
   align-items: center;
   gap: 12px;
   padding: 8px 16px;
-  background: var(--bg-secondary);
+  background: rgba(74, 158, 255, 0.08);
   border-bottom: 1px solid var(--border);
+}
+
+.terminal-focus-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  background: rgba(74, 158, 255, 0.12);
+  padding: 2px 8px;
+  border-radius: 3px;
+  border: 1px solid rgba(74, 158, 255, 0.25);
 }
 
 .terminal-title {

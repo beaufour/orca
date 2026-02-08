@@ -231,6 +231,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     return (
       <div className="terminal-view">
         <div className="terminal-header">
+          <span className="terminal-focus-badge">TERMINAL</span>
           <span className="terminal-title">{session.title}</span>
           <button className="wt-btn wt-btn-add" onClick={handleRestart} disabled={restarting}>
             {restarting ? "Restarting..." : "Restart"}
@@ -249,6 +250,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
   return (
     <div className="terminal-view">
       <div className="terminal-header">
+        <span className="terminal-focus-badge">TERMINAL</span>
         <span className="terminal-title">{session.title}</span>
         <span className="terminal-tmux">{session.tmux_session}</span>
         {attachFailed && (
