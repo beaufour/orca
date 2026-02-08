@@ -89,6 +89,7 @@ pub fn create_session(
     tool: Option<String>,
     worktree_branch: Option<String>,
     new_branch: bool,
+    start: Option<bool>,
 ) -> Result<String, String> {
     let tool_name = tool.unwrap_or_else(|| "claude".to_string());
 
@@ -109,6 +110,7 @@ pub fn create_session(
         title,
         "-c".to_string(),
         tool_name,
+        "-json".to_string(),
     ];
 
     if let Some(branch) = worktree_branch {
@@ -129,7 +131,43 @@ pub fn create_session(
         return Err(format!("agent-deck add failed: {}", stderr.trim()));
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // Parse session ID from output
+    let session_id;
+
+    // Try JSON output first (normal creation)
+    if let Some(id) = serde_json::from_str::<serde_json::Value>(&stdout)
+        .ok()
+        .and_then(|json| json["id"].as_str().map(String::from))
+    {
+        session_id = id;
+    }
+    // Fall back: "Session already exists with same title and path: name (ID)"
+    else if stdout.contains("already exists") {
+        if let (Some(start), Some(end)) = (stdout.rfind('('), stdout.rfind(')')) {
+            session_id = stdout[start + 1..end].to_string();
+        } else {
+            return Err(format!("Could not parse session ID from: {}", stdout));
+        }
+    } else {
+        return Err(format!("Could not parse session ID from agent-deck output: {}", stdout));
+    }
+
+    // Optionally start the session immediately
+    if start.unwrap_or(false) {
+        let start_output = std::process::Command::new("agent-deck")
+            .args(["session", "start", &session_id])
+            .output()
+            .map_err(|e| format!("Failed to start session: {}", e))?;
+
+        if !start_output.status.success() {
+            let stderr = String::from_utf8_lossy(&start_output.stderr);
+            return Err(format!("agent-deck session start failed: {}", stderr.trim()));
+        }
+    }
+
+    Ok(session_id)
 }
 
 #[tauri::command]

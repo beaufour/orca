@@ -60,6 +60,7 @@ export function AddSessionBar({
         tool: params.tool,
         worktreeBranch: params.worktreeBranch,
         newBranch: params.newBranch,
+        start: true,
       }),
     onSuccess: () => {
       invalidate();
