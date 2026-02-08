@@ -1,6 +1,7 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import type { AttentionCounts, Group } from "../types";
+import type { Group, Session } from "../types";
 
 interface SidebarProps {
   selectedGroupPath: string | null;
@@ -11,7 +12,7 @@ interface SidebarProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   width: number;
-  dismissedCount?: number;
+  dismissedIds?: Set<string>;
 }
 
 export function Sidebar({
@@ -23,7 +24,7 @@ export function Sidebar({
   collapsed,
   onToggleCollapse,
   width,
-  dismissedCount = 0,
+  dismissedIds,
 }: SidebarProps) {
   const {
     data: groups,
@@ -36,11 +37,27 @@ export function Sidebar({
     refetchInterval: 10_000,
   });
 
-  const { data: attentionCounts } = useQuery<AttentionCounts>({
-    queryKey: ["attention_counts"],
-    queryFn: () => invoke("get_attention_counts"),
+  const { data: attentionSessions } = useQuery<Session[]>({
+    queryKey: ["attention_sessions"],
+    queryFn: () => invoke("get_attention_sessions"),
     refetchInterval: 5_000,
   });
+
+  // Compute counts and per-group dots from attention sessions, excluding dismissed
+  const { total, groupDots } = useMemo(() => {
+    const dots: Record<string, string> = {};
+    let count = 0;
+    for (const s of attentionSessions ?? []) {
+      if (dismissedIds?.has(s.id)) continue;
+      count++;
+      // "waiting" (needs_input) takes priority over "error"
+      const current = dots[s.group_path];
+      if (!current || (current === "error" && s.status === "waiting")) {
+        dots[s.group_path] = s.status;
+      }
+    }
+    return { total: count, groupDots: dots };
+  }, [attentionSessions, dismissedIds]);
 
   return (
     <aside className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`} style={{ width }}>
@@ -61,8 +78,8 @@ export function Sidebar({
             onClick={onSelectNeedsAction}
           >
             Needs Action
-            {((attentionCounts?.total ?? 0) - dismissedCount) > 0 && (
-              <span className="attention-count">{(attentionCounts?.total ?? 0) - dismissedCount}</span>
+            {total > 0 && (
+              <span className="attention-count">{total}</span>
             )}
           </button>
           <button
@@ -94,8 +111,8 @@ export function Sidebar({
               onClick={() => onSelectGroup(group)}
             >
               {group.name}
-              {attentionCounts?.groups[group.path] && (
-                <span className={`attention-dot attention-dot-${attentionCounts.groups[group.path]}`} />
+              {groupDots[group.path] && (
+                <span className={`attention-dot attention-dot-${groupDots[group.path]}`} />
               )}
             </button>
           ))}

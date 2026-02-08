@@ -37,11 +37,6 @@ export interface SessionSummary {
   last_text: string | null;
 }
 
-export interface AttentionCounts {
-  total: number;
-  /** Per-group worst status: "waiting" (needs input) or "error". */
-  groups: Record<string, string>;
-}
 
 export interface Worktree {
   path: string;

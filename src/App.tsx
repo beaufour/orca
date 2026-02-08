@@ -392,7 +392,7 @@ function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
         width={effectiveWidth}
-        dismissedCount={dismissedIds.size}
+        dismissedIds={dismissedIds}
       />
       <div className="resize-handle" onMouseDown={handleMouseDown} />
       <div className="main-area">
