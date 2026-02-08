@@ -72,7 +72,3 @@ npx tauri dev
 | `m` | Move session to another group |
 | `g` | Create new group |
 | `?` | Show shortcuts help |
-
-## License
-
-MIT
