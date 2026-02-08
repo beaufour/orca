@@ -13,6 +13,7 @@ interface AddSessionBarProps {
   groupPath: string;
   groupName: string;
   sessions: Session[];
+  onSessionCreated?: (sessionId: string) => void;
 }
 
 type SessionMode = "worktree" | "plain";
@@ -24,6 +25,7 @@ export function AddSessionBar({
   groupPath,
   groupName,
   sessions,
+  onSessionCreated,
 }: AddSessionBarProps) {
   useImperativeHandle(ref, () => ({
     toggleForm: () => setShowForm((prev) => !prev),
@@ -53,7 +55,7 @@ export function AddSessionBar({
       worktreeBranch: string | null;
       newBranch: boolean;
     }) =>
-      invoke("create_session", {
+      invoke<string>("create_session", {
         projectPath: repoPath,
         group: groupPath,
         title: params.title,
@@ -62,9 +64,10 @@ export function AddSessionBar({
         newBranch: params.newBranch,
         start: true,
       }),
-    onSuccess: () => {
+    onSuccess: (sessionId) => {
       invalidate();
       resetForm();
+      onSessionCreated?.(sessionId);
     },
   });
 
