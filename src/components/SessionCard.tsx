@@ -189,6 +189,8 @@ export function SessionCard({
             placeholder="branch name"
             value={branchName}
             onChange={(e) => setBranchName(e.target.value)}
+            spellCheck={false}
+            autoCapitalize="off"
             onKeyDown={(e) => {
               if (e.key === "Enter" && branchName.trim()) {
                 addWorktreeMutation.mutate();
