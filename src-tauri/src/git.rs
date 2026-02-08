@@ -223,7 +223,7 @@ fn find_repo_root(path: &str) -> Result<String, String> {
 /// Walk up from `path` looking for a directory containing `.bare/`.
 /// Returns the bare repo root (the directory with `.bare/` inside it),
 /// or None if this is not a bare worktree setup.
-fn find_bare_root(path: &str) -> Option<std::path::PathBuf> {
+pub fn find_bare_root(path: &str) -> Option<std::path::PathBuf> {
     let mut current = Path::new(path);
     loop {
         if current.join(".bare").is_dir() {
