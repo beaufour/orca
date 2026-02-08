@@ -244,13 +244,17 @@ pub fn create_session(
         }
         log::debug!("agent-deck session start succeeded for {session_id}");
 
-        // Send prompt to the tmux session if provided
+        // Send prompt to the tmux session in the background so we don't
+        // block the UI while waiting for Claude Code to start up.
         if let Some(ref prompt_text) = prompt {
             if !prompt_text.trim().is_empty() {
-                if let Err(e) = send_prompt_to_session(&session_id, prompt_text) {
-                    log::error!("Failed to send prompt to session {session_id}: {e}");
-                    // Don't fail the whole create — session was created successfully
-                }
+                let sid = session_id.clone();
+                let pt = prompt_text.clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = send_prompt_to_session(&sid, &pt) {
+                        log::error!("Failed to send prompt to session {sid}: {e}");
+                    }
+                });
             }
         }
     }
@@ -548,49 +552,78 @@ fn get_tmux_session_name(session_id: &str) -> Result<String, String> {
 }
 
 /// Send a prompt to a session's tmux session. Waits for the tmux session
-/// to exist before sending.
+/// to exist and for Claude Code to start rendering before sending.
+/// Runs on a background thread — must not block the UI.
 fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> {
     let tmux_name = get_tmux_session_name(session_id)?;
     log::info!("Sending prompt to tmux session '{tmux_name}' for session {session_id}");
 
-    // Wait for the tmux session to exist (agent-deck may take a moment to create it)
-    let max_attempts = 30;
-    let delay = std::time::Duration::from_millis(200);
+    let max_attempts = 60;
+    let delay = std::time::Duration::from_millis(500);
+    let mut session_ready = false;
+
     for attempt in 0..max_attempts {
-        let check = std::process::Command::new("tmux")
-            .args(["has-session", "-t", &tmux_name])
+        // Use capture-pane: if the session doesn't exist it fails,
+        // if it does we can check whether Claude has started rendering.
+        let capture = std::process::Command::new("tmux")
+            .args(["capture-pane", "-t", &tmux_name, "-p"])
             .output();
-        match check {
+        match capture {
             Ok(output) if output.status.success() => {
-                log::debug!(
-                    "tmux session '{tmux_name}' found after {} attempts",
-                    attempt + 1
-                );
-                break;
-            }
-            _ => {
-                if attempt == max_attempts - 1 {
-                    return Err(format!(
-                        "tmux session '{}' not found after {}ms",
-                        tmux_name,
-                        max_attempts * 200
-                    ));
+                let content = String::from_utf8_lossy(&output.stdout);
+                // Wait until the pane has non-whitespace content — means
+                // Claude Code has started and rendered something.
+                if content.chars().any(|c| !c.is_whitespace()) {
+                    log::debug!(
+                        "Claude Code rendering in tmux session '{tmux_name}' after {} attempts",
+                        attempt + 1
+                    );
+                    session_ready = true;
+                    break;
                 }
-                std::thread::sleep(delay);
             }
+            _ => {} // tmux session doesn't exist yet or command failed
+        }
+        if attempt < max_attempts - 1 {
+            std::thread::sleep(delay);
         }
     }
 
-    // Send the prompt text followed by Enter
-    log::info!("tmux send-keys -t {tmux_name} -- <prompt> Enter");
-    let output = std::process::Command::new("tmux")
-        .args(["send-keys", "-t", &tmux_name, "--", prompt, "Enter"])
+    if !session_ready {
+        return Err(format!(
+            "Claude Code not ready in tmux session '{tmux_name}' after {}s",
+            max_attempts as u64 * 500 / 1000
+        ));
+    }
+
+    // Give Claude Code a moment to finish initializing after first render
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    // Send the prompt text first (literal mode to avoid key name interpretation)
+    log::info!("tmux send-keys -l -t {tmux_name} -- <prompt>");
+    let text_output = std::process::Command::new("tmux")
+        .args(["send-keys", "-l", "-t", &tmux_name, "--", prompt])
         .output()
-        .map_err(|e| format!("Failed to send prompt via tmux: {e}"))?;
+        .map_err(|e| format!("Failed to send prompt text via tmux: {e}"))?;
+
+    if !text_output.status.success() {
+        let stderr = String::from_utf8_lossy(&text_output.stderr);
+        return Err(format!("tmux send-keys (text) failed: {}", stderr.trim()));
+    }
+
+    // Brief pause so the TUI processes the text before we submit
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    // Send Enter separately to submit the prompt
+    log::info!("tmux send-keys -t {tmux_name} Enter");
+    let output = std::process::Command::new("tmux")
+        .args(["send-keys", "-t", &tmux_name, "Enter"])
+        .output()
+        .map_err(|e| format!("Failed to send Enter via tmux: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("tmux send-keys failed: {}", stderr.trim()));
+        return Err(format!("tmux send-keys (Enter) failed: {}", stderr.trim()));
     }
 
     log::debug!("Prompt sent successfully to tmux session '{tmux_name}'");
