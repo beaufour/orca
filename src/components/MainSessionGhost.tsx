@@ -58,7 +58,9 @@ export function MainSessionGhost({ repoPath, groupPath, onSessionReady }: MainSe
       <div className="session-card-body">
         <div className="session-summary session-ghost-hint">
           {createMutation.isPending ? (
-            <><span className="spinner" /> Creating session...</>
+            <>
+              <span className="spinner" /> Creating session...
+            </>
           ) : (
             "Click to create main session"
           )}

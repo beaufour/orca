@@ -3,11 +3,13 @@
 ## Existing Tools Evaluated (2026-02-07)
 
 ### agent-deck (current workflow)
+
 - Terminal-based tmux session manager for Claude Code
 - Groups sessions by project
 - No GUI - purely terminal/keyboard driven
 
 ### Claude Code Viewer (d-kimuson/claude-code-viewer)
+
 - **Launch**: `npx @kimuson/claude-code-viewer@latest --port 3400`
 - **Stars**: 860+
 - **Type**: Web-based (Node.js + React)
@@ -16,6 +18,7 @@
 - **How it starts sessions**: Uses `@anthropic-ai/claude-code` SDK directly in Node.js
 
 ### Opcode (getAsterisk/opcode)
+
 - **Launch**: Build from source (Rust/Tauri + Bun)
 - **Stars**: 20.4k
 - **Type**: Native desktop (Tauri/Rust) + web mode
@@ -24,6 +27,7 @@
 - **How it starts sessions**: Shells out to `claude` binary with CLI flags, working directory = project path
 
 ### Key Gaps in Both Tools
+
 - Neither supports git worktree creation/management
 - Neither shows session summaries or "needs attention" status
 - Both just list each worktree directory as a separate project entry with no relationship between them

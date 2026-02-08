@@ -120,9 +120,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
 
       // Stream PTY output via Channel
       const onOutput = new Channel<string>((encoded) => {
-        const bytes = Uint8Array.from(atob(encoded), (c) =>
-          c.charCodeAt(0)
-        );
+        const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
         terminal.write(bytes);
         markReady();
       });
@@ -145,8 +143,8 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       if (msg.includes("can't find session") || msg.includes("no server running")) {
         terminal.write(
           `\r\n  \x1b[33mTmux session '${session.tmux_session}' not found.\x1b[0m\r\n` +
-          `  The session may have been closed or cleaned up.\r\n` +
-          `  Use the Restart button to start a new tmux session.\r\n`
+            `  The session may have been closed or cleaned up.\r\n` +
+            `  Use the Restart button to start a new tmux session.\r\n`,
         );
         setAttachFailed(true);
       } else {
@@ -158,6 +156,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     // Send keystrokes to PTY, filtering out terminal query responses
     // (Device Attributes responses like \e[>0;276;0c that tmux queries
     // but would leak to the shell as typed input)
+    // eslint-disable-next-line no-control-regex, no-useless-escape -- terminal escape sequences
     const DA_RESPONSE = /\x1b\[[\?>]\d[\d;]*c/g;
     const onDataDisposable = terminal.onData((data) => {
       // Intercept Ctrl+Q to close terminal (matches agent-deck's detach shortcut)
@@ -222,9 +221,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       // from query data, which re-triggers our setup effect with the new tmux_session
       await queryClient.invalidateQueries({ queryKey: ["sessions"] });
     } catch (err) {
-      terminalRef.current?.write(
-        `\r\n  \x1b[31mRestart failed:\x1b[0m ${String(err)}\r\n`
-      );
+      terminalRef.current?.write(`\r\n  \x1b[31mRestart failed:\x1b[0m ${String(err)}\r\n`);
     } finally {
       setRestarting(false);
     }
@@ -235,11 +232,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       <div className="terminal-view">
         <div className="terminal-header">
           <span className="terminal-title">{session.title}</span>
-          <button
-            className="wt-btn wt-btn-add"
-            onClick={handleRestart}
-            disabled={restarting}
-          >
+          <button className="wt-btn wt-btn-add" onClick={handleRestart} disabled={restarting}>
             {restarting ? "Restarting..." : "Restart"}
           </button>
           <button className="terminal-close" onClick={onClose}>
@@ -259,11 +252,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         <span className="terminal-title">{session.title}</span>
         <span className="terminal-tmux">{session.tmux_session}</span>
         {attachFailed && (
-          <button
-            className="wt-btn wt-btn-add"
-            onClick={handleRestart}
-            disabled={restarting}
-          >
+          <button className="wt-btn wt-btn-add" onClick={handleRestart} disabled={restarting}>
             {restarting ? "Restarting..." : "Restart"}
           </button>
         )}
@@ -271,7 +260,10 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
           Close
         </button>
       </div>
-      <div className={`xterm-container ${terminalReady ? "" : "xterm-container-loading"}`} ref={containerRef} />
+      <div
+        className={`xterm-container ${terminalReady ? "" : "xterm-container-loading"}`}
+        ref={containerRef}
+      />
     </div>
   );
 }

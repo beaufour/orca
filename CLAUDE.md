@@ -23,6 +23,28 @@ cargo build --manifest-path src-tauri/Cargo.toml  # Build Rust only
 npx tsc --noEmit               # TypeScript type check only
 ```
 
+## Linting
+
+A pre-commit hook runs all checks automatically. To set it up after cloning:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+To run all checks manually:
+
+```bash
+npm run check                  # ESLint + Prettier + rustfmt + Clippy
+```
+
+To autofix:
+
+```bash
+npm run fix                    # ESLint --fix + Prettier --write + rustfmt
+```
+
+Always run `npm run check` before committing. The pre-commit hook will block commits that fail linting or formatting.
+
 ## Architecture
 
 Orca reads agent-deck's SQLite DB (read-only) for session/group data, parses Claude Code JSONL logs for summaries and attention status, and shells out to `agent-deck add` for session creation. Terminal viewing uses tmux capture-pane.

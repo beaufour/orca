@@ -94,9 +94,7 @@ export function DiffViewer({ session, onClose }: DiffViewerProps) {
               <span className="spinner" /> Loading diff...
             </div>
           )}
-          {error && (
-            <div className="error-row">{String(error)}</div>
-          )}
+          {error && <div className="error-row">{String(error)}</div>}
           {data !== undefined && files.length === 0 && !isLoading && (
             <div className="diff-empty">No changes compared to default branch</div>
           )}

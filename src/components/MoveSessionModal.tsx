@@ -28,9 +28,7 @@ export function MoveSessionModal({ session, groups, onClose }: MoveSessionModalP
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <h3 className="modal-title">Move "{session.title}" to group</h3>
-        {mutation.error && (
-          <div className="wt-error">{String(mutation.error)}</div>
-        )}
+        {mutation.error && <div className="wt-error">{String(mutation.error)}</div>}
         <div className="group-select-list">
           {groups.map((group) => {
             const isCurrent = group.path === session.group_path;

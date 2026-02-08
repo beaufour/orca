@@ -37,7 +37,7 @@ pub fn attach_pty(
             pixel_width: 0,
             pixel_height: 0,
         })
-        .map_err(|e| format!("Failed to open PTY: {}", e))?;
+        .map_err(|e| format!("Failed to open PTY: {e}"))?;
 
     // Set window-size to "latest" so our attach doesn't shrink the session
     // when another client (e.g. a regular terminal) is also attached
@@ -52,7 +52,7 @@ pub fn attach_pty(
     let child = pair
         .slave
         .spawn_command(cmd)
-        .map_err(|e| format!("Failed to spawn tmux attach: {}", e))?;
+        .map_err(|e| format!("Failed to spawn tmux attach: {e}"))?;
 
     // We can drop the slave after spawning
     drop(pair.slave);
@@ -60,12 +60,12 @@ pub fn attach_pty(
     let writer = pair
         .master
         .take_writer()
-        .map_err(|e| format!("Failed to get PTY writer: {}", e))?;
+        .map_err(|e| format!("Failed to get PTY writer: {e}"))?;
 
     let mut reader = pair
         .master
         .try_clone_reader()
-        .map_err(|e| format!("Failed to get PTY reader: {}", e))?;
+        .map_err(|e| format!("Failed to get PTY reader: {e}"))?;
 
     let shutdown = Arc::new(AtomicBool::new(false));
     let shutdown_clone = shutdown.clone();
@@ -90,7 +90,7 @@ pub fn attach_pty(
                     if shutdown_clone.load(Ordering::Relaxed) {
                         break;
                     }
-                    log::error!("PTY read error for {}: {}", sid, e);
+                    log::error!("PTY read error for {sid}: {e}");
                     break;
                 }
             }
@@ -107,36 +107,40 @@ pub fn attach_pty(
     state
         .sessions
         .lock()
-        .map_err(|e| format!("Lock error: {}", e))?
+        .map_err(|e| format!("Lock error: {e}"))?
         .insert(session_id, session);
 
     Ok(())
 }
 
 #[tauri::command]
-pub fn write_pty(state: State<'_, PtyManager>, session_id: String, data: String) -> Result<(), String> {
+pub fn write_pty(
+    state: State<'_, PtyManager>,
+    session_id: String,
+    data: String,
+) -> Result<(), String> {
     let mut sessions = state
         .sessions
         .lock()
-        .map_err(|e| format!("Lock error: {}", e))?;
+        .map_err(|e| format!("Lock error: {e}"))?;
 
     let session = sessions
         .get_mut(&session_id)
-        .ok_or_else(|| format!("No PTY session: {}", session_id))?;
+        .ok_or_else(|| format!("No PTY session: {session_id}"))?;
 
     let bytes = BASE64
         .decode(&data)
-        .map_err(|e| format!("Base64 decode error: {}", e))?;
+        .map_err(|e| format!("Base64 decode error: {e}"))?;
 
     session
         .writer
         .write_all(&bytes)
-        .map_err(|e| format!("PTY write error: {}", e))?;
+        .map_err(|e| format!("PTY write error: {e}"))?;
 
     session
         .writer
         .flush()
-        .map_err(|e| format!("PTY flush error: {}", e))?;
+        .map_err(|e| format!("PTY flush error: {e}"))?;
 
     Ok(())
 }
@@ -151,11 +155,11 @@ pub fn resize_pty(
     let sessions = state
         .sessions
         .lock()
-        .map_err(|e| format!("Lock error: {}", e))?;
+        .map_err(|e| format!("Lock error: {e}"))?;
 
     let session = sessions
         .get(&session_id)
-        .ok_or_else(|| format!("No PTY session: {}", session_id))?;
+        .ok_or_else(|| format!("No PTY session: {session_id}"))?;
 
     session
         .master
@@ -165,7 +169,7 @@ pub fn resize_pty(
             pixel_width: 0,
             pixel_height: 0,
         })
-        .map_err(|e| format!("PTY resize error: {}", e))?;
+        .map_err(|e| format!("PTY resize error: {e}"))?;
 
     Ok(())
 }
@@ -175,7 +179,7 @@ pub fn close_pty(state: State<'_, PtyManager>, session_id: String) -> Result<(),
     let mut sessions = state
         .sessions
         .lock()
-        .map_err(|e| format!("Lock error: {}", e))?;
+        .map_err(|e| format!("Lock error: {e}"))?;
 
     if let Some(mut session) = sessions.remove(&session_id) {
         session.shutdown.store(true, Ordering::Relaxed);

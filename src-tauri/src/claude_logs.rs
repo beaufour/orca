@@ -32,7 +32,9 @@ fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<PathBu
     let base = claude_projects_dir();
 
     // Try the exact encoded path first
-    let candidate = base.join(&encoded).join(format!("{}.jsonl", claude_session_id));
+    let candidate = base
+        .join(&encoded)
+        .join(format!("{claude_session_id}.jsonl"));
     if candidate.exists() {
         return Some(candidate);
     }
@@ -42,7 +44,7 @@ fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<PathBu
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
             if name.starts_with(&encoded) {
-                let candidate = entry.path().join(format!("{}.jsonl", claude_session_id));
+                let candidate = entry.path().join(format!("{claude_session_id}.jsonl"));
                 if candidate.exists() {
                     return Some(candidate);
                 }
@@ -55,22 +57,16 @@ fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<PathBu
 
 /// Read the last N bytes of a file and parse JSONL lines from it
 fn read_tail_lines(path: &PathBuf, max_bytes: u64) -> Vec<serde_json::Value> {
-    let file = match File::open(path) {
-        Ok(f) => f,
-        Err(_) => return vec![],
+    let Ok(file) = File::open(path) else {
+        return vec![];
     };
 
-    let metadata = match file.metadata() {
-        Ok(m) => m,
-        Err(_) => return vec![],
+    let Ok(metadata) = file.metadata() else {
+        return vec![];
     };
 
     let file_size = metadata.len();
-    let seek_pos = if file_size > max_bytes {
-        file_size - max_bytes
-    } else {
-        0
-    };
+    let seek_pos = file_size.saturating_sub(max_bytes);
 
     let mut reader = BufReader::new(file);
     if reader.seek(SeekFrom::Start(seek_pos)).is_err() {
@@ -85,9 +81,8 @@ fn read_tail_lines(path: &PathBuf, max_bytes: u64) -> Vec<serde_json::Value> {
 
     let mut lines = Vec::new();
     for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => continue,
+        let Ok(line) = line else {
+            continue;
         };
         if line.trim().is_empty() {
             continue;
@@ -178,17 +173,20 @@ fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> Att
             // still active.  A tool_result with is_error while running just
             // means a tool call failed and Claude is handling it.
             for item in content_arr {
-                if item.get("type").and_then(|v| v.as_str()) == Some("tool_result") {
-                    if item.get("is_error").and_then(|v| v.as_bool()) == Some(true) {
-                        return AttentionStatus::Error;
-                    }
+                if item.get("type").and_then(|v| v.as_str()) == Some("tool_result")
+                    && item.get("is_error").and_then(serde_json::Value::as_bool) == Some(true)
+                {
+                    return AttentionStatus::Error;
                 }
             }
         }
     }
 
     // Check staleness based on timestamp
-    if let Some(ts) = lines.last().and_then(|l| l.get("timestamp").and_then(|v| v.as_f64())) {
+    if let Some(ts) = lines
+        .last()
+        .and_then(|l| l.get("timestamp").and_then(serde_json::Value::as_f64))
+    {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -211,10 +209,12 @@ fn extract_attention(lines: &[serde_json::Value], agentdeck_status: &str) -> Att
 
 /// Check if there is a user tool_result message that matches a given tool_use item's id.
 /// The tool_result must appear AFTER the tool_use in the conversation.
-fn has_matching_tool_result(relevant: &[&serde_json::Value], tool_use_item: &serde_json::Value) -> bool {
-    let tool_use_id = match tool_use_item.get("id").and_then(|v| v.as_str()) {
-        Some(id) => id,
-        None => return false,
+fn has_matching_tool_result(
+    relevant: &[&serde_json::Value],
+    tool_use_item: &serde_json::Value,
+) -> bool {
+    let Some(tool_use_id) = tool_use_item.get("id").and_then(|v| v.as_str()) else {
+        return false;
     };
 
     // Since the tool_use is in the last assistant message, we only need to check
@@ -229,10 +229,10 @@ fn has_matching_tool_result(relevant: &[&serde_json::Value], tool_use_item: &ser
         }
         if let Some(content) = msg.get("content").and_then(|v| v.as_array()) {
             for item in content {
-                if item.get("type").and_then(|v| v.as_str()) == Some("tool_result") {
-                    if item.get("tool_use_id").and_then(|v| v.as_str()) == Some(tool_use_id) {
-                        return true;
-                    }
+                if item.get("type").and_then(|v| v.as_str()) == Some("tool_result")
+                    && item.get("tool_use_id").and_then(|v| v.as_str()) == Some(tool_use_id)
+                {
+                    return true;
                 }
             }
         }
@@ -287,29 +287,23 @@ pub fn compute_attention(
     claude_session_id: Option<&str>,
     agentdeck_status: &str,
 ) -> AttentionStatus {
-    let claude_session_id = match claude_session_id {
-        Some(id) => id,
-        None => {
-            return match agentdeck_status {
-                "running" => AttentionStatus::Running,
-                "waiting" => AttentionStatus::Idle,
-                "error" => AttentionStatus::Error,
-                _ => AttentionStatus::Unknown,
-            };
-        }
+    let Some(claude_session_id) = claude_session_id else {
+        return match agentdeck_status {
+            "running" => AttentionStatus::Running,
+            "waiting" => AttentionStatus::Idle,
+            "error" => AttentionStatus::Error,
+            _ => AttentionStatus::Unknown,
+        };
     };
 
-    let jsonl_path = match find_jsonl_path(project_path, claude_session_id) {
-        Some(p) => p,
-        None => {
-            return match agentdeck_status {
-                "running" => AttentionStatus::Running,
-                "waiting" => AttentionStatus::Idle,
-                "error" => AttentionStatus::Error,
-                "idle" => AttentionStatus::Idle,
-                _ => AttentionStatus::Unknown,
-            };
-        }
+    let Some(jsonl_path) = find_jsonl_path(project_path, claude_session_id) else {
+        return match agentdeck_status {
+            "running" => AttentionStatus::Running,
+            "waiting" => AttentionStatus::Idle,
+            "error" => AttentionStatus::Error,
+            "idle" => AttentionStatus::Idle,
+            _ => AttentionStatus::Unknown,
+        };
     };
 
     let lines = read_tail_lines(&jsonl_path, 256 * 1024);
@@ -322,23 +316,20 @@ pub fn get_session_summary(
     claude_session_id: String,
     agentdeck_status: String,
 ) -> SessionSummary {
-    let jsonl_path = match find_jsonl_path(&project_path, &claude_session_id) {
-        Some(p) => p,
-        None => {
-            return SessionSummary {
-                summary: None,
-                attention: match agentdeck_status.as_str() {
-                    "running" => AttentionStatus::Running,
-                    // No JSONL file means no conversation yet — just the initial prompt
-                    "waiting" => AttentionStatus::Idle,
-                    "error" => AttentionStatus::Error,
-                    "idle" => AttentionStatus::Idle,
-                    _ => AttentionStatus::Unknown,
-                },
-                last_tool: None,
-                last_text: None,
-            };
-        }
+    let Some(jsonl_path) = find_jsonl_path(&project_path, &claude_session_id) else {
+        return SessionSummary {
+            summary: None,
+            attention: match agentdeck_status.as_str() {
+                "running" => AttentionStatus::Running,
+                // No JSONL file means no conversation yet — just the initial prompt
+                "waiting" => AttentionStatus::Idle,
+                "error" => AttentionStatus::Error,
+                "idle" => AttentionStatus::Idle,
+                _ => AttentionStatus::Unknown,
+            },
+            last_tool: None,
+            last_text: None,
+        };
     };
 
     // Read last 256KB of the file

@@ -25,3 +25,14 @@ dirs = "6"
 portable-pty = "0.8"
 base64 = "0.22"
 tauri-plugin-dialog = "2.6.0"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+uninlined_format_args = "deny"
+manual_let_else = "deny"
+semicolon_if_nothing_returned = "deny"
+redundant_closure_for_method_calls = "deny"
+needless_pass_by_value = "allow"

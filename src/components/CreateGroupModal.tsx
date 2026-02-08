@@ -89,9 +89,7 @@ export function CreateGroupModal({ onClose }: CreateGroupModalProps) {
             if (e.key === "Escape") onClose();
           }}
         />
-        {mutation.error && (
-          <div className="wt-error">{String(mutation.error)}</div>
-        )}
+        {mutation.error && <div className="wt-error">{String(mutation.error)}</div>}
         <div className="modal-actions">
           <button
             className="wt-btn wt-btn-add"

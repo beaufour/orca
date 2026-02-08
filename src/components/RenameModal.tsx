@@ -48,9 +48,7 @@ export function RenameModal({ session, onClose }: RenameModalProps) {
           }}
           autoFocus
         />
-        {mutation.error && (
-          <div className="wt-error">{String(mutation.error)}</div>
-        )}
+        {mutation.error && <div className="wt-error">{String(mutation.error)}</div>}
         <div className="modal-actions">
           <button
             className="wt-btn wt-btn-add"

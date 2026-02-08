@@ -87,11 +87,13 @@ orca/
 ## Rust Backend - Tauri Commands
 
 ### agentdeck.rs
+
 - `get_groups() -> Vec<Group>` - Read groups table
 - `get_sessions(group_path: Option<String>) -> Vec<Session>` - Read instances table, optionally filtered
 - `create_session(project_path, group, title, tool, worktree_branch, new_branch) -> Result` - Shell out to `agent-deck add` CLI
 
 ### claude_logs.rs
+
 - `get_session_summary(project_path, claude_session_id, agentdeck_status) -> SessionSummary`
   - Reads last 256KB of JSONL file
   - Extracts summary from `type=summary` entries
@@ -100,6 +102,7 @@ orca/
   - Uses agent-deck status as primary signal, refined by JSONL analysis
 
 ### git.rs
+
 - `list_worktrees(repo_path) -> Vec<Worktree>` - `git worktree list --porcelain`
 - `add_worktree(repo_path, branch) -> Result` - `git worktree add` with new branch
 - `remove_worktree(repo_path, worktree_path) -> Result` - remove worktree + delete branch
@@ -107,12 +110,14 @@ orca/
 - `rebase_worktree(worktree_path, main_branch) -> Result` - rebase on main
 
 ### tmux.rs
+
 - `capture_pane(tmux_session) -> String` - Get last 200 lines of terminal output
 - `send_keys(tmux_session, keys) -> Result` - Send input + Enter to session
 
 ## React Frontend
 
 ### Layout
+
 ```
 +----------+------------------------------+
 |          |  Session Cards               |
@@ -131,7 +136,9 @@ orca/
 ```
 
 ### Attention Status Badges
+
 Derived from agent-deck status + JSONL log parsing:
+
 - **Needs input** (red) - agent-deck status=waiting, or AskUserQuestion/ExitPlanMode tool use
 - **Error** (orange) - agent-deck status=error, or is_error in tool result
 - **Running** (blue) - agent-deck status=running
@@ -139,7 +146,9 @@ Derived from agent-deck status + JSONL log parsing:
 - **Stale** (gray) - no activity for >1 hour
 
 ### Session Cards
+
 Each card shows:
+
 - Title + worktree badge (`wt:branch-name` or `no wt`)
 - Summary text (from JSONL `type=summary` or last assistant text)
 - Project path
@@ -148,6 +157,7 @@ Each card shows:
 - Click to open terminal view
 
 ## Future TODOs
+
 - Improve session summary accuracy (currently uses JSONL summary entry + last assistant text)
 - Add worktree creation from existing non-worktree session cards
 - Keyboard shortcuts
@@ -155,5 +165,6 @@ Each card shows:
 - App icon, window management
 
 ## Dependencies
+
 - **Rust**: tauri, tauri-plugin-log, rusqlite (bundled), serde, serde_json, dirs
 - **JS**: react, react-dom, @tanstack/react-query, @tauri-apps/api, typescript, vite

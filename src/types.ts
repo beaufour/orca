@@ -22,13 +22,7 @@ export interface Session {
   claude_session_id: string | null;
 }
 
-export type AttentionStatus =
-  | "needs_input"
-  | "error"
-  | "running"
-  | "idle"
-  | "stale"
-  | "unknown";
+export type AttentionStatus = "needs_input" | "error" | "running" | "idle" | "stale" | "unknown";
 
 export interface SessionSummary {
   summary: string | null;
@@ -36,7 +30,6 @@ export interface SessionSummary {
   last_tool: string | null;
   last_text: string | null;
 }
-
 
 export interface Worktree {
   path: string;

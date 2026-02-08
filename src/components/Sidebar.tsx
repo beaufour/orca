@@ -78,9 +78,7 @@ export function Sidebar({
             onClick={onSelectNeedsAction}
           >
             Needs Action
-            {total > 0 && (
-              <span className="attention-count">{total}</span>
-            )}
+            {total > 0 && <span className="attention-count">{total}</span>}
           </button>
           <button
             className={`sidebar-item ${!needsActionActive && selectedGroupPath === null ? "active" : ""}`}
@@ -96,10 +94,7 @@ export function Sidebar({
           {error && (
             <div className="sidebar-error error-row">
               Failed to load groups
-              <button
-                className="retry-btn"
-                onClick={() => refetch()}
-              >
+              <button className="retry-btn" onClick={() => refetch()}>
                 Retry
               </button>
             </div>
@@ -116,10 +111,7 @@ export function Sidebar({
               )}
             </button>
           ))}
-          <button
-            className="sidebar-item sidebar-add-group"
-            onClick={onCreateGroup}
-          >
+          <button className="sidebar-item sidebar-add-group" onClick={onCreateGroup}>
             + Add Group
           </button>
         </nav>

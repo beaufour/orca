@@ -18,10 +18,7 @@ interface SessionCardProps {
   onUndismiss?: () => void;
 }
 
-const ATTENTION_CONFIG: Record<
-  AttentionStatus,
-  { label: string; className: string }
-> = {
+const ATTENTION_CONFIG: Record<AttentionStatus, { label: string; className: string }> = {
   needs_input: { label: "Needs Input", className: "status-needs-input" },
   error: { label: "Error", className: "status-error" },
   running: { label: "Running", className: "status-running" },
@@ -144,8 +141,7 @@ export function SessionCard({
     },
   });
 
-  const attention: AttentionStatus =
-    summary?.attention ?? fallbackAttention(session.status);
+  const attention: AttentionStatus = summary?.attention ?? fallbackAttention(session.status);
 
   // Auto-undismiss when session is no longer needs_input
   useEffect(() => {
@@ -154,15 +150,13 @@ export function SessionCard({
     }
   }, [isDismissed, attention, onUndismiss]);
 
-  const effectiveAttention = (attention === "needs_input" && isDismissed) ? "stale" : attention;
-  const statusInfo = isDismissed && attention === "needs_input"
-    ? { label: "Dismissed", className: "status-dismissed" }
-    : ATTENTION_CONFIG[attention];
-  const isPending =
-    removeMutation.isPending ||
-    addWorktreeMutation.isPending;
-  const mutationError =
-    removeMutation.error ?? addWorktreeMutation.error;
+  const effectiveAttention = attention === "needs_input" && isDismissed ? "stale" : attention;
+  const statusInfo =
+    isDismissed && attention === "needs_input"
+      ? { label: "Dismissed", className: "status-dismissed" }
+      : ATTENTION_CONFIG[attention];
+  const isPending = removeMutation.isPending || addWorktreeMutation.isPending;
+  const mutationError = removeMutation.error ?? addWorktreeMutation.error;
 
   return (
     <div
@@ -181,7 +175,10 @@ export function SessionCard({
             <span
               className="wt-badge wt-badge-no wt-badge-clickable"
               title="Click to create worktree"
-              onClick={(e) => { e.stopPropagation(); setShowAddWorktree(true); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAddWorktree(true);
+              }}
             >
               no wt
             </span>
@@ -195,7 +192,14 @@ export function SessionCard({
           )}
           <span
             className={`status-badge ${statusInfo.className}${attention === "needs_input" && onDismiss ? " status-badge-clickable" : ""}`}
-            onClick={attention === "needs_input" && onDismiss ? (e) => { e.stopPropagation(); onDismiss(); } : undefined}
+            onClick={
+              attention === "needs_input" && onDismiss
+                ? (e) => {
+                    e.stopPropagation();
+                    onDismiss();
+                  }
+                : undefined
+            }
             title={attention === "needs_input" && !isDismissed ? "Click to dismiss" : undefined}
           >
             {statusInfo.label}
@@ -231,36 +235,36 @@ export function SessionCard({
           </button>
           <button
             className="wt-btn wt-btn-cancel"
-            onClick={() => { setShowAddWorktree(false); setBranchName(""); }}
+            onClick={() => {
+              setShowAddWorktree(false);
+              setBranchName("");
+            }}
           >
             Cancel
           </button>
         </div>
       )}
       <div className="session-card-body">
-        {summary?.summary && (
-          <div className="session-summary">{summary.summary}</div>
-        )}
+        {summary?.summary && <div className="session-summary">{summary.summary}</div>}
         {!summary?.summary && summary?.last_text && (
-          <div className="session-summary session-last-text">
-            {summary.last_text}
-          </div>
+          <div className="session-summary session-last-text">{summary.last_text}</div>
         )}
         <div className="session-path">
           {groupName && <span className="session-group">{groupName}</span>}
           {formatPath(session.project_path)}
         </div>
       </div>
-      {mutationError && (
-        <div className="session-wt-error">{String(mutationError)}</div>
-      )}
+      {mutationError && <div className="session-wt-error">{String(mutationError)}</div>}
       <div className="session-card-footer">
         <div className="session-wt-actions">
           {isWorktree && (
             <>
               <button
                 className="wt-btn wt-btn-action"
-                onClick={(e) => { e.stopPropagation(); setShowDiff(true); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDiff(true);
+                }}
                 disabled={isPending}
                 title="Show diff vs main"
               >
@@ -272,14 +276,20 @@ export function SessionCard({
             <>
               <button
                 className="wt-btn wt-btn-danger"
-                onClick={(e) => { e.stopPropagation(); removeMutation.mutate(); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeMutation.mutate();
+                }}
                 disabled={isPending}
               >
                 Confirm
               </button>
               <button
                 className="wt-btn wt-btn-cancel"
-                onClick={(e) => { e.stopPropagation(); setConfirmingRemove(false); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmingRemove(false);
+                }}
               >
                 Cancel
               </button>
@@ -287,7 +297,10 @@ export function SessionCard({
           ) : (
             <button
               className="wt-btn wt-btn-danger"
-              onClick={(e) => { e.stopPropagation(); setConfirmingRemove(true); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmingRemove(true);
+              }}
               disabled={isPending}
               title={isWorktree ? "Remove worktree and session" : "Remove session"}
             >
@@ -295,9 +308,7 @@ export function SessionCard({
             </button>
           )}
         </div>
-        <span className="session-time">
-          {formatTime(session.last_accessed)}
-        </span>
+        <span className="session-time">{formatTime(session.last_accessed)}</span>
       </div>
       {showDiff && <DiffViewer session={session} onClose={() => setShowDiff(false)} />}
     </div>

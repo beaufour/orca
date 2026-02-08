@@ -16,7 +16,9 @@ pub fn get_groups() -> Result<Vec<Group>, String> {
         .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
 
     let mut stmt = conn
-        .prepare("SELECT path, name, expanded, sort_order, default_path FROM groups ORDER BY sort_order")
+        .prepare(
+            "SELECT path, name, expanded, sort_order, default_path FROM groups ORDER BY sort_order",
+        )
         .map_err(|e| e.to_string())?;
 
     let groups = stmt
@@ -59,7 +61,7 @@ fn query_sessions_filtered(conn: &Connection, group: &str) -> Result<Vec<Session
         )
         .map_err(|e| e.to_string())?;
     let result = stmt
-        .query_map([group], |row| map_session_row(row))
+        .query_map([group], map_session_row)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -75,13 +77,14 @@ fn query_sessions_all(conn: &Connection) -> Result<Vec<Session>, String> {
         )
         .map_err(|e| e.to_string())?;
     let result = stmt
-        .query_map([], |row| map_session_row(row))
+        .query_map([], map_session_row)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     Ok(result)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn create_session(
     project_path: String,
@@ -107,9 +110,8 @@ pub fn create_session(
 
     // For bare worktree repos, create the worktree ourselves so it lands at
     // <bare_root>/<branch> instead of agent-deck's default <dir>-<branch>.
-    let bare_worktree_info = if bare_root.is_some() {
+    let bare_worktree_info = if let Some(ref root) = bare_root {
         if let Some(ref branch) = worktree_branch {
-            let root = bare_root.as_ref().unwrap();
             let wt_path = root.join(branch);
             let wt_str = wt_path.to_string_lossy().to_string();
             let repo_root = effective_path.clone();
@@ -125,13 +127,17 @@ pub fn create_session(
                 .current_dir(&effective_path)
                 .args(&git_args)
                 .output()
-                .map_err(|e| format!("Failed to create worktree: {}", e))?;
+                .map_err(|e| format!("Failed to create worktree: {e}"))?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                log::error!("git worktree add failed (exit {}): {}", output.status, stderr.trim());
+                log::error!(
+                    "git worktree add failed (exit {}): {}",
+                    output.status,
+                    stderr.trim()
+                );
                 return Err(format!("Failed to create worktree: {}", stderr.trim()));
             }
-            log::debug!("git worktree add succeeded: {}", wt_str);
+            log::debug!("git worktree add succeeded: {wt_str}");
 
             effective_path = wt_str.clone();
             Some((wt_str, repo_root, branch.clone()))
@@ -169,16 +175,20 @@ pub fn create_session(
     let output = std::process::Command::new("agent-deck")
         .args(&args)
         .output()
-        .map_err(|e| format!("Failed to run agent-deck: {}", e))?;
+        .map_err(|e| format!("Failed to run agent-deck: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!("agent-deck add failed (exit {}): {}", output.status, stderr.trim());
+        log::error!(
+            "agent-deck add failed (exit {}): {}",
+            output.status,
+            stderr.trim()
+        );
         return Err(format!("agent-deck add failed: {}", stderr.trim()));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    log::debug!("agent-deck add succeeded: {}", stdout);
+    log::debug!("agent-deck add succeeded: {stdout}");
 
     // Parse session ID from output
     let session_id;
@@ -198,10 +208,12 @@ pub fn create_session(
         if let (Some(start), Some(end)) = (stdout.rfind('('), stdout.rfind(')')) {
             session_id = stdout[start + 1..end].to_string();
         } else {
-            return Err(format!("Could not parse session ID from: {}", stdout));
+            return Err(format!("Could not parse session ID from: {stdout}"));
         }
     } else {
-        return Err(format!("Could not parse session ID from agent-deck output: {}", stdout));
+        return Err(format!(
+            "Could not parse session ID from agent-deck output: {stdout}"
+        ));
     }
 
     // For bare repos where we created the worktree ourselves, update the
@@ -212,24 +224,31 @@ pub fn create_session(
 
     // Optionally start the session immediately
     if start.unwrap_or(false) {
-        log::info!("agent-deck session start {}", session_id);
+        log::info!("agent-deck session start {session_id}");
         let start_output = std::process::Command::new("agent-deck")
             .args(["session", "start", &session_id])
             .output()
-            .map_err(|e| format!("Failed to start session: {}", e))?;
+            .map_err(|e| format!("Failed to start session: {e}"))?;
 
         if !start_output.status.success() {
             let stderr = String::from_utf8_lossy(&start_output.stderr);
-            log::error!("agent-deck session start failed (exit {}): {}", start_output.status, stderr.trim());
-            return Err(format!("agent-deck session start failed: {}", stderr.trim()));
+            log::error!(
+                "agent-deck session start failed (exit {}): {}",
+                start_output.status,
+                stderr.trim()
+            );
+            return Err(format!(
+                "agent-deck session start failed: {}",
+                stderr.trim()
+            ));
         }
-        log::debug!("agent-deck session start succeeded for {}", session_id);
+        log::debug!("agent-deck session start succeeded for {session_id}");
 
         // Send prompt to the tmux session if provided
         if let Some(ref prompt_text) = prompt {
             if !prompt_text.trim().is_empty() {
                 if let Err(e) = send_prompt_to_session(&session_id, prompt_text) {
-                    log::error!("Failed to send prompt to session {}: {}", session_id, e);
+                    log::error!("Failed to send prompt to session {session_id}: {e}");
                     // Don't fail the whole create — session was created successfully
                 }
             }
@@ -241,38 +260,49 @@ pub fn create_session(
 
 #[tauri::command]
 pub fn restart_session(session_id: String) -> Result<(), String> {
-    log::info!("agent-deck session start {}", session_id);
+    log::info!("agent-deck session start {session_id}");
     let output = std::process::Command::new("agent-deck")
         .args(["session", "start", &session_id])
         .output()
-        .map_err(|e| format!("Failed to run agent-deck: {}", e))?;
+        .map_err(|e| format!("Failed to run agent-deck: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!("agent-deck session start failed (exit {}): {}", output.status, stderr.trim());
-        return Err(format!("agent-deck session start failed: {}", stderr.trim()));
+        log::error!(
+            "agent-deck session start failed (exit {}): {}",
+            output.status,
+            stderr.trim()
+        );
+        return Err(format!(
+            "agent-deck session start failed: {}",
+            stderr.trim()
+        ));
     }
 
-    log::debug!("agent-deck session start succeeded for {}", session_id);
+    log::debug!("agent-deck session start succeeded for {session_id}");
     Ok(())
 }
 
 #[tauri::command]
 pub fn remove_session(session_id: String) -> Result<(), String> {
     // Try agent-deck remove first
-    log::info!("agent-deck remove {}", session_id);
+    log::info!("agent-deck remove {session_id}");
     let remove_result = std::process::Command::new("agent-deck")
         .args(["remove", &session_id])
         .output();
     match &remove_result {
         Ok(output) if output.status.success() => {
-            log::debug!("agent-deck remove succeeded for {}", session_id);
+            log::debug!("agent-deck remove succeeded for {session_id}");
         }
         Ok(output) => {
-            log::error!("agent-deck remove failed (exit {}): {}", output.status, String::from_utf8_lossy(&output.stderr).trim());
+            log::error!(
+                "agent-deck remove failed (exit {}): {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
         }
         Err(e) => {
-            log::error!("agent-deck remove failed to execute: {}", e);
+            log::error!("agent-deck remove failed to execute: {e}");
         }
     }
 
@@ -280,14 +310,16 @@ pub fn remove_session(session_id: String) -> Result<(), String> {
     // the DB deletion even though it reports success. Fall back to direct
     // DB deletion if the session still exists.
     let path = db_path();
-    let conn = Connection::open(&path)
-        .map_err(|e| format!("Failed to open agent-deck DB: {}", e))?;
+    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     conn.execute("DELETE FROM instances WHERE id = ?1", [&session_id])
-        .map_err(|e| format!("Failed to delete session: {}", e))?;
+        .map_err(|e| format!("Failed to delete session: {e}"))?;
 
     // Also clean up heartbeats
-    let _ = conn.execute("DELETE FROM instance_heartbeats WHERE instance_id = ?1", [&session_id]);
+    let _ = conn.execute(
+        "DELETE FROM instance_heartbeats WHERE instance_id = ?1",
+        [&session_id],
+    );
 
     Ok(())
 }
@@ -328,11 +360,8 @@ pub fn get_attention_counts() -> Result<AttentionCounts, String> {
         let (project_path, group_path, status, claude_session_id) =
             row.map_err(|e| e.to_string())?;
 
-        let attention = claude_logs::compute_attention(
-            &project_path,
-            claude_session_id.as_deref(),
-            &status,
-        );
+        let attention =
+            claude_logs::compute_attention(&project_path, claude_session_id.as_deref(), &status);
 
         let refined_status = match attention {
             AttentionStatus::NeedsInput => "waiting",
@@ -368,7 +397,7 @@ pub fn get_attention_sessions() -> Result<Vec<Session>, String> {
         .map_err(|e| e.to_string())?;
 
     let candidates = stmt
-        .query_map([], |row| map_session_row(row))
+        .query_map([], map_session_row)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -382,7 +411,10 @@ pub fn get_attention_sessions() -> Result<Vec<Session>, String> {
                 s.claude_session_id.as_deref(),
                 &s.status,
             );
-            matches!(attention, AttentionStatus::NeedsInput | AttentionStatus::Error)
+            matches!(
+                attention,
+                AttentionStatus::NeedsInput | AttentionStatus::Error
+            )
         })
         .collect();
 
@@ -397,14 +429,13 @@ pub fn update_session_worktree(
     worktree_branch: String,
 ) -> Result<(), String> {
     let path = db_path();
-    let conn = Connection::open(&path)
-        .map_err(|e| format!("Failed to open agent-deck DB: {}", e))?;
+    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     conn.execute(
         "UPDATE instances SET worktree_path = ?1, worktree_repo = ?2, worktree_branch = ?3, project_path = ?1 WHERE id = ?4",
         rusqlite::params![worktree_path, worktree_repo, worktree_branch, session_id],
     )
-    .map_err(|e| format!("Failed to update session worktree: {}", e))?;
+    .map_err(|e| format!("Failed to update session worktree: {e}"))?;
 
     Ok(())
 }
@@ -412,8 +443,7 @@ pub fn update_session_worktree(
 #[tauri::command]
 pub fn create_group(name: String, default_path: String) -> Result<(), String> {
     let path = db_path();
-    let conn = Connection::open(&path)
-        .map_err(|e| format!("Failed to open agent-deck DB: {}", e))?;
+    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     // Use name as path (agent-deck convention)
     let group_path = name.clone();
@@ -431,7 +461,7 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
         "INSERT INTO groups (path, name, expanded, sort_order, default_path) VALUES (?1, ?2, 1, ?3, ?4)",
         rusqlite::params![group_path, name, max_sort + 1, default_path],
     )
-    .map_err(|e| format!("Failed to create group: {}", e))?;
+    .map_err(|e| format!("Failed to create group: {e}"))?;
 
     Ok(())
 }
@@ -439,8 +469,7 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn move_session(session_id: String, new_group_path: String) -> Result<(), String> {
     let path = db_path();
-    let conn = Connection::open(&path)
-        .map_err(|e| format!("Failed to open agent-deck DB: {}", e))?;
+    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     // Get max sort_order in target group to append at end
     let max_sort: i32 = conn
@@ -455,7 +484,7 @@ pub fn move_session(session_id: String, new_group_path: String) -> Result<(), St
         "UPDATE instances SET group_path = ?1, sort_order = ?2 WHERE id = ?3",
         rusqlite::params![new_group_path, max_sort + 1, session_id],
     )
-    .map_err(|e| format!("Failed to move session: {}", e))?;
+    .map_err(|e| format!("Failed to move session: {e}"))?;
 
     Ok(())
 }
@@ -463,14 +492,13 @@ pub fn move_session(session_id: String, new_group_path: String) -> Result<(), St
 #[tauri::command]
 pub fn rename_session(session_id: String, new_title: String) -> Result<(), String> {
     let path = db_path();
-    let conn = Connection::open(&path)
-        .map_err(|e| format!("Failed to open agent-deck DB: {}", e))?;
+    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     conn.execute(
         "UPDATE instances SET title = ?1 WHERE id = ?2",
         rusqlite::params![new_title, session_id],
     )
-    .map_err(|e| format!("Failed to rename session: {}", e))?;
+    .map_err(|e| format!("Failed to rename session: {e}"))?;
 
     Ok(())
 }
@@ -502,21 +530,21 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
 fn get_tmux_session_name(session_id: &str) -> Result<String, String> {
     let path = db_path();
     let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| format!("Failed to open agent-deck DB: {}", e))?;
+        .map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     conn.query_row(
         "SELECT tmux_session FROM instances WHERE id = ?1",
         [session_id],
         |row| row.get::<_, String>(0),
     )
-    .map_err(|e| format!("Failed to get tmux session name for {}: {}", session_id, e))
+    .map_err(|e| format!("Failed to get tmux session name for {session_id}: {e}"))
 }
 
 /// Send a prompt to a session's tmux session. Waits for the tmux session
 /// to exist before sending.
 fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> {
     let tmux_name = get_tmux_session_name(session_id)?;
-    log::info!("Sending prompt to tmux session '{}' for session {}", tmux_name, session_id);
+    log::info!("Sending prompt to tmux session '{tmux_name}' for session {session_id}");
 
     // Wait for the tmux session to exist (agent-deck may take a moment to create it)
     let max_attempts = 30;
@@ -527,7 +555,10 @@ fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> 
             .output();
         match check {
             Ok(output) if output.status.success() => {
-                log::debug!("tmux session '{}' found after {} attempts", tmux_name, attempt + 1);
+                log::debug!(
+                    "tmux session '{tmux_name}' found after {} attempts",
+                    attempt + 1
+                );
                 break;
             }
             _ => {
@@ -544,18 +575,18 @@ fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> 
     }
 
     // Send the prompt text followed by Enter
-    log::info!("tmux send-keys -t {} -- <prompt> Enter", tmux_name);
+    log::info!("tmux send-keys -t {tmux_name} -- <prompt> Enter");
     let output = std::process::Command::new("tmux")
         .args(["send-keys", "-t", &tmux_name, "--", prompt, "Enter"])
         .output()
-        .map_err(|e| format!("Failed to send prompt via tmux: {}", e))?;
+        .map_err(|e| format!("Failed to send prompt via tmux: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("tmux send-keys failed: {}", stderr.trim()));
     }
 
-    log::debug!("Prompt sent successfully to tmux session '{}'", tmux_name);
+    log::debug!("Prompt sent successfully to tmux session '{tmux_name}'");
     Ok(())
 }
 
@@ -568,11 +599,15 @@ fn find_worktree_in_bare(bare_path: &str) -> Result<String, String> {
         .current_dir(&cwd)
         .args(["worktree", "list", "--porcelain"])
         .output()
-        .map_err(|e| format!("Failed to list worktrees: {}", e))?;
+        .map_err(|e| format!("Failed to list worktrees: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!("git worktree list failed (exit {}): {}", output.status, stderr.trim());
+        log::error!(
+            "git worktree list failed (exit {}): {}",
+            output.status,
+            stderr.trim()
+        );
         return Err(format!(
             "Failed to list worktrees in bare repo: {}",
             stderr.trim()
@@ -598,8 +633,5 @@ fn find_worktree_in_bare(bare_path: &str) -> Result<String, String> {
         }
     }
 
-    Err(format!(
-        "No worktrees found in bare repo at {}",
-        bare_path
-    ))
+    Err(format!("No worktrees found in bare repo at {bare_path}"))
 }
