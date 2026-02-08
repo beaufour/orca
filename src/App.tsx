@@ -90,14 +90,23 @@ function App() {
 
   const filteredSessions = useMemo(() => {
     if (!sessions) return undefined;
-    if (!searchQuery) return sessions;
-    const q = searchQuery.toLowerCase();
-    return sessions.filter(
-      (s) =>
-        s.title.toLowerCase().includes(q) ||
-        s.project_path.toLowerCase().includes(q) ||
-        (s.worktree_branch && s.worktree_branch.toLowerCase().includes(q))
-    );
+    let list = sessions;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.title.toLowerCase().includes(q) ||
+          s.project_path.toLowerCase().includes(q) ||
+          (s.worktree_branch && s.worktree_branch.toLowerCase().includes(q))
+      );
+    }
+    // Main session (no worktree, or on main/master branch) always first
+    return [...list].sort((a, b) => {
+      const aMain = !a.worktree_branch || a.worktree_branch === "main" || a.worktree_branch === "master";
+      const bMain = !b.worktree_branch || b.worktree_branch === "main" || b.worktree_branch === "master";
+      if (aMain !== bMain) return aMain ? -1 : 1;
+      return 0;
+    });
   }, [sessions, searchQuery]);
 
   const handleMouseDown = useCallback(
