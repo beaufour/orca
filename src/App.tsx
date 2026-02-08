@@ -113,6 +113,10 @@ function App() {
   const filteredSessions = useMemo(() => {
     if (!sessions) return undefined;
     let list = sessions;
+    // Hide dismissed sessions from Needs Action view
+    if (needsActionFilter) {
+      list = list.filter((s) => !dismissedIds.has(s.id));
+    }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
@@ -129,7 +133,7 @@ function App() {
       if (aMain !== bMain) return aMain ? -1 : 1;
       return 0;
     });
-  }, [sessions, searchQuery]);
+  }, [sessions, searchQuery, needsActionFilter, dismissedIds]);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {

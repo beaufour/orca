@@ -281,6 +281,41 @@ fn extract_last_tool(lines: &[serde_json::Value]) -> Option<String> {
     None
 }
 
+/// Compute just the attention status for a session (lightweight — skips summary/tool extraction).
+pub fn compute_attention(
+    project_path: &str,
+    claude_session_id: Option<&str>,
+    agentdeck_status: &str,
+) -> AttentionStatus {
+    let claude_session_id = match claude_session_id {
+        Some(id) => id,
+        None => {
+            return match agentdeck_status {
+                "running" => AttentionStatus::Running,
+                "waiting" => AttentionStatus::Idle,
+                "error" => AttentionStatus::Error,
+                _ => AttentionStatus::Unknown,
+            };
+        }
+    };
+
+    let jsonl_path = match find_jsonl_path(project_path, claude_session_id) {
+        Some(p) => p,
+        None => {
+            return match agentdeck_status {
+                "running" => AttentionStatus::Running,
+                "waiting" => AttentionStatus::Idle,
+                "error" => AttentionStatus::Error,
+                "idle" => AttentionStatus::Idle,
+                _ => AttentionStatus::Unknown,
+            };
+        }
+    };
+
+    let lines = read_tail_lines(&jsonl_path, 256 * 1024);
+    extract_attention(&lines, agentdeck_status)
+}
+
 #[tauri::command]
 pub fn get_session_summary(
     project_path: String,

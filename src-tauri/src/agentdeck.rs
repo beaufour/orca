@@ -1,6 +1,7 @@
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 
+use crate::claude_logs::{self, AttentionStatus};
 use crate::models::{AttentionCounts, Group, Session};
 
 fn db_path() -> PathBuf {
@@ -297,11 +298,11 @@ pub fn get_attention_counts() -> Result<AttentionCounts, String> {
     let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
 
-    // Get per-group worst status (waiting > error) and total count
+    // Fetch candidate sessions and refine with JSONL analysis
     let mut stmt = conn
         .prepare(
-            "SELECT group_path, status, COUNT(*) FROM instances \
-             WHERE status IN ('waiting', 'error') GROUP BY group_path, status",
+            "SELECT id, project_path, group_path, status, tool_data FROM instances \
+             WHERE status IN ('waiting', 'error')",
         )
         .map_err(|e| e.to_string())?;
 
@@ -310,21 +311,42 @@ pub fn get_attention_counts() -> Result<AttentionCounts, String> {
 
     let rows = stmt
         .query_map([], |row| {
+            let tool_data_str: String = row.get(4)?;
+            let claude_session_id = serde_json::from_str::<serde_json::Value>(&tool_data_str)
+                .ok()
+                .and_then(|v| v.get("claude_session_id")?.as_str().map(String::from));
             Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, u32>(2)?,
+                row.get::<_, String>(1)?, // project_path
+                row.get::<_, String>(2)?, // group_path
+                row.get::<_, String>(3)?, // status
+                claude_session_id,
             ))
         })
         .map_err(|e| e.to_string())?;
 
     for row in rows {
-        let (group_path, status, count) = row.map_err(|e| e.to_string())?;
-        total += count;
-        // "waiting" takes priority over "error"
+        let (project_path, group_path, status, claude_session_id) =
+            row.map_err(|e| e.to_string())?;
+
+        let attention = claude_logs::compute_attention(
+            &project_path,
+            claude_session_id.as_deref(),
+            &status,
+        );
+
+        let refined_status = match attention {
+            AttentionStatus::NeedsInput => "waiting",
+            AttentionStatus::Error => "error",
+            _ => continue, // skip non-actionable sessions
+        };
+
+        total += 1;
+        // "waiting" (needs_input) takes priority over "error"
         let current = groups.get(&group_path);
-        if current.is_none() || (current == Some(&"error".to_string()) && status == "waiting") {
-            groups.insert(group_path, status);
+        if current.is_none()
+            || (current == Some(&"error".to_string()) && refined_status == "waiting")
+        {
+            groups.insert(group_path, refined_status.to_string());
         }
     }
 
@@ -345,11 +367,24 @@ pub fn get_attention_sessions() -> Result<Vec<Session>, String> {
         )
         .map_err(|e| e.to_string())?;
 
-    let result = stmt
+    let candidates = stmt
         .query_map([], |row| map_session_row(row))
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+
+    // Refine using JSONL analysis — only keep sessions that truly need attention
+    let result = candidates
+        .into_iter()
+        .filter(|s| {
+            let attention = claude_logs::compute_attention(
+                &s.project_path,
+                s.claude_session_id.as_deref(),
+                &s.status,
+            );
+            matches!(attention, AttentionStatus::NeedsInput | AttentionStatus::Error)
+        })
+        .collect();
 
     Ok(result)
 }
