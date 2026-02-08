@@ -184,6 +184,13 @@ pub fn close_pty(state: State<'_, PtyManager>, session_id: String) -> Result<(),
     if let Some(mut session) = sessions.remove(&session_id) {
         session.shutdown.store(true, Ordering::Relaxed);
         let _ = session.child.kill();
+        // Wait for child to fully exit before the session is dropped.
+        // portable-pty's UnixMasterWriter::Drop writes \n + EOF to the PTY
+        // master. If the child (tmux attach) is still alive, it forwards
+        // that \n to the tmux pane — causing the extra-newline-on-every-open
+        // bug. Waiting ensures the slave fd is closed first, so the \n goes
+        // into a dead buffer that nobody reads.
+        let _ = session.child.wait();
     }
 
     Ok(())
