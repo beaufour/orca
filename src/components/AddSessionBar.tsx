@@ -34,6 +34,7 @@ export function AddSessionBar({
   const [showForm, setShowForm] = useState(false);
   const [branchName, setBranchName] = useState("");
   const [title, setTitle] = useState("");
+  const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<SessionMode>("worktree");
   const [tool, setTool] = useState<SessionTool>("claude");
 
@@ -54,6 +55,7 @@ export function AddSessionBar({
       tool: string;
       worktreeBranch: string | null;
       newBranch: boolean;
+      prompt: string | null;
     }) =>
       invoke<string>("create_session", {
         projectPath: repoPath,
@@ -63,6 +65,7 @@ export function AddSessionBar({
         worktreeBranch: params.worktreeBranch,
         newBranch: params.newBranch,
         start: true,
+        prompt: params.prompt,
       }),
     onSuccess: (sessionId) => {
       invalidate();
@@ -74,27 +77,37 @@ export function AddSessionBar({
   const resetForm = () => {
     setBranchName("");
     setTitle("");
+    setPrompt("");
     setMode("worktree");
     setTool("claude");
     setShowForm(false);
   };
 
+  const deriveTitle = (fallback: string) => {
+    if (title.trim()) return title.trim();
+    if (prompt.trim()) return prompt.trim().slice(0, 80);
+    return fallback;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const promptValue = prompt.trim() || null;
     if (mode === "worktree") {
       if (!branchName.trim()) return;
       createMutation.mutate({
-        title: title.trim() || branchName.trim(),
+        title: deriveTitle(branchName.trim()),
         tool,
         worktreeBranch: branchName.trim(),
         newBranch: true,
+        prompt: promptValue,
       });
     } else {
       createMutation.mutate({
-        title: title.trim() || "session",
+        title: deriveTitle("session"),
         tool,
         worktreeBranch: null,
         newBranch: false,
+        prompt: promptValue,
       });
     }
   };
@@ -105,6 +118,7 @@ export function AddSessionBar({
       tool: "claude",
       worktreeBranch: null,
       newBranch: false,
+      prompt: null,
     });
   };
 
@@ -187,20 +201,29 @@ export function AddSessionBar({
               type="text"
               placeholder={
                 mode === "worktree"
-                  ? "title (defaults to branch name)"
-                  : "session title"
+                  ? "title (defaults to branch name or prompt)"
+                  : "title (defaults to prompt)"
               }
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               autoFocus={mode === "plain"}
             />
+            {tool === "claude" && (
+              <textarea
+                className="wt-input wt-prompt-input"
+                placeholder="prompt (sent to Claude at start)"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                rows={2}
+              />
+            )}
             <button
               className="wt-btn wt-btn-confirm"
               type="submit"
               disabled={
                 createMutation.isPending ||
                 (mode === "worktree" && !branchName.trim()) ||
-                (mode === "plain" && !title.trim())
+                (mode === "plain" && !title.trim() && !prompt.trim())
               }
             >
               Create

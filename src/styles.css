@@ -605,6 +605,7 @@ body {
 
 .add-session-fields {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -694,6 +695,12 @@ body {
 
 .wt-input:focus {
   border-color: var(--accent);
+}
+
+.wt-prompt-input {
+  resize: vertical;
+  min-height: 36px;
+  width: 100%;
 }
 
 .wt-error {
