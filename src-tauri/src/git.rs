@@ -84,13 +84,18 @@ pub fn list_worktrees(repo_path: String) -> Result<Vec<Worktree>, String> {
 pub fn add_worktree(repo_path: String, branch: String) -> Result<String, String> {
     let effective_repo = find_repo_root(&repo_path)?;
 
-    // Determine the parent directory for worktrees
-    let repo_root = Path::new(&effective_repo);
-    let parent = repo_root
-        .parent()
-        .ok_or("Cannot determine parent directory")?;
+    // For bare worktree repos, place new worktrees as siblings of .bare/.
+    // For regular repos, place as siblings of the repo directory.
+    let worktree_dir = if let Some(bare_root) = find_bare_root(&effective_repo) {
+        bare_root
+    } else {
+        Path::new(&effective_repo)
+            .parent()
+            .ok_or("Cannot determine parent directory")?
+            .to_path_buf()
+    };
 
-    let worktree_path = parent.join(&branch);
+    let worktree_path = worktree_dir.join(&branch);
     let worktree_str = worktree_path.to_string_lossy().to_string();
 
     // Create a new branch and worktree
@@ -200,7 +205,8 @@ pub fn get_branch_diff(worktree_path: String, branch: String) -> Result<String, 
 }
 
 fn find_repo_root(path: &str) -> Result<String, String> {
-    // Use git rev-parse to find the toplevel or bare repo
+    // Validate this is a git repository by checking rev-parse succeeds.
+    // Returns the input path since git commands work from any worktree.
     let output = Command::new("git")
         .current_dir(path)
         .args(["rev-parse", "--git-common-dir"])
@@ -211,25 +217,18 @@ fn find_repo_root(path: &str) -> Result<String, String> {
         return Err(format!("Not a git repository: {}", path));
     }
 
-    let git_common = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(path.to_string())
+}
 
-    // If it's a bare repo (.bare directory), the repo root is that directory
-    let common_path = if Path::new(&git_common).is_absolute() {
-        git_common
-    } else {
-        Path::new(path)
-            .join(&git_common)
-            .to_string_lossy()
-            .to_string()
-    };
-
-    // For worktree operations, we need a non-bare worktree path
-    // Use the common dir's parent if it ends in .bare
-    if common_path.ends_with(".bare") || common_path.ends_with(".bare/") {
-        // For bare repos, we need an actual worktree to run commands from
-        // Just use the provided path since it should be a worktree
-        Ok(path.to_string())
-    } else {
-        Ok(path.to_string())
+/// Walk up from `path` looking for a directory containing `.bare/`.
+/// Returns the bare repo root (the directory with `.bare/` inside it),
+/// or None if this is not a bare worktree setup.
+fn find_bare_root(path: &str) -> Option<std::path::PathBuf> {
+    let mut current = Path::new(path);
+    loop {
+        if current.join(".bare").is_dir() {
+            return Some(current.to_path_buf());
+        }
+        current = current.parent()?;
     }
 }
