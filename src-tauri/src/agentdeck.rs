@@ -531,16 +531,31 @@ fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> 
     // Give Claude Code a moment to finish initializing after first render
     std::thread::sleep(std::time::Duration::from_secs(2));
 
-    // Send the prompt text followed by Enter
-    log::info!("tmux send-keys -t {} -- <prompt> Enter", tmux_name);
-    let output = std::process::Command::new("tmux")
-        .args(["send-keys", "-t", &tmux_name, "--", prompt, "Enter"])
+    // Send the prompt text first (literal mode to avoid key name interpretation)
+    log::info!("tmux send-keys -l -t {} -- <prompt>", tmux_name);
+    let text_output = std::process::Command::new("tmux")
+        .args(["send-keys", "-l", "-t", &tmux_name, "--", prompt])
         .output()
-        .map_err(|e| format!("Failed to send prompt via tmux: {}", e))?;
+        .map_err(|e| format!("Failed to send prompt text via tmux: {}", e))?;
+
+    if !text_output.status.success() {
+        let stderr = String::from_utf8_lossy(&text_output.stderr);
+        return Err(format!("tmux send-keys (text) failed: {}", stderr.trim()));
+    }
+
+    // Brief pause so the TUI processes the text before we submit
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    // Send Enter separately to submit the prompt
+    log::info!("tmux send-keys -t {} Enter", tmux_name);
+    let output = std::process::Command::new("tmux")
+        .args(["send-keys", "-t", &tmux_name, "Enter"])
+        .output()
+        .map_err(|e| format!("Failed to send Enter via tmux: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("tmux send-keys failed: {}", stderr.trim()));
+        return Err(format!("tmux send-keys (Enter) failed: {}", stderr.trim()));
     }
 
     log::debug!("Prompt sent successfully to tmux session '{}'", tmux_name);
