@@ -17,13 +17,24 @@ const MAX_SIDEBAR_WIDTH = 500;
 const DEFAULT_SIDEBAR_WIDTH = 260;
 const COLLAPSED_SIDEBAR_WIDTH = 48;
 
+const SELECTED_VIEW_KEY = "orca-selected-view";
+const VIEW_NEEDS_ACTION = "__needs_action__";
+const VIEW_ALL = "__all__";
+
+const initialSavedView = localStorage.getItem(SELECTED_VIEW_KEY);
+
 function App() {
+  const savedView = useRef(initialSavedView);
+  const initialRestoreDone = useRef(false);
+
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
-  const [needsActionFilter, setNeedsActionFilter] = useState(false);
+  const [needsActionFilter, setNeedsActionFilter] = useState(
+    initialSavedView === VIEW_NEEDS_ACTION,
+  );
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchVisible, setSearchVisible] = useState(false);
@@ -393,6 +404,32 @@ function App() {
       setFocusedIndex(Math.max(filteredSessions.length - 1, -1));
     }
   }, [filteredSessions, focusedIndex]);
+
+  // Restore selected group from localStorage once groups are loaded
+  useEffect(() => {
+    if (!groups) return;
+    const saved = savedView.current;
+    if (saved && saved !== VIEW_NEEDS_ACTION && saved !== VIEW_ALL) {
+      const group = groups.find((g) => g.path === saved);
+      if (group) {
+        setSelectedGroup(group);
+      }
+    }
+    initialRestoreDone.current = true;
+    savedView.current = null;
+  }, [groups]);
+
+  // Persist selected view to localStorage
+  useEffect(() => {
+    if (!initialRestoreDone.current) return;
+    if (needsActionFilter) {
+      localStorage.setItem(SELECTED_VIEW_KEY, VIEW_NEEDS_ACTION);
+    } else if (selectedGroup) {
+      localStorage.setItem(SELECTED_VIEW_KEY, selectedGroup.path);
+    } else {
+      localStorage.setItem(SELECTED_VIEW_KEY, VIEW_ALL);
+    }
+  }, [selectedGroup, needsActionFilter]);
 
   return (
     <div className={`app-layout ${isResizing ? "is-resizing" : ""}`}>
