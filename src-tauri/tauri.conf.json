@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "orca",
   "version": "0.1.0",
-  "identifier": "dev.beaufour.orca",
+  "identifier": "dk.beaufour.orca",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
