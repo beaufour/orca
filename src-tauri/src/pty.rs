@@ -63,9 +63,15 @@ pub fn attach_pty(
         .map_err(|e| format!("Failed to open PTY: {e}"))?;
 
     // Set window-size to "latest" so our attach doesn't shrink the session
-    // when another client (e.g. a regular terminal) is also attached
+    // when another client (e.g. a regular terminal) is also attached.
+    // Disable mouse mode so xterm.js handles text selection natively
+    // (with mouse on, tmux intercepts selections into its copy buffer
+    // instead of the system clipboard, and shows a yellow copy-mode indicator).
     let _ = std::process::Command::new("tmux")
         .args(["set-option", "-t", &tmux_session, "window-size", "latest"])
+        .output();
+    let _ = std::process::Command::new("tmux")
+        .args(["set-option", "-t", &tmux_session, "mouse", "off"])
         .output();
 
     let mut cmd = CommandBuilder::new("tmux");

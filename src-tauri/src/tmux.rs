@@ -1,4 +1,75 @@
 use std::process::Command;
+use tauri::command;
+
+/// Paste text into a tmux pane using bracketed paste mode.
+///
+/// Loads text into a temporary tmux buffer, then pastes it with `-p`
+/// (bracketed paste). The application in the pane receives the text
+/// wrapped in bracketed paste markers and inserts it literally.
+/// Used for Shift+Enter (paste a newline without submitting).
+#[command]
+pub fn paste_to_tmux_pane(tmux_session: String, text: String) -> Result<(), String> {
+    let status = Command::new("tmux")
+        .args(["set-buffer", "-b", "_orca", "--", &text])
+        .status()
+        .map_err(|e| format!("Failed to set tmux buffer: {e}"))?;
+
+    if !status.success() {
+        return Err("tmux set-buffer failed".to_string());
+    }
+
+    let output = Command::new("tmux")
+        .args([
+            "paste-buffer",
+            "-t",
+            &tmux_session,
+            "-b",
+            "_orca",
+            "-p",
+            "-d",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to paste tmux buffer: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tmux paste-buffer failed: {}", stderr.trim()));
+    }
+
+    Ok(())
+}
+
+/// Scroll a tmux pane up or down by entering copy mode.
+///
+/// Uses `-e` flag so copy mode auto-exits when scrolled back to the bottom.
+#[command]
+pub fn scroll_tmux_pane(tmux_session: String, direction: String, lines: u32) -> Result<(), String> {
+    if direction == "up" {
+        // Enter copy mode with auto-exit at bottom (-e)
+        let _ = Command::new("tmux")
+            .args(["copy-mode", "-t", &tmux_session, "-e"])
+            .output();
+    }
+
+    let scroll_cmd = if direction == "up" {
+        "scroll-up"
+    } else {
+        "scroll-down"
+    };
+    let _ = Command::new("tmux")
+        .args([
+            "send-keys",
+            "-t",
+            &tmux_session,
+            "-X",
+            "-N",
+            &lines.to_string(),
+            scroll_cmd,
+        ])
+        .output();
+
+    Ok(())
+}
 
 /// Check if a tmux session is showing a Claude Code permission prompt
 /// ("Do you want to proceed?").  Captures the last 20 lines of the pane

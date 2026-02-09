@@ -42,6 +42,8 @@ pub fn run() {
             git::get_branch_diff,
             git::check_worktree_status,
             tmux::list_tmux_sessions,
+            tmux::paste_to_tmux_pane,
+            tmux::scroll_tmux_pane,
             pty::attach_pty,
             pty::write_pty,
             pty::resize_pty,

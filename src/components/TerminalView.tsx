@@ -153,6 +153,48 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       }
     });
 
+    // UTF-8 safe base64 encoding (btoa only handles Latin-1 / 0-255)
+    const toBase64 = (str: string): string => {
+      const bytes = new TextEncoder().encode(str);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    };
+
+    // Write raw bytes to PTY (already base64-encoded)
+    const writePty = (b64: string) => {
+      invoke("write_pty", { sessionId, data: b64 }).catch(() => {});
+    };
+
+    // Intercept key events that xterm.js doesn't handle correctly.
+    const tmuxSession = session.tmux_session!;
+    terminal.attachCustomKeyEventHandler((event) => {
+      // Shift+Enter: paste a newline via tmux bracketed paste.
+      // Can't use CSI u (\e[13;2u) because Claude Code negotiates the kitty
+      // keyboard protocol at startup — before we attach — and since xterm.js
+      // can't respond to the capability query, Claude Code falls back to basic
+      // mode and ignores CSI u. Bracketed paste works unconditionally.
+      // Must block BOTH keydown and keypress to prevent xterm.js from also
+      // sending \r (Enter) on the keypress event.
+      if (
+        event.key === "Enter" &&
+        event.shiftKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
+        if (event.type === "keydown") {
+          invoke("paste_to_tmux_pane", { tmuxSession, text: "\n" }).catch(() => {});
+        }
+        return false;
+      }
+
+      if (event.type !== "keydown") return true;
+      return true;
+    });
+
     // Send keystrokes to PTY, filtering out terminal query responses
     // (Device Attributes responses like \e[>0;276;0c that tmux queries
     // but would leak to the shell as typed input)
@@ -166,8 +208,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       }
       const filtered = data.replace(DA_RESPONSE, "");
       if (!filtered) return;
-      const encoded = btoa(filtered);
-      invoke("write_pty", { sessionId, data: encoded }).catch(() => {});
+      writePty(toBase64(filtered));
     });
 
     // Handle resize
@@ -175,12 +216,27 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       invoke("resize_pty", { sessionId, cols, rows }).catch(() => {});
     });
 
-    // Prevent scroll events from bubbling to parent (session cards area)
+    // Scroll via tmux copy-mode since mouse mode is off (for native text selection).
+    // Use capture phase so we intercept before xterm.js can stopPropagation().
+    // Throttle to avoid overwhelming tmux with rapid scroll events.
     const container = containerRef.current;
+    let scrollThrottled = false;
     const handleWheel = (e: WheelEvent) => {
       e.stopPropagation();
+      e.preventDefault();
+      if (scrollThrottled) return;
+      scrollThrottled = true;
+      setTimeout(() => (scrollThrottled = false), 16);
+
+      const direction = e.deltaY < 0 ? "up" : "down";
+      // Convert pixel delta to lines (deltaMode 0 = pixels, 1 = lines)
+      const lines = Math.max(
+        3,
+        e.deltaMode === 1 ? Math.round(Math.abs(e.deltaY)) : Math.round(Math.abs(e.deltaY) / 8),
+      );
+      invoke("scroll_tmux_pane", { tmuxSession, direction, lines }).catch(() => {});
     };
-    container.addEventListener("wheel", handleWheel, { passive: true });
+    container.addEventListener("wheel", handleWheel, { passive: false, capture: true });
 
     // Fit on container resize (handles window resize + sidebar resize)
     // Debounce to prevent rapid resize events from overwhelming the PTY
@@ -196,7 +252,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       if (readyTimer) clearTimeout(readyTimer);
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
-      container.removeEventListener("wheel", handleWheel);
+      container.removeEventListener("wheel", handleWheel, { capture: true });
       onDataDisposable.dispose();
       onResizeDisposable.dispose();
       invoke("close_pty", { sessionId }).catch(() => {});
