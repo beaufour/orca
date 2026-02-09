@@ -17,6 +17,7 @@ const SHORTCUTS = [
   { key: "0", desc: "Needs Action" },
   { key: "1", desc: "All sessions" },
   { key: "2-9", desc: "Switch to group" },
+  { key: "L", desc: "View app log" },
   { key: "Ctrl+Q", desc: "Close terminal" },
   { key: "?", desc: "Show this help" },
 ];

@@ -6,6 +6,7 @@ import { SessionList } from "./components/SessionList";
 import { AddSessionBar, type AddSessionBarHandle } from "./components/AddSessionBar";
 import { TerminalView } from "./components/TerminalView";
 import { ShortcutHelp } from "./components/ShortcutHelp";
+import { LogViewer } from "./components/LogViewer";
 import { RenameModal } from "./components/RenameModal";
 import { MoveSessionModal } from "./components/MoveSessionModal";
 import { CreateGroupModal } from "./components/CreateGroupModal";
@@ -31,6 +32,7 @@ function App() {
   const [renamingSession, setRenamingSession] = useState<Session | null>(null);
   const [movingSession, setMovingSession] = useState<Session | null>(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showLogViewer, setShowLogViewer] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const handleDismiss = useCallback((sessionId: string) => {
     setDismissedIds((prev) => {
@@ -187,6 +189,7 @@ function App() {
     focusedIndex,
     searchVisible,
     showShortcutHelp,
+    showLogViewer,
     confirmingRemoveId,
     renamingSession,
     movingSession,
@@ -201,6 +204,7 @@ function App() {
     focusedIndex,
     searchVisible,
     showShortcutHelp,
+    showLogViewer,
     confirmingRemoveId,
     renamingSession,
     movingSession,
@@ -218,6 +222,7 @@ function App() {
         focusedIndex,
         searchVisible,
         showShortcutHelp,
+        showLogViewer,
         confirmingRemoveId,
         renamingSession,
         movingSession,
@@ -248,6 +253,7 @@ function App() {
       // Modal guard: only Escape works when a modal is open
       const anyModalOpen =
         showShortcutHelp ||
+        showLogViewer ||
         confirmingRemoveId !== null ||
         renamingSession !== null ||
         movingSession !== null ||
@@ -281,6 +287,8 @@ function App() {
           e.preventDefault();
           if (showShortcutHelp) {
             setShowShortcutHelp(false);
+          } else if (showLogViewer) {
+            setShowLogViewer(false);
           } else if (showCreateGroup) {
             setShowCreateGroup(false);
           } else if (movingSession !== null) {
@@ -332,6 +340,10 @@ function App() {
         case "g":
           e.preventDefault();
           setShowCreateGroup(true);
+          break;
+        case "L":
+          e.preventDefault();
+          setShowLogViewer(true);
           break;
         case "?":
           e.preventDefault();
@@ -474,6 +486,7 @@ function App() {
         />
       )}
       {showCreateGroup && <CreateGroupModal onClose={() => setShowCreateGroup(false)} />}
+      {showLogViewer && <LogViewer onClose={() => setShowLogViewer(false)} />}
     </div>
   );
 }
