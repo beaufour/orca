@@ -121,7 +121,12 @@ export function SessionCard({
     staleTime: 5_000,
   });
 
+  // For merge, only dirty files matter (unmerged/unpushed are expected — that's why you're merging)
+  const mergeWarnings = worktreeStatus?.has_dirty_files
+    ? worktreeStatus.warnings.filter((w) => w.includes("uncommitted"))
+    : [];
   const hasWarnings = !!worktreeStatus?.warnings.length;
+  const hasMergeWarnings = mergeWarnings.length > 0;
 
   const invalidateWorktrees = () => {
     queryClient.invalidateQueries({ queryKey: ["worktrees", repoPath] });
@@ -435,9 +440,9 @@ export function SessionCard({
                   <span className="spinner" />
                 </span>
               )}
-              {worktreeStatus && hasWarnings && (
+              {hasMergeWarnings && (
                 <div className="remove-warnings">
-                  {worktreeStatus.warnings.map((w, i) => (
+                  {mergeWarnings.map((w, i) => (
                     <span key={i} className="remove-warning-item">
                       {w}
                     </span>
@@ -454,7 +459,7 @@ export function SessionCard({
                 }}
                 disabled={isPending || statusLoading}
               >
-                {hasWarnings ? "Merge Anyway" : "Confirm"}
+                {hasMergeWarnings ? "Merge Anyway" : "Confirm"}
               </button>
               <button
                 className="wt-btn wt-btn-cancel"
