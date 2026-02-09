@@ -168,11 +168,16 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       invoke("write_pty", { sessionId, data: b64 }).catch(() => {});
     };
 
-    // Intercept key events that xterm.js doesn't handle correctly
+    // Intercept key events that xterm.js doesn't handle correctly.
+    // Shift+Enter must be sent via tmux send-keys -H to bypass tmux's
+    // terminal input parser, which doesn't recognize CSI u sequences
+    // from an xterm-256color terminal.
+    const tmuxSession = session.tmux_session!;
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
 
       // Shift+Enter: send CSI u sequence for multi-line input in Claude Code
+      // \x1b[13;2u = hex 1b 5b 31 33 3b 32 75
       if (
         event.key === "Enter" &&
         event.shiftKey &&
@@ -180,7 +185,10 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         !event.altKey &&
         !event.metaKey
       ) {
-        writePty(btoa("\x1b[13;2u"));
+        invoke("send_tmux_keys", {
+          tmuxSession,
+          hexBytes: ["1b", "5b", "31", "33", "3b", "32", "75"],
+        }).catch(() => {});
         return false;
       }
 

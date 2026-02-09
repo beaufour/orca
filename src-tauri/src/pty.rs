@@ -64,10 +64,16 @@ pub fn attach_pty(
 
     // Set window-size to "latest" so our attach doesn't shrink the session
     // when another client (e.g. a regular terminal) is also attached.
+    // Disable mouse mode so xterm.js handles text selection natively
+    // (with mouse on, tmux intercepts selections into its copy buffer
+    // instead of the system clipboard, and shows a yellow copy-mode indicator).
     // Enable extended-keys so tmux forwards CSI u sequences (e.g. Shift+Enter)
     // to applications that request them (like Claude Code).
     let _ = std::process::Command::new("tmux")
         .args(["set-option", "-t", &tmux_session, "window-size", "latest"])
+        .output();
+    let _ = std::process::Command::new("tmux")
+        .args(["set-option", "-t", &tmux_session, "mouse", "off"])
         .output();
     let _ = std::process::Command::new("tmux")
         .args(["set-option", "-t", &tmux_session, "extended-keys", "on"])
