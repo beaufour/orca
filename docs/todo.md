@@ -14,6 +14,8 @@
 
 - [ ] **General and group settings** - Add a settings UI for both app-wide and per-group configuration: preferred IDE, merge strategy (merge to local main/master vs raise PR), whether to create worktrees by default when adding sessions.
 
+- [ ] Extend README.md with better description, assumed workflow, and screenshots.
+
 - [ ] **Show associated PR/issue** - Display linked GitHub PR or issue on session cards when available. Could parse from branch name conventions, git remote, or `gh` CLI.
 
 - [ ] **Larger session cards / task-list view** - Make session cards bigger to show more of the description. Consider treating the session list more like a task/to-do list with richer status and context.
