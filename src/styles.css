@@ -817,7 +817,7 @@ body {
   flex: 1;
   overflow: hidden;
   padding: 4px;
-  transition: opacity 0.1s ease-in;
+  transition: opacity 0.05s ease-in;
 }
 
 .xterm-container-loading {

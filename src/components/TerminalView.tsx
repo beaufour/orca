@@ -34,7 +34,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     let readyTimer: ReturnType<typeof setTimeout> | null = null;
     const markReady = () => {
       if (readyTimer) clearTimeout(readyTimer);
-      readyTimer = setTimeout(() => setTerminalReady(true), 100);
+      readyTimer = setTimeout(() => setTerminalReady(true), 30);
     };
 
     const terminal = new Terminal({
