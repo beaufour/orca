@@ -12,6 +12,7 @@ const SHORTCUTS = [
   { key: "R", desc: "Rename focused session" },
   { key: "m", desc: "Move session to group" },
   { key: "g", desc: "Create new group" },
+  { key: "i", desc: "New issue (in group view)" },
   { key: "n", desc: "New session" },
   { key: "/", desc: "Search sessions" },
   { key: "0", desc: "Needs Action" },
