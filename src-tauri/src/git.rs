@@ -342,8 +342,16 @@ pub fn try_merge_branch(
         .ok_or(format!("No worktree found for branch '{target}'"))?;
     let main_path = main_wt.path.clone();
 
+    // Check if main worktree has uncommitted changes
+    let (status_output, status_ok) = run_git_status(&main_path, &["status", "--porcelain"])?;
+    if status_ok && !status_output.trim().is_empty() {
+        return Err(format!(
+            "The '{target}' worktree has uncommitted changes. Please commit or stash them before merging."
+        ));
+    }
+
     // Best-effort pull on main (ignore failure — may be offline or no remote)
-    let _ = run_git(&main_path, &["pull", "--ff-only"]);
+    let _ = run_git_status(&main_path, &["pull", "--ff-only"]);
 
     // Try merge — need both stdout and stderr for conflict info
     log::info!("git merge {branch} --no-edit (cwd: {main_path})");
