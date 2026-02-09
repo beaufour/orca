@@ -25,6 +25,8 @@ npx tsc --noEmit               # TypeScript type check only
 
 ## Linting
 
+**Prerequisites:** Run `npm install` first — all JS/TS checks (ESLint, Prettier, tsc) require node_modules to be installed.
+
 A pre-commit hook runs all checks automatically. To set it up after cloning:
 
 ```bash
