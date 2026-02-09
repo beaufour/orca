@@ -271,8 +271,10 @@ pub fn check_worktree_status(
         false
     };
 
-    // 3. Check for unpushed commits
-    let has_unpushed_commits = {
+    // 3. Check for unpushed commits (skip if already merged — work is safe)
+    let has_unpushed_commits = if !has_unmerged_branch {
+        false
+    } else {
         // Try upstream tracking ref first
         let (log_output, ok) =
             run_git_status(&worktree_path, &["log", "@{upstream}..HEAD", "--oneline"])?;
