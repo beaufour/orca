@@ -405,6 +405,19 @@ export function SessionCard({
       {mutationError && <div className="session-wt-error">{String(mutationError)}</div>}
       <div className="session-card-footer">
         <div className="session-wt-actions">
+          {mergeState === "idle" && (
+            <button
+              className="wt-btn wt-btn-action"
+              onClick={(e) => {
+                e.stopPropagation();
+                invoke("open_in_terminal", { path: session.project_path });
+              }}
+              disabled={isPending}
+              title={`Open iTerm in ${session.project_path}`}
+            >
+              Term
+            </button>
+          )}
           {isWorktree && mergeState === "idle" && (
             <>
               <button
