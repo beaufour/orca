@@ -243,6 +243,34 @@ body {
   background: var(--status-error);
 }
 
+.sidebar-term-btn {
+  margin-left: auto;
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text-muted);
+  padding: 1px 4px;
+  border-radius: 3px;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    color 0.15s,
+    background 0.15s;
+}
+
+.sidebar-item:hover .sidebar-term-btn,
+.sidebar-item.active .sidebar-term-btn {
+  opacity: 1;
+}
+
+.sidebar-term-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-item.active .sidebar-term-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .attention-count {
   font-size: 10px;
   font-weight: 600;

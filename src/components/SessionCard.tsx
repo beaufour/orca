@@ -537,17 +537,30 @@ export function SessionCard({
             </div>
           )}
           {mergeState === "idle" && !confirmingRemove && (
-            <button
-              className="wt-btn wt-btn-danger"
-              onClick={(e) => {
-                e.stopPropagation();
-                setConfirmingRemove(true);
-              }}
-              disabled={isPending}
-              title={isWorktree ? "Remove worktree and session" : "Remove session"}
-            >
-              Remove
-            </button>
+            <>
+              <button
+                className="wt-btn wt-btn-danger"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmingRemove(true);
+                }}
+                disabled={isPending}
+                title={isWorktree ? "Remove worktree and session" : "Remove session"}
+              >
+                Remove
+              </button>
+              <button
+                className="wt-btn wt-btn-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  invoke("open_in_terminal", { path: session.project_path });
+                }}
+                disabled={isPending}
+                title={`Open iTerm in ${session.project_path}`}
+              >
+                Term
+              </button>
+            </>
           )}
           {confirmingRemove && mergeState === "idle" && (
             <>

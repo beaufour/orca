@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Group, Session } from "../types";
@@ -36,6 +36,11 @@ export function Sidebar({
     queryFn: () => invoke("get_groups"),
     refetchInterval: 10_000,
   });
+
+  const openTerminal = useCallback((e: React.MouseEvent, path: string) => {
+    e.stopPropagation();
+    invoke("open_in_terminal", { path });
+  }, []);
 
   const { data: attentionSessions } = useQuery<Session[]>({
     queryKey: ["attention_sessions"],
@@ -109,6 +114,13 @@ export function Sidebar({
               {groupDots[group.path] && (
                 <span className={`attention-dot attention-dot-${groupDots[group.path]}`} />
               )}
+              <span
+                className="sidebar-term-btn"
+                title={`Open iTerm in ${group.default_path}`}
+                onClick={(e) => openTerminal(e, group.default_path)}
+              >
+                &gt;_
+              </span>
             </button>
           ))}
           <button className="sidebar-item sidebar-add-group" onClick={onCreateGroup}>

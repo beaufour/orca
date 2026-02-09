@@ -6,6 +6,7 @@ mod pty;
 mod tmux;
 
 use std::io::{BufRead, BufReader};
+use std::process::Command;
 use tauri::Manager;
 
 #[tauri::command]
@@ -25,6 +26,25 @@ fn read_app_log(app: tauri::AppHandle, tail_lines: Option<usize>) -> Result<Stri
     let n = tail_lines.unwrap_or(1000);
     let start = lines.len().saturating_sub(n);
     Ok(lines[start..].join("\n"))
+}
+
+#[tauri::command]
+fn open_in_terminal(path: String) -> Result<(), String> {
+    let escaped = path.replace('\\', "\\\\").replace('"', "\\\"");
+    let script = format!(
+        r#"tell application "iTerm2"
+            activate
+            set newWindow to (create window with default profile)
+            tell current session of newWindow
+                write text "cd \"{escaped}\""
+            end tell
+        end tell"#
+    );
+    Command::new("osascript")
+        .args(["-e", &script])
+        .spawn()
+        .map_err(|e| format!("Failed to open iTerm: {e}"))?;
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -72,6 +92,7 @@ pub fn run() {
             pty::resize_pty,
             pty::close_pty,
             read_app_log,
+            open_in_terminal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
