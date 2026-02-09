@@ -5,19 +5,39 @@ mod models;
 mod pty;
 mod tmux;
 
+use std::io::{BufRead, BufReader};
+use tauri::Manager;
+
+#[tauri::command]
+fn read_app_log(app: tauri::AppHandle, tail_lines: Option<usize>) -> Result<String, String> {
+    let log_dir = app
+        .path()
+        .app_log_dir()
+        .map_err(|e| format!("Failed to get log dir: {e}"))?;
+    let log_path = log_dir.join("orca.log");
+    let file =
+        std::fs::File::open(&log_path).map_err(|e| format!("Failed to open log file: {e}"))?;
+    let reader = BufReader::new(file);
+    let lines: Vec<String> = reader
+        .lines()
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+    let n = tail_lines.unwrap_or(1000);
+    let start = lines.len().saturating_sub(n);
+    Ok(lines[start..].join("\n"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyManager::default())
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .level(log::LevelFilter::Info)
+                    .build(),
+            )?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -48,6 +68,7 @@ pub fn run() {
             pty::write_pty,
             pty::resize_pty,
             pty::close_pty,
+            read_app_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
