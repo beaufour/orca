@@ -1079,3 +1079,17 @@ body {
 .diff-line-context {
   color: var(--text-secondary);
 }
+
+/* Remove warnings */
+.remove-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.remove-warning-item {
+  font-size: 11px;
+  color: var(--status-error);
+  line-height: 1.4;
+}
