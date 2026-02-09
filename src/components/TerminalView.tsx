@@ -226,13 +226,13 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       e.preventDefault();
       if (scrollThrottled) return;
       scrollThrottled = true;
-      setTimeout(() => (scrollThrottled = false), 50);
+      setTimeout(() => (scrollThrottled = false), 16);
 
       const direction = e.deltaY < 0 ? "up" : "down";
       // Convert pixel delta to lines (deltaMode 0 = pixels, 1 = lines)
       const lines = Math.max(
-        1,
-        e.deltaMode === 1 ? Math.round(Math.abs(e.deltaY)) : Math.round(Math.abs(e.deltaY) / 20),
+        3,
+        e.deltaMode === 1 ? Math.round(Math.abs(e.deltaY)) : Math.round(Math.abs(e.deltaY) / 8),
       );
       invoke("scroll_tmux_pane", { tmuxSession, direction, lines }).catch(() => {});
     };
