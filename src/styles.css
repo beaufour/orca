@@ -1027,10 +1027,75 @@ body {
   color: var(--text-muted);
 }
 
+.diff-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.diff-file-list {
+  width: 260px;
+  min-width: 200px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 8px 0;
+}
+
+.diff-file-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: "SF Mono", "Menlo", monospace;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.diff-file-list-item:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.diff-file-list-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.diff-file-list-dir {
+  color: var(--text-muted);
+}
+
+.diff-file-list-stats {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.diff-stat-add {
+  color: var(--status-idle);
+}
+
+.diff-stat-del {
+  color: var(--status-needs-input);
+}
+
 .diff-body {
   flex: 1;
   overflow-y: auto;
   padding: 12px 0;
+  min-width: 0;
 }
 
 .diff-empty {
