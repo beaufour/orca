@@ -10,6 +10,19 @@ pub struct Worktree {
     pub is_bare: bool,
 }
 
+/// Run a git command, returning (stdout, success) without treating non-zero exit as an error.
+fn run_git_status(repo_path: &str, args: &[&str]) -> Result<(String, bool), String> {
+    log::info!("git {} (cwd: {})", args.join(" "), repo_path);
+    let output = Command::new("git")
+        .current_dir(repo_path)
+        .args(args)
+        .output()
+        .map_err(|e| format!("Failed to run git: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok((stdout, output.status.success()))
+}
+
 fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
     log::info!("git {} (cwd: {})", args.join(" "), repo_path);
     let output = Command::new("git")
@@ -211,6 +224,97 @@ pub fn get_branch_diff(worktree_path: String, branch: String) -> Result<String, 
     let default_branch = get_default_branch_inner(&worktree_path)?;
     let range = format!("{default_branch}...{branch}");
     run_git(&worktree_path, &["diff", &range])
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorktreeStatus {
+    pub has_dirty_files: bool,
+    pub has_unmerged_branch: bool,
+    pub has_unpushed_commits: bool,
+    pub warnings: Vec<String>,
+}
+
+#[tauri::command]
+pub fn check_worktree_status(
+    repo_path: String,
+    worktree_path: String,
+    branch: String,
+) -> Result<WorktreeStatus, String> {
+    let mut warnings = Vec::new();
+
+    // 1. Check for dirty files (uncommitted changes)
+    let (status_output, _) = run_git_status(&worktree_path, &["status", "--porcelain"])?;
+    let has_dirty_files = !status_output.trim().is_empty();
+    if has_dirty_files {
+        let file_count = status_output.trim().lines().count();
+        warnings.push(format!(
+            "{file_count} uncommitted change{}",
+            if file_count == 1 { "" } else { "s" }
+        ));
+    }
+
+    // 2. Check if branch is merged into default branch (skip for main/master)
+    let default_branch = get_default_branch_inner(&repo_path)?;
+    let has_unmerged_branch = if branch != "main" && branch != "master" && branch != default_branch
+    {
+        let (_, is_ancestor) = run_git_status(
+            &worktree_path,
+            &["merge-base", "--is-ancestor", &branch, &default_branch],
+        )?;
+        if !is_ancestor {
+            warnings.push(format!(
+                "Branch '{branch}' not merged into {default_branch}"
+            ));
+        }
+        !is_ancestor
+    } else {
+        false
+    };
+
+    // 3. Check for unpushed commits
+    let has_unpushed_commits = {
+        // Try upstream tracking ref first
+        let (log_output, ok) =
+            run_git_status(&worktree_path, &["log", "@{upstream}..HEAD", "--oneline"])?;
+        if ok {
+            let unpushed = !log_output.trim().is_empty();
+            if unpushed {
+                let count = log_output.trim().lines().count();
+                warnings.push(format!(
+                    "{count} unpushed commit{}",
+                    if count == 1 { "" } else { "s" }
+                ));
+            }
+            unpushed
+        } else {
+            // No upstream — try origin/<branch>
+            let remote_ref = format!("origin/{branch}");
+            let range = format!("{remote_ref}..HEAD");
+            let (log_output, ok) = run_git_status(&worktree_path, &["log", &range, "--oneline"])?;
+            if ok {
+                let unpushed = !log_output.trim().is_empty();
+                if unpushed {
+                    let count = log_output.trim().lines().count();
+                    warnings.push(format!(
+                        "{count} unpushed commit{}",
+                        if count == 1 { "" } else { "s" }
+                    ));
+                }
+                unpushed
+            } else {
+                // No remote branch at all
+                warnings.push("No remote tracking branch".to_string());
+                true
+            }
+        }
+    };
+
+    Ok(WorktreeStatus {
+        has_dirty_files,
+        has_unmerged_branch,
+        has_unpushed_commits,
+        warnings,
+    })
 }
 
 fn find_repo_root(path: &str) -> Result<String, String> {

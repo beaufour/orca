@@ -37,3 +37,10 @@ export interface Worktree {
   branch: string;
   is_bare: boolean;
 }
+
+export interface WorktreeStatus {
+  has_dirty_files: boolean;
+  has_unmerged_branch: boolean;
+  has_unpushed_commits: boolean;
+  warnings: string[];
+}

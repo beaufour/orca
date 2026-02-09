@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import type { Session, SessionSummary, AttentionStatus } from "../types";
+import type { Session, SessionSummary, AttentionStatus, WorktreeStatus } from "../types";
 import { DiffViewer } from "./DiffViewer";
 
 interface SessionCardProps {
@@ -96,6 +96,20 @@ export function SessionCard({
     refetchInterval: 10_000,
     enabled: !!session.claude_session_id,
   });
+
+  const { data: worktreeStatus, isLoading: statusLoading } = useQuery<WorktreeStatus>({
+    queryKey: ["worktreeStatus", session.worktree_path],
+    queryFn: () =>
+      invoke("check_worktree_status", {
+        repoPath: repoPath,
+        worktreePath: session.worktree_path,
+        branch: session.worktree_branch,
+      }),
+    enabled: confirmingRemove && isWorktree,
+    staleTime: 5_000,
+  });
+
+  const hasWarnings = !!worktreeStatus?.warnings.length;
 
   const invalidateWorktrees = () => {
     queryClient.invalidateQueries({ queryKey: ["worktrees", repoPath] });
@@ -275,15 +289,29 @@ export function SessionCard({
           )}
           {confirmingRemove ? (
             <>
+              {isWorktree && statusLoading && (
+                <span className="loading-row">
+                  <span className="spinner" />
+                </span>
+              )}
+              {isWorktree && worktreeStatus && hasWarnings && (
+                <div className="remove-warnings">
+                  {worktreeStatus.warnings.map((w, i) => (
+                    <span key={i} className="remove-warning-item">
+                      ⚠ {w}
+                    </span>
+                  ))}
+                </div>
+              )}
               <button
                 className="wt-btn wt-btn-danger"
                 onClick={(e) => {
                   e.stopPropagation();
                   removeMutation.mutate();
                 }}
-                disabled={isPending}
+                disabled={isPending || (isWorktree && statusLoading)}
               >
-                Confirm
+                {hasWarnings ? "Force Remove" : "Confirm"}
               </button>
               <button
                 className="wt-btn wt-btn-cancel"

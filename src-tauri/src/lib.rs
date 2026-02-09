@@ -40,6 +40,7 @@ pub fn run() {
             git::merge_worktree,
             git::rebase_worktree,
             git::get_branch_diff,
+            git::check_worktree_status,
             tmux::list_tmux_sessions,
             pty::attach_pty,
             pty::write_pty,
