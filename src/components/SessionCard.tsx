@@ -1,7 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import type { Session, SessionSummary, AttentionStatus, WorktreeStatus } from "../types";
+import type {
+  Session,
+  SessionSummary,
+  AttentionStatus,
+  WorktreeStatus,
+  MergeResult,
+} from "../types";
 import { DiffViewer } from "./DiffViewer";
 
 interface SessionCardProps {
@@ -10,6 +16,7 @@ interface SessionCardProps {
   isSelected?: boolean;
   isFocused?: boolean;
   onClick?: () => void;
+  onSelectSession?: (session: Session) => void;
   confirmingRemove?: boolean;
   onConfirmingRemoveChange?: (confirming: boolean) => void;
   tmuxAlive?: boolean;
@@ -61,6 +68,7 @@ export function SessionCard({
   onClick,
   confirmingRemove: confirmingRemoveProp,
   onConfirmingRemoveChange,
+  onSelectSession,
   tmuxAlive = true,
   isDismissed,
   onDismiss,
@@ -74,6 +82,10 @@ export function SessionCard({
   const [showAddWorktree, setShowAddWorktree] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const [branchName, setBranchName] = useState("");
+  const [mergeState, setMergeState] = useState<
+    "idle" | "confirming" | "merging" | "success" | "conflict"
+  >("idle");
+  const [mergeResult, setMergeResult] = useState<MergeResult | null>(null);
 
   // Scroll focused card into view
   useEffect(() => {
@@ -105,7 +117,7 @@ export function SessionCard({
         worktreePath: session.worktree_path,
         branch: session.worktree_branch,
       }),
-    enabled: confirmingRemove && isWorktree,
+    enabled: (confirmingRemove || mergeState === "confirming") && isWorktree,
     staleTime: 5_000,
   });
 
@@ -156,6 +168,110 @@ export function SessionCard({
     },
   });
 
+  const { data: defaultBranch } = useQuery<string>({
+    queryKey: ["defaultBranch", repoPath],
+    queryFn: () => invoke("get_default_branch", { repoPath }),
+    staleTime: 5 * 60 * 1000,
+    enabled: isWorktree,
+  });
+
+  const isFeatureBranch =
+    isWorktree &&
+    session.worktree_branch !== "main" &&
+    session.worktree_branch !== "master" &&
+    session.worktree_branch !== defaultBranch;
+
+  const mergeMutation = useMutation({
+    mutationFn: () =>
+      invoke<MergeResult>("try_merge_branch", {
+        repoPath,
+        branch: session.worktree_branch,
+        mainBranch: defaultBranch ?? "main",
+      }),
+    onSuccess: (result) => {
+      setMergeResult(result);
+      setMergeState(result.success ? "success" : "conflict");
+    },
+    onError: () => {
+      setMergeState("idle");
+    },
+  });
+
+  const mergeCleanupMutation = useMutation({
+    mutationFn: async (mode: "remove_all" | "remove_worktree" | "keep") => {
+      if (mode === "remove_all") {
+        try {
+          await invoke("remove_worktree", {
+            repoPath,
+            worktreePath: session.worktree_path,
+          });
+        } catch {
+          // Worktree may already be gone
+        }
+        await invoke("remove_session", { sessionId: session.id });
+      } else if (mode === "remove_worktree") {
+        try {
+          await invoke("remove_worktree", {
+            repoPath,
+            worktreePath: session.worktree_path,
+          });
+        } catch {
+          // Worktree may already be gone
+        }
+        await invoke("clear_session_worktree", { sessionId: session.id });
+      }
+      // mode === "keep" — do nothing
+    },
+    onSuccess: () => {
+      setMergeState("idle");
+      setMergeResult(null);
+      invalidateWorktrees();
+    },
+  });
+
+  const conflictSessionMutation = useMutation({
+    mutationFn: async () => {
+      const mainPath = mergeResult?.main_worktree_path;
+      if (!mainPath) throw new Error("No main worktree path");
+      const prompt = `There are merge conflicts from merging '${session.worktree_branch}' into ${defaultBranch ?? "main"}. Please resolve all conflicts, then commit the merge.`;
+      const sessionId = await invoke<string>("create_session", {
+        projectPath: mainPath,
+        group: session.group_path,
+        title: `merge-${session.worktree_branch}`,
+        tool: "claude",
+        worktreeBranch: null,
+        newBranch: false,
+        start: true,
+        prompt,
+      });
+      return sessionId;
+    },
+    onSuccess: async (sessionId) => {
+      setMergeState("idle");
+      setMergeResult(null);
+      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      if (onSelectSession) {
+        const sessions = await invoke<Session[]>("get_sessions", {
+          groupPath: session.group_path,
+        });
+        const created = sessions.find((s) => s.id === sessionId);
+        if (created) onSelectSession(created);
+      }
+    },
+  });
+
+  const abortMergeMutation = useMutation({
+    mutationFn: () => {
+      const mainPath = mergeResult?.main_worktree_path;
+      if (!mainPath) throw new Error("No main worktree path");
+      return invoke("abort_merge", { worktreePath: mainPath });
+    },
+    onSuccess: () => {
+      setMergeState("idle");
+      setMergeResult(null);
+    },
+  });
+
   const attention: AttentionStatus = summary?.attention ?? fallbackAttention(session.status);
 
   // Auto-undismiss when session is no longer needs_input
@@ -170,8 +286,20 @@ export function SessionCard({
     isDismissed && attention === "needs_input"
       ? { label: "Dismissed", className: "status-dismissed" }
       : ATTENTION_CONFIG[attention];
-  const isPending = removeMutation.isPending || addWorktreeMutation.isPending;
-  const mutationError = removeMutation.error ?? addWorktreeMutation.error;
+  const isPending =
+    removeMutation.isPending ||
+    addWorktreeMutation.isPending ||
+    mergeMutation.isPending ||
+    mergeCleanupMutation.isPending ||
+    conflictSessionMutation.isPending ||
+    abortMergeMutation.isPending;
+  const mutationError =
+    removeMutation.error ??
+    addWorktreeMutation.error ??
+    mergeMutation.error ??
+    mergeCleanupMutation.error ??
+    conflictSessionMutation.error ??
+    abortMergeMutation.error;
 
   return (
     <div
@@ -272,7 +400,7 @@ export function SessionCard({
       {mutationError && <div className="session-wt-error">{String(mutationError)}</div>}
       <div className="session-card-footer">
         <div className="session-wt-actions">
-          {isWorktree && (
+          {isWorktree && mergeState === "idle" && (
             <>
               <button
                 className="wt-btn wt-btn-action"
@@ -285,9 +413,138 @@ export function SessionCard({
               >
                 Diff
               </button>
+              {isFeatureBranch && (
+                <button
+                  className="wt-btn wt-btn-merge"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMergeState("confirming");
+                  }}
+                  disabled={isPending}
+                  title={`Merge ${session.worktree_branch} into ${defaultBranch ?? "main"}`}
+                >
+                  Merge
+                </button>
+              )}
             </>
           )}
-          {confirmingRemove ? (
+          {mergeState === "confirming" && (
+            <>
+              {statusLoading && (
+                <span className="loading-row">
+                  <span className="spinner" />
+                </span>
+              )}
+              {worktreeStatus && hasWarnings && (
+                <div className="remove-warnings">
+                  {worktreeStatus.warnings.map((w, i) => (
+                    <span key={i} className="remove-warning-item">
+                      {w}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <span className="merge-label">Merge into {defaultBranch ?? "main"}?</span>
+              <button
+                className="wt-btn wt-btn-merge"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMergeState("merging");
+                  mergeMutation.mutate();
+                }}
+                disabled={isPending || statusLoading}
+              >
+                {hasWarnings ? "Merge Anyway" : "Confirm"}
+              </button>
+              <button
+                className="wt-btn wt-btn-cancel"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMergeState("idle");
+                }}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+          {mergeState === "merging" && (
+            <span className="loading-row">
+              <span className="spinner" /> Merging...
+            </span>
+          )}
+          {mergeState === "success" && (
+            <div className="merge-cleanup">
+              <span className="merge-success-label">Merged!</span>
+              <button
+                className="wt-btn wt-btn-danger"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  mergeCleanupMutation.mutate("remove_all");
+                }}
+                disabled={isPending}
+              >
+                Remove All
+              </button>
+              <button
+                className="wt-btn wt-btn-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  mergeCleanupMutation.mutate("remove_worktree");
+                }}
+                disabled={isPending}
+              >
+                Remove Worktree
+              </button>
+              <button
+                className="wt-btn wt-btn-cancel"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  mergeCleanupMutation.mutate("keep");
+                }}
+              >
+                Keep
+              </button>
+            </div>
+          )}
+          {mergeState === "conflict" && (
+            <div className="merge-conflict">
+              <span className="merge-conflict-label">Conflict</span>
+              <button
+                className="wt-btn wt-btn-danger"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  abortMergeMutation.mutate();
+                }}
+                disabled={isPending}
+              >
+                Abort
+              </button>
+              <button
+                className="wt-btn wt-btn-merge"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  conflictSessionMutation.mutate();
+                }}
+                disabled={isPending}
+              >
+                Resolve with Claude
+              </button>
+            </div>
+          )}
+          {mergeState === "idle" && !confirmingRemove && (
+            <button
+              className="wt-btn wt-btn-danger"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmingRemove(true);
+              }}
+              disabled={isPending}
+              title={isWorktree ? "Remove worktree and session" : "Remove session"}
+            >
+              Remove
+            </button>
+          )}
+          {confirmingRemove && mergeState === "idle" && (
             <>
               {isWorktree && statusLoading && (
                 <span className="loading-row">
@@ -298,7 +555,7 @@ export function SessionCard({
                 <div className="remove-warnings">
                   {worktreeStatus.warnings.map((w, i) => (
                     <span key={i} className="remove-warning-item">
-                      ⚠ {w}
+                      {w}
                     </span>
                   ))}
                 </div>
@@ -323,18 +580,6 @@ export function SessionCard({
                 Cancel
               </button>
             </>
-          ) : (
-            <button
-              className="wt-btn wt-btn-danger"
-              onClick={(e) => {
-                e.stopPropagation();
-                setConfirmingRemove(true);
-              }}
-              disabled={isPending}
-              title={isWorktree ? "Remove worktree and session" : "Remove session"}
-            >
-              Remove
-            </button>
           )}
         </div>
         <span className="session-time">{formatTime(session.last_accessed)}</span>

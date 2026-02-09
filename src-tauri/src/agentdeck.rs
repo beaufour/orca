@@ -452,6 +452,29 @@ pub fn update_session_worktree(
 }
 
 #[tauri::command]
+pub fn clear_session_worktree(session_id: String) -> Result<(), String> {
+    let path = db_path();
+    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+
+    // Get the worktree_repo so we can reset project_path to it
+    let repo: String = conn
+        .query_row(
+            "SELECT worktree_repo FROM instances WHERE id = ?1",
+            [&session_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to get session {session_id}: {e}"))?;
+
+    conn.execute(
+        "UPDATE instances SET project_path = ?1, worktree_path = '', worktree_repo = '', worktree_branch = '' WHERE id = ?2",
+        rusqlite::params![repo, session_id],
+    )
+    .map_err(|e| format!("Failed to clear session worktree: {e}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn create_group(name: String, default_path: String) -> Result<(), String> {
     let path = db_path();
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;

@@ -1093,6 +1093,45 @@ body {
   color: var(--text-secondary);
 }
 
+/* Merge button and states */
+.wt-btn-merge {
+  color: var(--status-idle);
+  border-color: var(--status-idle);
+}
+
+.wt-btn-merge:hover:not(:disabled) {
+  background: rgba(74, 222, 128, 0.15);
+  border-color: var(--status-idle);
+  color: var(--status-idle);
+}
+
+.merge-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.merge-cleanup,
+.merge-conflict {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.merge-success-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--status-idle);
+  margin-right: 4px;
+}
+
+.merge-conflict-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--status-error);
+  margin-right: 4px;
+}
+
 /* Remove warnings */
 .remove-warnings {
   display: flex;
