@@ -6,6 +6,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import type { Session } from "../types";
+import { DiffViewer } from "./DiffViewer";
 
 interface TerminalViewProps {
   session: Session;
@@ -22,6 +23,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
   const [attachFailed, setAttachFailed] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [terminalReady, setTerminalReady] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -287,7 +289,6 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     return (
       <div className="terminal-view">
         <div className="terminal-header">
-          <span className="terminal-focus-badge">TERMINAL</span>
           <span className="terminal-title">{session.title}</span>
           <button className="wt-btn wt-btn-add" onClick={handleRestart} disabled={restarting}>
             {restarting ? "Restarting..." : "Restart"}
@@ -299,6 +300,15 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
           >
             Term
           </button>
+          {session.worktree_branch && (
+            <button
+              className="wt-btn wt-btn-action"
+              onClick={() => setShowDiff(true)}
+              title="Show diff vs main"
+            >
+              Diff
+            </button>
+          )}
           <button className="terminal-close" onClick={onClose}>
             Close
           </button>
@@ -306,6 +316,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         <div className="terminal-no-tmux">
           No tmux session found. Click Restart to create a new one.
         </div>
+        {showDiff && <DiffViewer session={session} onClose={() => setShowDiff(false)} />}
       </div>
     );
   }
@@ -313,9 +324,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
   return (
     <div className="terminal-view">
       <div className="terminal-header">
-        <span className="terminal-focus-badge">TERMINAL</span>
         <span className="terminal-title">{session.title}</span>
-        <span className="terminal-tmux">{session.tmux_session}</span>
         {attachFailed && (
           <button className="wt-btn wt-btn-add" onClick={handleRestart} disabled={restarting}>
             {restarting ? "Restarting..." : "Restart"}
@@ -328,6 +337,15 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         >
           Term
         </button>
+        {session.worktree_branch && (
+          <button
+            className="wt-btn wt-btn-action"
+            onClick={() => setShowDiff(true)}
+            title="Show diff vs main"
+          >
+            Diff
+          </button>
+        )}
         <button className="terminal-close" onClick={onClose}>
           Close
         </button>
@@ -336,6 +354,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         className={`xterm-container ${terminalReady ? "" : "xterm-container-loading"}`}
         ref={containerRef}
       />
+      {showDiff && <DiffViewer session={session} onClose={() => setShowDiff(false)} />}
     </div>
   );
 }
