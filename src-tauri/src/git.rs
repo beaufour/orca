@@ -319,6 +319,65 @@ pub fn check_worktree_status(
     })
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeResult {
+    pub success: bool,
+    pub main_worktree_path: String,
+    pub conflict_message: Option<String>,
+}
+
+#[tauri::command]
+pub fn try_merge_branch(
+    repo_path: String,
+    branch: String,
+    main_branch: Option<String>,
+) -> Result<MergeResult, String> {
+    let target = main_branch.unwrap_or_else(|| "main".to_string());
+
+    // Find the main worktree path
+    let worktrees = list_worktrees(repo_path)?;
+    let main_wt = worktrees
+        .iter()
+        .find(|w| w.branch == target)
+        .ok_or(format!("No worktree found for branch '{target}'"))?;
+    let main_path = main_wt.path.clone();
+
+    // Best-effort pull on main (ignore failure — may be offline or no remote)
+    let _ = run_git(&main_path, &["pull", "--ff-only"]);
+
+    // Try merge — need both stdout and stderr for conflict info
+    log::info!("git merge {branch} --no-edit (cwd: {main_path})");
+    let merge_output = Command::new("git")
+        .current_dir(&main_path)
+        .args(["merge", &branch, "--no-edit"])
+        .output()
+        .map_err(|e| format!("Failed to run git merge: {e}"))?;
+
+    if merge_output.status.success() {
+        Ok(MergeResult {
+            success: true,
+            main_worktree_path: main_path,
+            conflict_message: None,
+        })
+    } else {
+        let stdout = String::from_utf8_lossy(&merge_output.stdout);
+        let stderr = String::from_utf8_lossy(&merge_output.stderr);
+        let message = format!("{}{}", stdout.trim(), stderr.trim());
+        log::warn!("git merge conflict/failure: {message}");
+        Ok(MergeResult {
+            success: false,
+            main_worktree_path: main_path,
+            conflict_message: Some(message),
+        })
+    }
+}
+
+#[tauri::command]
+pub fn abort_merge(worktree_path: String) -> Result<(), String> {
+    run_git(&worktree_path, &["merge", "--abort"])?;
+    Ok(())
+}
+
 fn find_repo_root(path: &str) -> Result<String, String> {
     // Validate this is a git repository by checking rev-parse succeeds.
     // Returns the input path since git commands work from any worktree.

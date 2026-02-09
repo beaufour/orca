@@ -92,6 +92,7 @@ export function SessionList({
             isSelected={session.id === selectedSessionId}
             isFocused={index === focusedIndex}
             onClick={() => onSelectSession(session)}
+            onSelectSession={onSelectSession}
             confirmingRemove={
               confirmingRemoveId != null ? session.id === confirmingRemoveId : undefined
             }

@@ -38,6 +38,12 @@ export interface Worktree {
   is_bare: boolean;
 }
 
+export interface MergeResult {
+  success: boolean;
+  main_worktree_path: string;
+  conflict_message: string | null;
+}
+
 export interface WorktreeStatus {
   has_dirty_files: boolean;
   has_unmerged_branch: boolean;
