@@ -169,15 +169,15 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     };
 
     // Intercept key events that xterm.js doesn't handle correctly.
-    // Shift+Enter must be sent via tmux send-keys -H to bypass tmux's
-    // terminal input parser, which doesn't recognize CSI u sequences
-    // from an xterm-256color terminal.
     const tmuxSession = session.tmux_session!;
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
 
-      // Shift+Enter: send CSI u sequence for multi-line input in Claude Code
-      // \x1b[13;2u = hex 1b 5b 31 33 3b 32 75
+      // Shift+Enter: paste a newline via tmux bracketed paste.
+      // Can't use CSI u (\e[13;2u) because Claude Code negotiates the kitty
+      // keyboard protocol at startup — before we attach — and since xterm.js
+      // can't respond to the capability query, Claude Code falls back to basic
+      // mode and ignores CSI u. Bracketed paste works unconditionally.
       if (
         event.key === "Enter" &&
         event.shiftKey &&
@@ -185,10 +185,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         !event.altKey &&
         !event.metaKey
       ) {
-        invoke("send_tmux_keys", {
-          tmuxSession,
-          hexBytes: ["1b", "5b", "31", "33", "3b", "32", "75"],
-        }).catch(() => {});
+        invoke("paste_to_tmux_pane", { tmuxSession, text: "\n" }).catch(() => {});
         return false;
       }
 
@@ -217,6 +214,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     });
 
     // Scroll via tmux copy-mode since mouse mode is off (for native text selection).
+    // Use capture phase so we intercept before xterm.js can stopPropagation().
     // Throttle to avoid overwhelming tmux with rapid scroll events.
     const container = containerRef.current;
     let scrollThrottled = false;
@@ -235,7 +233,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       );
       invoke("scroll_tmux_pane", { tmuxSession, direction, lines }).catch(() => {});
     };
-    container.addEventListener("wheel", handleWheel, { passive: false });
+    container.addEventListener("wheel", handleWheel, { passive: false, capture: true });
 
     // Fit on container resize (handles window resize + sidebar resize)
     // Debounce to prevent rapid resize events from overwhelming the PTY
@@ -251,7 +249,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       if (readyTimer) clearTimeout(readyTimer);
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
-      container.removeEventListener("wheel", handleWheel);
+      container.removeEventListener("wheel", handleWheel, { capture: true });
       onDataDisposable.dispose();
       onResizeDisposable.dispose();
       invoke("close_pty", { sessionId }).catch(() => {});

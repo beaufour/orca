@@ -1,31 +1,39 @@
 use std::process::Command;
 use tauri::command;
 
-/// Send raw bytes to a tmux pane via `tmux send-keys -H`.
+/// Paste text into a tmux pane using bracketed paste mode.
 ///
-/// This bypasses tmux's terminal input parser entirely, injecting bytes
-/// directly into the target pane. Used for key sequences that xterm.js
-/// can't send through the normal PTY path (e.g. CSI u modified keys
-/// like Shift+Enter that tmux may not forward from an xterm-256color
-/// terminal).
+/// Loads text into a temporary tmux buffer, then pastes it with `-p`
+/// (bracketed paste). The application in the pane receives the text
+/// wrapped in bracketed paste markers and inserts it literally.
+/// Used for Shift+Enter (paste a newline without submitting).
 #[command]
-pub fn send_tmux_keys(tmux_session: String, hex_bytes: Vec<String>) -> Result<(), String> {
-    let mut args = vec![
-        "send-keys".to_string(),
-        "-t".to_string(),
-        tmux_session,
-        "-H".to_string(),
-    ];
-    args.extend(hex_bytes);
+pub fn paste_to_tmux_pane(tmux_session: String, text: String) -> Result<(), String> {
+    let status = Command::new("tmux")
+        .args(["set-buffer", "-b", "_orca", "--", &text])
+        .status()
+        .map_err(|e| format!("Failed to set tmux buffer: {e}"))?;
+
+    if !status.success() {
+        return Err("tmux set-buffer failed".to_string());
+    }
 
     let output = Command::new("tmux")
-        .args(&args)
+        .args([
+            "paste-buffer",
+            "-t",
+            &tmux_session,
+            "-b",
+            "_orca",
+            "-p",
+            "-d",
+        ])
         .output()
-        .map_err(|e| format!("Failed to run tmux send-keys: {e}"))?;
+        .map_err(|e| format!("Failed to paste tmux buffer: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("tmux send-keys failed: {}", stderr.trim()));
+        return Err(format!("tmux paste-buffer failed: {}", stderr.trim()));
     }
 
     Ok(())
