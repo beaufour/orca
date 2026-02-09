@@ -30,8 +30,18 @@ fn read_app_log(app: tauri::AppHandle, tail_lines: Option<usize>) -> Result<Stri
 
 #[tauri::command]
 fn open_in_terminal(path: String) -> Result<(), String> {
-    Command::new("open")
-        .args(["-a", "iTerm", &path])
+    let escaped = path.replace('\\', "\\\\").replace('"', "\\\"");
+    let script = format!(
+        r#"tell application "iTerm2"
+            activate
+            set newWindow to (create window with default profile)
+            tell current session of newWindow
+                write text "cd \"{escaped}\""
+            end tell
+        end tell"#
+    );
+    Command::new("osascript")
+        .args(["-e", &script])
         .spawn()
         .map_err(|e| format!("Failed to open iTerm: {e}"))?;
     Ok(())

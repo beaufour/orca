@@ -292,6 +292,13 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
           <button className="wt-btn wt-btn-add" onClick={handleRestart} disabled={restarting}>
             {restarting ? "Restarting..." : "Restart"}
           </button>
+          <button
+            className="wt-btn wt-btn-action"
+            onClick={() => invoke("open_in_terminal", { path: session.project_path })}
+            title={`Open iTerm in ${session.project_path}`}
+          >
+            Term
+          </button>
           <button className="terminal-close" onClick={onClose}>
             Close
           </button>
@@ -314,6 +321,13 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
             {restarting ? "Restarting..." : "Restart"}
           </button>
         )}
+        <button
+          className="wt-btn wt-btn-action"
+          onClick={() => invoke("open_in_terminal", { path: session.project_path })}
+          title={`Open iTerm in ${session.project_path}`}
+        >
+          Term
+        </button>
         <button className="terminal-close" onClick={onClose}>
           Close
         </button>
