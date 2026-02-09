@@ -171,13 +171,13 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     // Intercept key events that xterm.js doesn't handle correctly.
     const tmuxSession = session.tmux_session!;
     terminal.attachCustomKeyEventHandler((event) => {
-      if (event.type !== "keydown") return true;
-
       // Shift+Enter: paste a newline via tmux bracketed paste.
       // Can't use CSI u (\e[13;2u) because Claude Code negotiates the kitty
       // keyboard protocol at startup — before we attach — and since xterm.js
       // can't respond to the capability query, Claude Code falls back to basic
       // mode and ignores CSI u. Bracketed paste works unconditionally.
+      // Must block BOTH keydown and keypress to prevent xterm.js from also
+      // sending \r (Enter) on the keypress event.
       if (
         event.key === "Enter" &&
         event.shiftKey &&
@@ -185,10 +185,13 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         !event.altKey &&
         !event.metaKey
       ) {
-        invoke("paste_to_tmux_pane", { tmuxSession, text: "\n" }).catch(() => {});
+        if (event.type === "keydown") {
+          invoke("paste_to_tmux_pane", { tmuxSession, text: "\n" }).catch(() => {});
+        }
         return false;
       }
 
+      if (event.type !== "keydown") return true;
       return true;
     });
 
