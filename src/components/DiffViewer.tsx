@@ -87,8 +87,10 @@ export function DiffViewer({ session, onClose }: DiffViewerProps) {
     const el = fileRefs.current.get(path);
     const container = bodyRef.current;
     if (el && container) {
+      const elRect = el.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
       container.scrollTo({
-        top: el.offsetTop - container.offsetTop,
+        top: container.scrollTop + elRect.top - containerRect.top,
         behavior: "smooth",
       });
     }
