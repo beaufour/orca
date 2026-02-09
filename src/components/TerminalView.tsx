@@ -153,6 +153,40 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       }
     });
 
+    // UTF-8 safe base64 encoding (btoa only handles Latin-1 / 0-255)
+    const toBase64 = (str: string): string => {
+      const bytes = new TextEncoder().encode(str);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    };
+
+    // Write raw bytes to PTY (already base64-encoded)
+    const writePty = (b64: string) => {
+      invoke("write_pty", { sessionId, data: b64 }).catch(() => {});
+    };
+
+    // Intercept key events that xterm.js doesn't handle correctly
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") return true;
+
+      // Shift+Enter: send CSI u sequence for multi-line input in Claude Code
+      if (
+        event.key === "Enter" &&
+        event.shiftKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
+        writePty(btoa("\x1b[13;2u"));
+        return false;
+      }
+
+      return true;
+    });
+
     // Send keystrokes to PTY, filtering out terminal query responses
     // (Device Attributes responses like \e[>0;276;0c that tmux queries
     // but would leak to the shell as typed input)
@@ -166,8 +200,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       }
       const filtered = data.replace(DA_RESPONSE, "");
       if (!filtered) return;
-      const encoded = btoa(filtered);
-      invoke("write_pty", { sessionId, data: encoded }).catch(() => {});
+      writePty(toBase64(filtered));
     });
 
     // Handle resize

@@ -63,9 +63,14 @@ pub fn attach_pty(
         .map_err(|e| format!("Failed to open PTY: {e}"))?;
 
     // Set window-size to "latest" so our attach doesn't shrink the session
-    // when another client (e.g. a regular terminal) is also attached
+    // when another client (e.g. a regular terminal) is also attached.
+    // Enable extended-keys so tmux forwards CSI u sequences (e.g. Shift+Enter)
+    // to applications that request them (like Claude Code).
     let _ = std::process::Command::new("tmux")
         .args(["set-option", "-t", &tmux_session, "window-size", "latest"])
+        .output();
+    let _ = std::process::Command::new("tmux")
+        .args(["set-option", "-t", &tmux_session, "extended-keys", "on"])
         .output();
 
     let mut cmd = CommandBuilder::new("tmux");
