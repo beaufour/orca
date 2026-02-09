@@ -76,7 +76,7 @@ pub fn attach_pty(
         .args(["set-option", "-t", &tmux_session, "mouse", "off"])
         .output();
     let _ = std::process::Command::new("tmux")
-        .args(["set-option", "-t", &tmux_session, "extended-keys", "on"])
+        .args(["set-option", "-t", &tmux_session, "extended-keys", "always"])
         .output();
 
     let mut cmd = CommandBuilder::new("tmux");

@@ -31,6 +31,38 @@ pub fn send_tmux_keys(tmux_session: String, hex_bytes: Vec<String>) -> Result<()
     Ok(())
 }
 
+/// Scroll a tmux pane up or down by entering copy mode.
+///
+/// Uses `-e` flag so copy mode auto-exits when scrolled back to the bottom.
+#[command]
+pub fn scroll_tmux_pane(tmux_session: String, direction: String, lines: u32) -> Result<(), String> {
+    if direction == "up" {
+        // Enter copy mode with auto-exit at bottom (-e)
+        let _ = Command::new("tmux")
+            .args(["copy-mode", "-t", &tmux_session, "-e"])
+            .output();
+    }
+
+    let scroll_cmd = if direction == "up" {
+        "scroll-up"
+    } else {
+        "scroll-down"
+    };
+    let _ = Command::new("tmux")
+        .args([
+            "send-keys",
+            "-t",
+            &tmux_session,
+            "-X",
+            "-N",
+            &lines.to_string(),
+            scroll_cmd,
+        ])
+        .output();
+
+    Ok(())
+}
+
 /// Check if a tmux session is showing a Claude Code permission prompt
 /// ("Do you want to proceed?").  Captures the last 20 lines of the pane
 /// and looks for the distinctive prompt text.

@@ -216,12 +216,26 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       invoke("resize_pty", { sessionId, cols, rows }).catch(() => {});
     });
 
-    // Prevent scroll events from bubbling to parent (session cards area)
+    // Scroll via tmux copy-mode since mouse mode is off (for native text selection).
+    // Throttle to avoid overwhelming tmux with rapid scroll events.
     const container = containerRef.current;
+    let scrollThrottled = false;
     const handleWheel = (e: WheelEvent) => {
       e.stopPropagation();
+      e.preventDefault();
+      if (scrollThrottled) return;
+      scrollThrottled = true;
+      setTimeout(() => (scrollThrottled = false), 50);
+
+      const direction = e.deltaY < 0 ? "up" : "down";
+      // Convert pixel delta to lines (deltaMode 0 = pixels, 1 = lines)
+      const lines = Math.max(
+        1,
+        e.deltaMode === 1 ? Math.round(Math.abs(e.deltaY)) : Math.round(Math.abs(e.deltaY) / 20),
+      );
+      invoke("scroll_tmux_pane", { tmuxSession, direction, lines }).catch(() => {});
     };
-    container.addEventListener("wheel", handleWheel, { passive: true });
+    container.addEventListener("wheel", handleWheel, { passive: false });
 
     // Fit on container resize (handles window resize + sidebar resize)
     // Debounce to prevent rapid resize events from overwhelming the PTY
