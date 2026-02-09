@@ -85,8 +85,12 @@ export function DiffViewer({ session, onClose }: DiffViewerProps) {
 
   const scrollToFile = useCallback((path: string) => {
     const el = fileRefs.current.get(path);
-    if (el && bodyRef.current) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    const container = bodyRef.current;
+    if (el && container) {
+      container.scrollTo({
+        top: el.offsetTop - container.offsetTop,
+        behavior: "smooth",
+      });
     }
   }, []);
 
