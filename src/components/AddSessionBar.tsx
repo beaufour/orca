@@ -134,18 +134,29 @@ export function AddSessionBar({
               + Main Session
             </button>
           )}
-          <button
-            className="wt-btn wt-btn-add"
-            onClick={() => setShowForm(!showForm)}
-            disabled={createMutation.isPending}
-          >
-            + Add Session
-          </button>
+          {!showForm && (
+            <button
+              className="wt-btn wt-btn-add"
+              onClick={() => setShowForm(!showForm)}
+              disabled={createMutation.isPending}
+            >
+              + Add Session
+            </button>
+          )}
         </div>
       </div>
 
       {showForm && (
-        <form className="add-session-form" onSubmit={handleSubmit}>
+        <form
+          className="add-session-form"
+          onSubmit={handleSubmit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && e.metaKey) {
+              e.preventDefault();
+              handleSubmit(e);
+            }
+          }}
+        >
           <div className="add-session-toggles">
             <div className="add-session-mode-toggle">
               <button
