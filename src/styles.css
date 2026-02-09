@@ -573,7 +573,7 @@ body {
   margin-top: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .add-session-toggles {
@@ -613,7 +613,20 @@ body {
 
 .add-session-fields {
   display: flex;
-  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.add-session-fields .wt-input {
+  flex: 1;
+}
+
+.add-session-form .wt-prompt-input {
+  width: 100%;
+  resize: vertical;
+}
+
+.add-session-actions {
+  display: flex;
   gap: 8px;
 }
 

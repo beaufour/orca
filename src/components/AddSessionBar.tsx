@@ -205,15 +205,17 @@ export function AddSessionBar({
               onChange={(e) => setTitle(e.target.value)}
               autoFocus={mode === "plain"}
             />
-            {tool === "claude" && (
-              <textarea
-                className="wt-input wt-prompt-input"
-                placeholder="prompt (sent to Claude at start)"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                rows={2}
-              />
-            )}
+          </div>
+          {tool === "claude" && (
+            <textarea
+              className="wt-input wt-prompt-input"
+              placeholder="prompt (sent to Claude at start)"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={3}
+            />
+          )}
+          <div className="add-session-actions">
             <button
               className="wt-btn wt-btn-confirm"
               type="submit"
