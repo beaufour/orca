@@ -2,6 +2,7 @@ import { useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Group, Session } from "../types";
+import logoSrc from "../assets/logo.png";
 
 interface SidebarProps {
   selectedGroupPath: string | null;
@@ -67,6 +68,7 @@ export function Sidebar({
   return (
     <aside className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`} style={{ width }}>
       <div className="sidebar-header">
+        <img src={logoSrc} alt="Orca" className="sidebar-logo" />
         {!collapsed && <h1 className="sidebar-title">Orca</h1>}
         <button
           className="sidebar-collapse-btn"

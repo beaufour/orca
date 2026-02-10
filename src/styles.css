@@ -143,6 +143,12 @@ body {
   padding: 20px 8px 12px;
 }
 
+.sidebar-logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+}
+
 .sidebar-title {
   font-size: 18px;
   font-weight: 700;
