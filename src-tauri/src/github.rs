@@ -259,6 +259,25 @@ pub fn update_issue(
 }
 
 #[tauri::command]
+pub fn assign_issue(repo_path: String, issue_number: u64) -> Result<(), String> {
+    let owner_repo = get_owner_repo(&repo_path)?;
+    let num_str = issue_number.to_string();
+    run_gh(
+        &repo_path,
+        &[
+            "issue",
+            "edit",
+            &num_str,
+            "-R",
+            &owner_repo,
+            "--add-assignee",
+            "@me",
+        ],
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn close_issue(repo_path: String, issue_number: u64) -> Result<(), String> {
     log::info!("close_issue: repo_path={repo_path}, issue_number={issue_number}");
     let owner_repo = get_owner_repo(&repo_path)?;

@@ -102,6 +102,7 @@ pub fn run() {
             github::create_issue,
             github::update_issue,
             github::close_issue,
+            github::assign_issue,
             pty::attach_pty,
             pty::write_pty,
             pty::resize_pty,

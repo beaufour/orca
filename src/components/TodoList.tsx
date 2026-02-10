@@ -117,6 +117,12 @@ export function TodoList({
       const branch = issueToSlug(issue.number, issue.title);
       const prompt = `Please work on GitHub Issue #${issue.number} (${issue.html_url}). Review the issue and the codebase, then wait for further instructions.`;
 
+      // Assign the issue to ourselves on GitHub (fire-and-forget)
+      invoke("assign_issue", {
+        repoPath: group.default_path,
+        issueNumber: issue.number,
+      }).catch((err) => console.warn("Failed to assign issue:", err));
+
       const sessionId = await invoke<string>("create_session", {
         projectPath: group.default_path,
         group: group.path,
