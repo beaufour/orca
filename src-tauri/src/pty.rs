@@ -1,3 +1,4 @@
+use crate::command::new_command;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::collections::HashMap;
@@ -67,10 +68,10 @@ pub fn attach_pty(
     // Disable mouse mode so xterm.js handles text selection natively
     // (with mouse on, tmux intercepts selections into its copy buffer
     // instead of the system clipboard, and shows a yellow copy-mode indicator).
-    let _ = std::process::Command::new("tmux")
+    let _ = new_command("tmux")
         .args(["set-option", "-t", &tmux_session, "window-size", "latest"])
         .output();
-    let _ = std::process::Command::new("tmux")
+    let _ = new_command("tmux")
         .args(["set-option", "-t", &tmux_session, "mouse", "off"])
         .output();
 

@@ -1,6 +1,6 @@
+use crate::command::new_command;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Worktree {
@@ -13,7 +13,7 @@ pub struct Worktree {
 /// Run a git command, returning (stdout, success) without treating non-zero exit as an error.
 fn run_git_status(repo_path: &str, args: &[&str]) -> Result<(String, bool), String> {
     log::info!("git {} (cwd: {})", args.join(" "), repo_path);
-    let output = Command::new("git")
+    let output = new_command("git")
         .current_dir(repo_path)
         .args(args)
         .output()
@@ -25,7 +25,7 @@ fn run_git_status(repo_path: &str, args: &[&str]) -> Result<(String, bool), Stri
 
 fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
     log::info!("git {} (cwd: {})", args.join(" "), repo_path);
-    let output = Command::new("git")
+    let output = new_command("git")
         .current_dir(repo_path)
         .args(args)
         .output()
@@ -360,7 +360,7 @@ pub fn try_merge_branch(
 
     // Try merge — need both stdout and stderr for conflict info
     log::info!("git merge {branch} --no-edit (cwd: {main_path})");
-    let merge_output = Command::new("git")
+    let merge_output = new_command("git")
         .current_dir(&main_path)
         .args(["merge", &branch, "--no-edit"])
         .output()
@@ -395,7 +395,7 @@ fn find_repo_root(path: &str) -> Result<String, String> {
     // Validate this is a git repository by checking rev-parse succeeds.
     // Returns the input path since git commands work from any worktree.
     log::info!("git rev-parse --git-common-dir (cwd: {path})");
-    let output = Command::new("git")
+    let output = new_command("git")
         .current_dir(path)
         .args(["rev-parse", "--git-common-dir"])
         .output()

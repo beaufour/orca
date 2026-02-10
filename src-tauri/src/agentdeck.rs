@@ -1,3 +1,4 @@
+use crate::command::new_command;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 
@@ -13,7 +14,7 @@ fn db_path() -> PathBuf {
 
 #[tauri::command]
 pub fn check_agent_deck_version() -> Result<VersionCheck, String> {
-    let output = std::process::Command::new("agent-deck")
+    let output = new_command("agent-deck")
         .arg("version")
         .output()
         .map_err(|e| format!("Failed to run agent-deck version: {e}"))?;
@@ -150,7 +151,7 @@ pub fn create_session(
             git_args.push(branch);
 
             log::info!("git {} (cwd: {})", git_args.join(" "), effective_path);
-            let output = std::process::Command::new("git")
+            let output = new_command("git")
                 .current_dir(&effective_path)
                 .args(&git_args)
                 .output()
@@ -199,7 +200,7 @@ pub fn create_session(
     }
 
     log::info!("agent-deck {}", args.join(" "));
-    let output = std::process::Command::new("agent-deck")
+    let output = new_command("agent-deck")
         .args(&args)
         .output()
         .map_err(|e| format!("Failed to run agent-deck: {e}"))?;
@@ -259,7 +260,7 @@ pub fn create_session(
     // Optionally start the session immediately
     if start.unwrap_or(false) {
         log::info!("agent-deck session start {session_id}");
-        let start_output = std::process::Command::new("agent-deck")
+        let start_output = new_command("agent-deck")
             .args(["session", "start", &session_id])
             .output()
             .map_err(|e| format!("Failed to start session: {e}"))?;
@@ -299,7 +300,7 @@ pub fn create_session(
 #[tauri::command]
 pub fn restart_session(session_id: String) -> Result<(), String> {
     log::info!("agent-deck session start {session_id}");
-    let output = std::process::Command::new("agent-deck")
+    let output = new_command("agent-deck")
         .args(["session", "start", &session_id])
         .output()
         .map_err(|e| format!("Failed to run agent-deck: {e}"))?;
@@ -325,7 +326,7 @@ pub fn restart_session(session_id: String) -> Result<(), String> {
 pub fn remove_session(session_id: String) -> Result<(), String> {
     // Try agent-deck remove first
     log::info!("agent-deck remove {session_id}");
-    let remove_result = std::process::Command::new("agent-deck")
+    let remove_result = new_command("agent-deck")
         .args(["remove", &session_id])
         .output();
     match &remove_result {
@@ -648,7 +649,7 @@ fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> 
     for attempt in 0..max_attempts {
         // Use capture-pane: if the session doesn't exist it fails,
         // if it does we can check whether Claude has started rendering.
-        let capture = std::process::Command::new("tmux")
+        let capture = new_command("tmux")
             .args(["capture-pane", "-t", &tmux_name, "-p"])
             .output();
         match capture {
@@ -684,7 +685,7 @@ fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> 
 
     // Send the prompt text first (literal mode to avoid key name interpretation)
     log::info!("tmux send-keys -l -t {tmux_name} -- <prompt>");
-    let text_output = std::process::Command::new("tmux")
+    let text_output = new_command("tmux")
         .args(["send-keys", "-l", "-t", &tmux_name, "--", prompt])
         .output()
         .map_err(|e| format!("Failed to send prompt text via tmux: {e}"))?;
@@ -699,7 +700,7 @@ fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> 
 
     // Send Enter separately to submit the prompt
     log::info!("tmux send-keys -t {tmux_name} Enter");
-    let output = std::process::Command::new("tmux")
+    let output = new_command("tmux")
         .args(["send-keys", "-t", &tmux_name, "Enter"])
         .output()
         .map_err(|e| format!("Failed to send Enter via tmux: {e}"))?;
@@ -718,7 +719,7 @@ fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> 
 fn find_worktree_in_bare(bare_path: &str) -> Result<String, String> {
     let cwd = Path::new(bare_path).join(".bare");
     log::info!("git worktree list --porcelain (cwd: {})", cwd.display());
-    let output = std::process::Command::new("git")
+    let output = new_command("git")
         .current_dir(&cwd)
         .args(["worktree", "list", "--porcelain"])
         .output()

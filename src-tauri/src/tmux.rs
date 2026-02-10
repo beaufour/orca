@@ -1,4 +1,4 @@
-use std::process::Command;
+use crate::command::new_command;
 use tauri::command;
 
 /// Paste text into a tmux pane using bracketed paste mode.
@@ -9,7 +9,7 @@ use tauri::command;
 /// Used for Shift+Enter (paste a newline without submitting).
 #[command]
 pub fn paste_to_tmux_pane(tmux_session: String, text: String) -> Result<(), String> {
-    let status = Command::new("tmux")
+    let status = new_command("tmux")
         .args(["set-buffer", "-b", "_orca", "--", &text])
         .status()
         .map_err(|e| format!("Failed to set tmux buffer: {e}"))?;
@@ -18,7 +18,7 @@ pub fn paste_to_tmux_pane(tmux_session: String, text: String) -> Result<(), Stri
         return Err("tmux set-buffer failed".to_string());
     }
 
-    let output = Command::new("tmux")
+    let output = new_command("tmux")
         .args([
             "paste-buffer",
             "-t",
@@ -46,7 +46,7 @@ pub fn paste_to_tmux_pane(tmux_session: String, text: String) -> Result<(), Stri
 pub fn scroll_tmux_pane(tmux_session: String, direction: String, lines: u32) -> Result<(), String> {
     if direction == "up" {
         // Enter copy mode with auto-exit at bottom (-e)
-        let _ = Command::new("tmux")
+        let _ = new_command("tmux")
             .args(["copy-mode", "-t", &tmux_session, "-e"])
             .output();
     }
@@ -56,7 +56,7 @@ pub fn scroll_tmux_pane(tmux_session: String, direction: String, lines: u32) -> 
     } else {
         "scroll-down"
     };
-    let _ = Command::new("tmux")
+    let _ = new_command("tmux")
         .args([
             "send-keys",
             "-t",
@@ -75,7 +75,7 @@ pub fn scroll_tmux_pane(tmux_session: String, direction: String, lines: u32) -> 
 /// ("Do you want to proceed?").  Captures the last 20 lines of the pane
 /// and looks for the distinctive prompt text.
 pub fn is_waiting_for_input(tmux_session: &str) -> bool {
-    let output = match Command::new("tmux")
+    let output = match new_command("tmux")
         .args(["capture-pane", "-t", tmux_session, "-p", "-l", "20"])
         .output()
     {
@@ -90,7 +90,7 @@ pub fn is_waiting_for_input(tmux_session: &str) -> bool {
 #[tauri::command]
 pub fn list_tmux_sessions() -> Result<Vec<String>, String> {
     log::debug!("tmux list-sessions -F #{{session_name}}");
-    let output = Command::new("tmux")
+    let output = new_command("tmux")
         .args(["list-sessions", "-F", "#{session_name}"])
         .output()
         .map_err(|e| format!("Failed to run tmux: {e}"))?;

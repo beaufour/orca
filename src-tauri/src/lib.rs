@@ -1,13 +1,14 @@
 mod agentdeck;
 mod claude_logs;
+mod command;
 mod git;
 mod github;
 mod models;
 mod pty;
 mod tmux;
 
+use crate::command::new_command;
 use std::io::{BufRead, BufReader};
-use std::process::Command;
 use tauri::Manager;
 
 #[tauri::command]
@@ -41,7 +42,7 @@ fn open_in_terminal(path: String) -> Result<(), String> {
             end tell
         end tell"#
     );
-    Command::new("osascript")
+    new_command("osascript")
         .args(["-e", &script])
         .spawn()
         .map_err(|e| format!("Failed to open iTerm: {e}"))?;

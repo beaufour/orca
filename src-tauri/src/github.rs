@@ -1,8 +1,8 @@
+use crate::command::new_command;
 use crate::git::find_bare_root;
 use crate::models::{GitHubIssue, GitHubLabel};
 use serde::Deserialize;
 use std::path::Path;
-use std::process::Command;
 
 /// Raw shape returned by `gh issue list/view --json ...`
 #[derive(Debug, Deserialize)]
@@ -63,7 +63,7 @@ fn get_owner_repo(repo_path: &str) -> Result<String, String> {
         repo_path.to_string()
     };
 
-    let output = Command::new("git")
+    let output = new_command("git")
         .current_dir(&cwd)
         .args(["remote", "get-url", "origin"])
         .output()
@@ -105,7 +105,7 @@ fn run_gh(repo_path: &str, args: &[&str]) -> Result<String, String> {
     };
 
     log::info!("gh {} (cwd: {cwd})", args.join(" "));
-    let output = Command::new("gh")
+    let output = new_command("gh")
         .current_dir(&cwd)
         .args(args)
         .output()
