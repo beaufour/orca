@@ -1283,3 +1283,192 @@ body {
   background: var(--bg-primary);
   min-height: 100%;
 }
+
+/* Todo List */
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.todo-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.todo-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0 2px;
+  background: none;
+  border: none;
+  cursor: default;
+}
+
+.todo-section-header-collapsible {
+  cursor: pointer;
+  text-align: left;
+}
+
+.todo-section-header-collapsible:hover {
+  color: var(--text-primary);
+}
+
+.todo-section-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.todo-section-count {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  padding: 1px 7px;
+  border-radius: 8px;
+}
+
+.todo-new-issue-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.todo-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 12px 2px;
+}
+
+.todo-card-idle {
+  border-left-color: var(--status-idle);
+}
+
+/* Issue number badge */
+.issue-number {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: "SF Mono", "Menlo", monospace;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* Issue labels */
+.issue-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.issue-label {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+/* Issue body preview */
+.issue-body-preview {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Start button */
+.wt-btn-start {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.wt-btn-start:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
+
+/* GitHub error banner */
+.todo-github-error {
+  font-size: 12px;
+  color: var(--status-error);
+  background: rgba(249, 115, 22, 0.1);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+}
+
+/* Wide modal (for issue create/edit) */
+.modal-content-wide {
+  min-width: 480px;
+  max-width: 640px;
+}
+
+/* Modal textarea */
+.modal-textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+/* Modal shortcut hint */
+.modal-shortcut-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+
+/* Issue label picker */
+.issue-label-picker {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.issue-label-option {
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.issue-label-option:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.issue-label-option-active {
+  background: rgba(74, 158, 255, 0.15);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.issue-label-option-active:hover {
+  background: rgba(74, 158, 255, 0.25);
+  color: var(--accent);
+  border-color: var(--accent);
+}

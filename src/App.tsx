@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { Sidebar } from "./components/Sidebar";
 import { SessionList } from "./components/SessionList";
+import { TodoList } from "./components/TodoList";
 import { AddSessionBar, type AddSessionBarHandle } from "./components/AddSessionBar";
 import { TerminalView } from "./components/TerminalView";
 import { ShortcutHelp } from "./components/ShortcutHelp";
@@ -10,6 +11,7 @@ import { LogViewer } from "./components/LogViewer";
 import { RenameModal } from "./components/RenameModal";
 import { MoveSessionModal } from "./components/MoveSessionModal";
 import { CreateGroupModal } from "./components/CreateGroupModal";
+import { IssueModal } from "./components/IssueModal";
 import type { Group, Session } from "./types";
 
 const MIN_SIDEBAR_WIDTH = 48;
@@ -44,6 +46,7 @@ function App() {
   const [movingSession, setMovingSession] = useState<Session | null>(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showLogViewer, setShowLogViewer] = useState(false);
+  const [showIssueModal, setShowIssueModal] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const handleDismiss = useCallback((sessionId: string) => {
     setDismissedIds((prev) => {
@@ -201,10 +204,13 @@ function App() {
     searchVisible,
     showShortcutHelp,
     showLogViewer,
+    showIssueModal,
     confirmingRemoveId,
     renamingSession,
     movingSession,
     showCreateGroup,
+    selectedGroup,
+    needsActionFilter,
     groups,
     dismissedIds,
   });
@@ -216,10 +222,13 @@ function App() {
     searchVisible,
     showShortcutHelp,
     showLogViewer,
+    showIssueModal,
     confirmingRemoveId,
     renamingSession,
     movingSession,
     showCreateGroup,
+    selectedGroup,
+    needsActionFilter,
     groups,
     dismissedIds,
   };
@@ -234,10 +243,13 @@ function App() {
         searchVisible,
         showShortcutHelp,
         showLogViewer,
+        showIssueModal,
         confirmingRemoveId,
         renamingSession,
         movingSession,
         showCreateGroup,
+        selectedGroup,
+        needsActionFilter,
         groups,
       } = kbStateRef.current;
 
@@ -265,6 +277,7 @@ function App() {
       const anyModalOpen =
         showShortcutHelp ||
         showLogViewer ||
+        showIssueModal ||
         confirmingRemoveId !== null ||
         renamingSession !== null ||
         movingSession !== null ||
@@ -300,6 +313,8 @@ function App() {
             setShowShortcutHelp(false);
           } else if (showLogViewer) {
             setShowLogViewer(false);
+          } else if (showIssueModal) {
+            setShowIssueModal(false);
           } else if (showCreateGroup) {
             setShowCreateGroup(false);
           } else if (movingSession !== null) {
@@ -346,6 +361,12 @@ function App() {
           e.preventDefault();
           if (filteredSessions && focusedIndex >= 0 && focusedIndex < count && groups) {
             setMovingSession(filteredSessions[focusedIndex]);
+          }
+          break;
+        case "i":
+          e.preventDefault();
+          if (selectedGroup && !needsActionFilter) {
+            setShowIssueModal(true);
           }
           break;
         case "g":
@@ -473,24 +494,40 @@ function App() {
                   />
                 </div>
               )}
-              <SessionList
-                sessions={filteredSessions}
-                groupNames={needsActionFilter || !selectedGroup ? groupNames : undefined}
-                onSelectSession={setSelectedSession}
-                selectedSessionId={null}
-                focusedIndex={focusedIndex}
-                isLoading={sessionsLoading}
-                error={sessionsError}
-                onRetry={() => refetchSessions()}
-                confirmingRemoveId={confirmingRemoveId}
-                onConfirmingRemoveChange={setConfirmingRemoveId}
-                groupPath={selectedGroup?.path}
-                repoPath={selectedGroup?.default_path}
-                liveTmuxSessions={liveTmuxSet}
-                dismissedIds={dismissedIds}
-                onDismiss={handleDismiss}
-                onUndismiss={handleUndismiss}
-              />
+              {selectedGroup && !needsActionFilter ? (
+                <TodoList
+                  group={selectedGroup}
+                  sessions={filteredSessions}
+                  onSelectSession={setSelectedSession}
+                  liveTmuxSessions={liveTmuxSet}
+                  sessionsLoading={sessionsLoading}
+                  sessionsError={sessionsError}
+                  onRetry={() => refetchSessions()}
+                  confirmingRemoveId={confirmingRemoveId}
+                  onConfirmingRemoveChange={setConfirmingRemoveId}
+                  focusedIndex={focusedIndex}
+                  refetchSessions={refetchSessions}
+                />
+              ) : (
+                <SessionList
+                  sessions={filteredSessions}
+                  groupNames={needsActionFilter || !selectedGroup ? groupNames : undefined}
+                  onSelectSession={setSelectedSession}
+                  selectedSessionId={null}
+                  focusedIndex={focusedIndex}
+                  isLoading={sessionsLoading}
+                  error={sessionsError}
+                  onRetry={() => refetchSessions()}
+                  confirmingRemoveId={confirmingRemoveId}
+                  onConfirmingRemoveChange={setConfirmingRemoveId}
+                  groupPath={selectedGroup?.path}
+                  repoPath={selectedGroup?.default_path}
+                  liveTmuxSessions={liveTmuxSet}
+                  dismissedIds={dismissedIds}
+                  onDismiss={handleDismiss}
+                  onUndismiss={handleUndismiss}
+                />
+              )}
             </main>
             {selectedGroup && (
               <AddSessionBar
@@ -523,6 +560,13 @@ function App() {
         />
       )}
       {showCreateGroup && <CreateGroupModal onClose={() => setShowCreateGroup(false)} />}
+      {showIssueModal && selectedGroup && (
+        <IssueModal
+          mode="create"
+          repoPath={selectedGroup.default_path}
+          onClose={() => setShowIssueModal(false)}
+        />
+      )}
       {showLogViewer && <LogViewer onClose={() => setShowLogViewer(false)} />}
     </div>
   );

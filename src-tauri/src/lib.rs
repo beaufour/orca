@@ -1,6 +1,7 @@
 mod agentdeck;
 mod claude_logs;
 mod git;
+mod github;
 mod models;
 mod pty;
 mod tmux;
@@ -87,6 +88,11 @@ pub fn run() {
             tmux::list_tmux_sessions,
             tmux::paste_to_tmux_pane,
             tmux::scroll_tmux_pane,
+            github::list_issues,
+            github::get_issue,
+            github::create_issue,
+            github::update_issue,
+            github::close_issue,
             pty::attach_pty,
             pty::write_pty,
             pty::resize_pty,

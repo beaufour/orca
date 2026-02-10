@@ -50,3 +50,20 @@ export interface WorktreeStatus {
   has_unpushed_commits: boolean;
   warnings: string[];
 }
+
+export interface GitHubIssue {
+  number: number;
+  title: string;
+  body: string;
+  state: string;
+  labels: GitHubLabel[];
+  assignee: string | null;
+  created_at: string;
+  updated_at: string;
+  html_url: string;
+}
+
+export interface GitHubLabel {
+  name: string;
+  color: string;
+}

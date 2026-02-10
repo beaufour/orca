@@ -2,6 +2,25 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubIssue {
+    pub number: u64,
+    pub title: String,
+    pub body: String,
+    pub state: String,
+    pub labels: Vec<GitHubLabel>,
+    pub assignee: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub html_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubLabel {
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttentionCounts {
     /// Total number of sessions needing action (waiting or error).
     pub total: u32,
