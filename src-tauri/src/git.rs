@@ -1,6 +1,6 @@
 use crate::command::new_command;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Worktree {
@@ -10,11 +10,23 @@ pub struct Worktree {
     pub is_bare: bool,
 }
 
+/// Expand ~ in paths to the home directory.
+fn expand_tilde(path: &str) -> PathBuf {
+    if let Some(stripped) = path.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(stripped);
+        }
+    }
+    PathBuf::from(path)
+}
+
 /// Run a git command, returning (stdout, success) without treating non-zero exit as an error.
 fn run_git_status(repo_path: &str, args: &[&str]) -> Result<(String, bool), String> {
-    log::info!("git {} (cwd: {})", args.join(" "), repo_path);
+    let expanded = expand_tilde(repo_path);
+    let cwd = expanded.to_string_lossy();
+    log::info!("git {} (cwd: {})", args.join(" "), cwd);
     let output = new_command("git")
-        .current_dir(repo_path)
+        .current_dir(cwd.as_ref())
         .args(args)
         .output()
         .map_err(|e| format!("Failed to run git: {e}"))?;
@@ -24,9 +36,11 @@ fn run_git_status(repo_path: &str, args: &[&str]) -> Result<(String, bool), Stri
 }
 
 fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
-    log::info!("git {} (cwd: {})", args.join(" "), repo_path);
+    let expanded = expand_tilde(repo_path);
+    let cwd = expanded.to_string_lossy();
+    log::info!("git {} (cwd: {})", args.join(" "), cwd);
     let output = new_command("git")
-        .current_dir(repo_path)
+        .current_dir(cwd.as_ref())
         .args(args)
         .output()
         .map_err(|e| format!("Failed to run git: {e}"))?;
@@ -393,10 +407,12 @@ pub fn abort_merge(worktree_path: String) -> Result<(), String> {
 
 fn find_repo_root(path: &str) -> Result<String, String> {
     // Validate this is a git repository by checking rev-parse succeeds.
-    // Returns the input path since git commands work from any worktree.
-    log::info!("git rev-parse --git-common-dir (cwd: {path})");
+    // Returns the expanded path since git commands work from any worktree.
+    let expanded = expand_tilde(path);
+    let cwd = expanded.to_string_lossy();
+    log::info!("git rev-parse --git-common-dir (cwd: {cwd})");
     let output = new_command("git")
-        .current_dir(path)
+        .current_dir(cwd.as_ref())
         .args(["rev-parse", "--git-common-dir"])
         .output()
         .map_err(|e| format!("Failed to run git: {e}"))?;
@@ -405,23 +421,24 @@ fn find_repo_root(path: &str) -> Result<String, String> {
         log::error!(
             "git rev-parse --git-common-dir failed (exit {}): not a git repo at {}",
             output.status,
-            path
+            cwd
         );
-        return Err(format!("Not a git repository: {path}"));
+        return Err(format!("Not a git repository: {cwd}"));
     }
 
     log::debug!(
         "git rev-parse --git-common-dir succeeded: {}",
         String::from_utf8_lossy(&output.stdout).trim()
     );
-    Ok(path.to_string())
+    Ok(cwd.to_string())
 }
 
 /// Walk up from `path` looking for a directory containing `.bare/`.
 /// Returns the bare repo root (the directory with `.bare/` inside it),
 /// or None if this is not a bare worktree setup.
 pub fn find_bare_root(path: &str) -> Option<std::path::PathBuf> {
-    let mut current = Path::new(path);
+    let expanded = expand_tilde(path);
+    let mut current = expanded.as_path();
     loop {
         if current.join(".bare").is_dir() {
             return Some(current.to_path_buf());

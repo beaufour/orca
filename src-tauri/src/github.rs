@@ -2,7 +2,7 @@ use crate::command::new_command;
 use crate::git::find_bare_root;
 use crate::models::{GitHubIssue, GitHubLabel};
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Raw shape returned by `gh issue list/view --json ...`
 #[derive(Debug, Deserialize)]
@@ -54,20 +54,39 @@ fn to_github_issue(raw: GhIssue) -> GitHubIssue {
 
 const GH_JSON_FIELDS: &str = "number,title,body,state,labels,assignees,createdAt,updatedAt,url";
 
+/// Expand ~ in paths to the home directory.
+fn expand_tilde(path: &str) -> PathBuf {
+    if let Some(stripped) = path.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(stripped);
+        }
+    }
+    PathBuf::from(path)
+}
+
 /// Extract `owner/repo` from the git remote origin URL.
 fn get_owner_repo(repo_path: &str) -> Result<String, String> {
+    // Expand tilde in path
+    let expanded = expand_tilde(repo_path);
+    let expanded_str = expanded.to_string_lossy();
+
     // For bare repos, use the .bare/ directory as cwd
-    let cwd = if let Some(bare_root) = find_bare_root(repo_path) {
+    let cwd = if let Some(bare_root) = find_bare_root(&expanded_str) {
         bare_root.join(".bare").to_string_lossy().to_string()
     } else {
-        repo_path.to_string()
+        expanded_str.to_string()
     };
+
+    // Check if the directory exists
+    if !Path::new(&cwd).exists() {
+        return Err(format!("Repository path does not exist: {cwd}"));
+    }
 
     let output = new_command("git")
         .current_dir(&cwd)
         .args(["remote", "get-url", "origin"])
         .output()
-        .map_err(|e| format!("Failed to run git: {e}"))?;
+        .map_err(|e| format!("Failed to run git in {cwd}: {e}"))?;
 
     if !output.status.success() {
         return Err("No git remote 'origin' found".to_string());
@@ -95,14 +114,9 @@ fn parse_owner_repo(url: &str) -> Result<String, String> {
 }
 
 fn run_gh(repo_path: &str, args: &[&str]) -> Result<String, String> {
-    // Determine cwd: prefer a non-bare worktree directory
-    let cwd = if Path::new(repo_path).join(".bare").exists() {
-        // bare root — look for a worktree sibling that's a real directory
-        // Fall back to using the bare dir itself
-        repo_path.to_string()
-    } else {
-        repo_path.to_string()
-    };
+    // Expand tilde in path
+    let expanded = expand_tilde(repo_path);
+    let cwd = expanded.to_string_lossy().to_string();
 
     log::info!("gh {} (cwd: {cwd})", args.join(" "));
     let output = new_command("gh")
