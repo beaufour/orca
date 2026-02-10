@@ -671,6 +671,7 @@ body {
 }
 
 .wt-btn {
+  flex-shrink: 0;
   font-size: 12px;
   padding: 4px 10px;
   border: 1px solid var(--border);
@@ -818,9 +819,14 @@ body {
 }
 
 .terminal-title {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .terminal-tmux {
@@ -830,6 +836,7 @@ body {
 }
 
 .terminal-close {
+  flex-shrink: 0;
   font-size: 12px;
   padding: 2px 10px;
   border: 1px solid var(--border);
