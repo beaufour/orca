@@ -62,6 +62,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            agentdeck::check_agent_deck_version,
             agentdeck::get_groups,
             agentdeck::get_sessions,
             agentdeck::get_attention_counts,
