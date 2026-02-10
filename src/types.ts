@@ -26,6 +26,7 @@ export type AttentionStatus = "needs_input" | "error" | "running" | "idle" | "st
 
 export interface SessionSummary {
   summary: string | null;
+  initial_prompt: string | null;
   attention: AttentionStatus;
   last_tool: string | null;
   last_text: string | null;

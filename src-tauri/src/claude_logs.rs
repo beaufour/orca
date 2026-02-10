@@ -6,6 +6,7 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionSummary {
     pub summary: Option<String>,
+    pub initial_prompt: Option<String>,
     pub attention: AttentionStatus,
     pub last_tool: Option<String>,
     pub last_text: Option<String>,
@@ -92,6 +93,56 @@ fn read_tail_lines(path: &PathBuf, max_bytes: u64) -> Vec<serde_json::Value> {
         }
     }
     lines
+}
+
+/// Read the first N bytes of a file and parse JSONL lines from it
+fn read_head_lines(path: &PathBuf, max_bytes: u64) -> Vec<serde_json::Value> {
+    let Ok(file) = File::open(path) else {
+        return vec![];
+    };
+
+    let reader = BufReader::new(file);
+    let mut lines = Vec::new();
+    let mut bytes_read: u64 = 0;
+
+    for line in reader.lines() {
+        let Ok(line) = line else {
+            continue;
+        };
+        bytes_read += line.len() as u64 + 1;
+        if bytes_read > max_bytes {
+            break;
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) {
+            lines.push(val);
+        }
+    }
+    lines
+}
+
+fn extract_initial_prompt(lines: &[serde_json::Value]) -> Option<String> {
+    for line in lines.iter() {
+        let msg = line.get("message").unwrap_or(line);
+        if msg.get("role").and_then(|v| v.as_str()) != Some("user") {
+            continue;
+        }
+        if let Some(content) = msg.get("content").and_then(|v| v.as_array()) {
+            for item in content {
+                if item.get("type").and_then(|v| v.as_str()) == Some("text") {
+                    let text = item.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    let trimmed = text.trim();
+                    if !trimmed.is_empty() {
+                        let truncated: String = trimmed.chars().take(200).collect();
+                        return Some(truncated);
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 fn extract_summary(lines: &[serde_json::Value]) -> Option<String> {
@@ -306,6 +357,7 @@ pub fn get_session_summary(
         };
         return SessionSummary {
             summary: None,
+            initial_prompt: None,
             attention: refine_with_tmux(attention, tmux_session.as_deref()),
             last_tool: None,
             last_text: None,
@@ -316,8 +368,13 @@ pub fn get_session_summary(
     let lines = read_tail_lines(&jsonl_path, 256 * 1024);
     let attention = extract_attention(&lines, &agentdeck_status);
 
+    // Read initial prompt from the head of the file
+    let head_lines = read_head_lines(&jsonl_path, 32 * 1024);
+    let initial_prompt = extract_initial_prompt(&head_lines);
+
     SessionSummary {
         summary: extract_summary(&lines),
+        initial_prompt,
         attention: refine_with_tmux(attention, tmux_session.as_deref()),
         last_tool: extract_last_tool(&lines),
         last_text: extract_last_text(&lines),
