@@ -35,7 +35,7 @@ export function TodoList({
   focusedIndex = -1,
   refetchSessions,
 }: TodoListProps) {
-  const [showUnlinked, setShowUnlinked] = useState(false);
+  const [showUnlinked, setShowUnlinked] = useState(true);
   const [issueModal, setIssueModal] = useState<{
     mode: "create" | "edit";
     issue?: GitHubIssue;
