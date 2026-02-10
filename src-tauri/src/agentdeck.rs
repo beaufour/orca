@@ -7,6 +7,16 @@ use crate::models::{AttentionCounts, Group, Session, VersionCheck};
 
 const SUPPORTED_VERSION: &str = "0.11.2";
 
+/// Expand ~ in paths to the home directory.
+fn expand_tilde(path: &str) -> PathBuf {
+    if let Some(stripped) = path.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(stripped);
+        }
+    }
+    PathBuf::from(path)
+}
+
 fn db_path() -> PathBuf {
     let home = dirs::home_dir().expect("could not find home directory");
     home.join(".agent-deck/profiles/default/state.db")
@@ -126,12 +136,16 @@ pub fn create_session(
 ) -> Result<String, String> {
     let tool_name = tool.unwrap_or_else(|| "claude".to_string());
 
+    // Expand tilde in project path
+    let expanded_project_path = expand_tilde(&project_path);
+    let project_path_str = expanded_project_path.to_string_lossy().to_string();
+
     // If the project_path is a bare repo (has .bare subdir), resolve to an
     // existing worktree so agent-deck can find the git repo.
-    let mut effective_path = if Path::new(&project_path).join(".bare").is_dir() {
-        find_worktree_in_bare(&project_path)?
+    let mut effective_path = if expanded_project_path.join(".bare").is_dir() {
+        find_worktree_in_bare(&project_path_str)?
     } else {
-        project_path
+        project_path_str
     };
 
     let bare_root = crate::git::find_bare_root(&effective_path);
@@ -511,6 +525,10 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
     // Use name as path (agent-deck convention)
     let group_path = name.clone();
 
+    // Expand tilde in default_path before storing
+    let expanded_default_path = expand_tilde(&default_path);
+    let default_path_str = expanded_default_path.to_string_lossy().to_string();
+
     // Get max sort_order to append at end
     let max_sort: i32 = conn
         .query_row(
@@ -522,7 +540,7 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
 
     conn.execute(
         "INSERT INTO groups (path, name, expanded, sort_order, default_path) VALUES (?1, ?2, 1, ?3, ?4)",
-        rusqlite::params![group_path, name, max_sort + 1, default_path],
+        rusqlite::params![group_path, name, max_sort + 1, default_path_str],
     )
     .map_err(|e| format!("Failed to create group: {e}"))?;
 

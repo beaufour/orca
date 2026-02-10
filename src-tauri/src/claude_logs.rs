@@ -3,6 +3,16 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
 
+/// Expand ~ in paths to the home directory.
+fn expand_tilde(path: &str) -> PathBuf {
+    if let Some(stripped) = path.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(stripped);
+        }
+    }
+    PathBuf::from(path)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionSummary {
     pub summary: Option<String>,
@@ -29,7 +39,10 @@ fn claude_projects_dir() -> PathBuf {
 }
 
 fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<PathBuf> {
-    let encoded = project_path.replace('/', "-");
+    // Expand tilde before encoding path
+    let expanded = expand_tilde(project_path);
+    let expanded_str = expanded.to_string_lossy();
+    let encoded = expanded_str.replace('/', "-");
     let base = claude_projects_dir();
 
     // Try the exact encoded path first
