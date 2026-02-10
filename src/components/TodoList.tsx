@@ -35,7 +35,6 @@ export function TodoList({
   focusedIndex = -1,
   refetchSessions,
 }: TodoListProps) {
-  const [showUnlinked, setShowUnlinked] = useState(true);
   const [issueModal, setIssueModal] = useState<{
     mode: "create" | "edit";
     issue?: GitHubIssue;
@@ -52,9 +51,13 @@ export function TodoList({
   });
 
   // Build issue-session mapping
-  const { inProgress, todo, unlinked } = useMemo(() => {
+  type SessionItem =
+    | { type: "linked"; issue: GitHubIssue; session: Session }
+    | { type: "unlinked"; session: Session };
+
+  const { allSessions, todo } = useMemo(() => {
     if (!issues || !sessions) {
-      return { inProgress: [], todo: [], unlinked: [] };
+      return { allSessions: [] as SessionItem[], todo: [] };
     }
 
     const issueByNumber = new Map<number, GitHubIssue>();
@@ -64,43 +67,48 @@ export function TodoList({
 
     const matchedIssueNumbers = new Set<number>();
     const sessionsByIssue = new Map<number, Session>();
-    const unlinkedSessions: Session[] = [];
+    const items: SessionItem[] = [];
 
+    // First pass: find the best session per issue
     for (const session of sessions) {
       if (!session.worktree_branch) {
-        unlinkedSessions.push(session);
         continue;
       }
       const issueNum = extractIssueNumber(session.worktree_branch);
       if (issueNum !== null && issueByNumber.has(issueNum)) {
         matchedIssueNumbers.add(issueNum);
-        // Keep the most recently accessed session per issue
         const existing = sessionsByIssue.get(issueNum);
         if (!existing || session.last_accessed > existing.last_accessed) {
           sessionsByIssue.set(issueNum, session);
-          if (existing) unlinkedSessions.push(existing);
-        } else {
-          unlinkedSessions.push(session);
         }
-      } else {
-        unlinkedSessions.push(session);
       }
     }
 
-    const inProgressItems: { issue: GitHubIssue; session: Session }[] = [];
-    for (const [issueNum, session] of sessionsByIssue) {
-      const issue = issueByNumber.get(issueNum)!;
-      inProgressItems.push({ issue, session });
+    // Second pass: build unified list
+    for (const session of sessions) {
+      const issueNum = session.worktree_branch ? extractIssueNumber(session.worktree_branch) : null;
+      if (issueNum !== null && sessionsByIssue.get(issueNum) === session) {
+        items.push({ type: "linked", issue: issueByNumber.get(issueNum)!, session });
+      } else {
+        items.push({ type: "unlinked", session });
+      }
     }
-    // Sort by most recently accessed
-    inProgressItems.sort((a, b) => b.session.last_accessed - a.session.last_accessed);
+
+    // Sort: main first, then by last_accessed descending
+    items.sort((a, b) => {
+      const aBranch = a.session.worktree_branch;
+      const bBranch = b.session.worktree_branch;
+      const aMain = !aBranch || aBranch === "main" || aBranch === "master";
+      const bMain = !bBranch || bBranch === "main" || bBranch === "master";
+      if (aMain !== bMain) return aMain ? -1 : 1;
+      return b.session.last_accessed - a.session.last_accessed;
+    });
 
     const todoItems = issues.filter((issue) => !matchedIssueNumbers.has(issue.number));
 
     return {
-      inProgress: inProgressItems,
+      allSessions: items,
       todo: todoItems,
-      unlinked: unlinkedSessions,
     };
   }, [issues, sessions]);
 
@@ -169,62 +177,47 @@ export function TodoList({
         <div className="todo-github-error">{String(createSessionMutation.error)}</div>
       )}
 
-      {/* In Progress */}
-      {inProgress.length > 0 && (
+      {/* Sessions */}
+      {allSessions.length > 0 && (
         <div className="todo-section">
           <div className="todo-section-header">
-            <span>In Progress</span>
-            <span className="todo-section-count">{inProgress.length}</span>
+            <span>Sessions</span>
+            <span className="todo-section-count">{allSessions.length}</span>
           </div>
           <div className="session-grid">
-            {inProgress.map(({ issue, session }) => (
-              <TodoCard
-                key={issue.number}
-                issue={issue}
-                session={session}
-                repoPath={group.default_path}
-                onSelectSession={onSelectSession}
-                liveTmuxSessions={liveTmuxSessions}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Unlinked Sessions */}
-      {unlinked.length > 0 && (
-        <div className="todo-section">
-          <button
-            className="todo-section-header todo-section-header-collapsible"
-            onClick={() => setShowUnlinked(!showUnlinked)}
-          >
-            <span>Unlinked Sessions {showUnlinked ? "▾" : "▸"}</span>
-            <span className="todo-section-count">{unlinked.length}</span>
-          </button>
-          {showUnlinked && (
-            <div className="session-grid">
-              {unlinked.map((session, index) => (
+            {allSessions.map((item, index) =>
+              item.type === "linked" ? (
+                <TodoCard
+                  key={item.session.id}
+                  issue={item.issue}
+                  session={item.session}
+                  repoPath={group.default_path}
+                  onSelectSession={onSelectSession}
+                  liveTmuxSessions={liveTmuxSessions}
+                />
+              ) : (
                 <SessionCard
-                  key={session.id}
-                  session={session}
-                  onClick={() => onSelectSession(session)}
+                  key={item.session.id}
+                  session={item.session}
+                  onClick={() => onSelectSession(item.session)}
                   onSelectSession={onSelectSession}
                   isFocused={index === focusedIndex}
                   confirmingRemove={
-                    confirmingRemoveId != null ? session.id === confirmingRemoveId : undefined
+                    confirmingRemoveId != null ? item.session.id === confirmingRemoveId : undefined
                   }
                   onConfirmingRemoveChange={
                     onConfirmingRemoveChange
-                      ? (c) => onConfirmingRemoveChange(c ? session.id : null)
+                      ? (c) => onConfirmingRemoveChange(c ? item.session.id : null)
                       : undefined
                   }
                   tmuxAlive={
-                    !session.tmux_session || liveTmuxSessions?.has(session.tmux_session) !== false
+                    !item.session.tmux_session ||
+                    liveTmuxSessions?.has(item.session.tmux_session) !== false
                   }
                 />
-              ))}
-            </div>
-          )}
+              ),
+            )}
+          </div>
         </div>
       )}
 
