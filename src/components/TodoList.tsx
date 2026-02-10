@@ -107,13 +107,7 @@ export function TodoList({
   const createSessionMutation = useMutation({
     mutationFn: async (issue: GitHubIssue) => {
       const branch = issueToSlug(issue.number, issue.title);
-      const prompt = [
-        `GitHub Issue #${issue.number}: ${issue.title}`,
-        "",
-        issue.body || "(no description)",
-        "",
-        "Please review the issue above and the codebase, then wait for further instructions.",
-      ].join("\n");
+      const prompt = `Please work on GitHub Issue #${issue.number} (${issue.html_url}). Review the issue and the codebase, then wait for further instructions.`;
 
       const sessionId = await invoke<string>("create_session", {
         projectPath: group.default_path,
