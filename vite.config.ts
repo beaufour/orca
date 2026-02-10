@@ -1,11 +1,15 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { configDefaults } from "vitest/config";
 
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
+  test: {
+    exclude: [...configDefaults.exclude, "src-tauri/**"],
+  },
   server: {
     port: 1420,
     strictPort: true,

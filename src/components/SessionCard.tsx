@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session, SessionSummary, AttentionStatus } from "../types";
-import { ATTENTION_CONFIG, fallbackAttention, formatTime } from "../utils";
+import { ATTENTION_CONFIG, fallbackAttention, formatPath, formatTime } from "../utils";
 import { useWorktreeActions } from "../hooks/useWorktreeActions";
 import { WorktreeActions } from "./WorktreeActions";
 import { DiffViewer } from "./DiffViewer";
@@ -20,18 +20,6 @@ interface SessionCardProps {
   isDismissed?: boolean;
   onDismiss?: () => void;
   onUndismiss?: () => void;
-}
-
-function formatPath(path: string): string {
-  const home = "/Users/";
-  if (path.startsWith(home)) {
-    const afterHome = path.slice(home.length);
-    const slashIdx = afterHome.indexOf("/");
-    if (slashIdx !== -1) {
-      return "~" + afterHome.slice(slashIdx);
-    }
-  }
-  return path;
 }
 
 export function SessionCard({
