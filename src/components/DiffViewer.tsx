@@ -80,19 +80,12 @@ export function DiffViewer({ session, onClose }: DiffViewerProps) {
   }, [onClose]);
 
   const files = data ? parseDiff(data) : [];
-  const bodyRef = useRef<HTMLDivElement>(null);
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const scrollToFile = useCallback((path: string) => {
     const el = fileRefs.current.get(path);
-    const container = bodyRef.current;
-    if (el && container) {
-      const elRect = el.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      container.scrollTo({
-        top: container.scrollTop + elRect.top - containerRect.top,
-        behavior: "smooth",
-      });
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, []);
 
@@ -157,7 +150,7 @@ export function DiffViewer({ session, onClose }: DiffViewerProps) {
               ))}
             </div>
           )}
-          <div className="diff-body" ref={bodyRef}>
+          <div className="diff-body">
             {isLoading && (
               <div className="loading-row">
                 <span className="spinner" /> Loading diff...
