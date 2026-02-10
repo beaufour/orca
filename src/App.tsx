@@ -12,6 +12,8 @@ import { RenameModal } from "./components/RenameModal";
 import { MoveSessionModal } from "./components/MoveSessionModal";
 import { CreateGroupModal } from "./components/CreateGroupModal";
 import { IssueModal } from "./components/IssueModal";
+import { getVersion } from "@tauri-apps/api/app";
+import { VersionWarning } from "./components/VersionWarning";
 import type { Group, Session } from "./types";
 
 const MIN_SIDEBAR_WIDTH = 48;
@@ -48,6 +50,10 @@ function App() {
   const [showLogViewer, setShowLogViewer] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [versionMismatch, setVersionMismatch] = useState<{
+    supported: string;
+    installed: string;
+  } | null>(null);
   const handleDismiss = useCallback((sessionId: string) => {
     setDismissedIds((prev) => {
       const next = new Set(prev);
@@ -67,6 +73,23 @@ function App() {
       next.delete(sessionId);
       return next;
     });
+  }, []);
+
+  // Check agent-deck version on mount
+  useEffect(() => {
+    invoke<{ supported: string; installed: string }>("check_agent_deck_version")
+      .then(async ({ supported, installed }) => {
+        if (supported !== installed) {
+          const stored = localStorage.getItem("orca-version-warning-dismissed");
+          const appVersion = await getVersion();
+          if (stored !== `${appVersion}:${installed}`) {
+            setVersionMismatch({ supported, installed });
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to check agent-deck version:", err);
+      });
   }, []);
 
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
@@ -568,6 +591,13 @@ function App() {
         />
       )}
       {showLogViewer && <LogViewer onClose={() => setShowLogViewer(false)} />}
+      {versionMismatch && (
+        <VersionWarning
+          supported={versionMismatch.supported}
+          installed={versionMismatch.installed}
+          onClose={() => setVersionMismatch(null)}
+        />
+      )}
     </div>
   );
 }

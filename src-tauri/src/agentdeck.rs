@@ -2,11 +2,38 @@ use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 
 use crate::claude_logs::{self, AttentionStatus};
-use crate::models::{AttentionCounts, Group, Session};
+use crate::models::{AttentionCounts, Group, Session, VersionCheck};
+
+const SUPPORTED_VERSION: &str = "0.11.2";
 
 fn db_path() -> PathBuf {
     let home = dirs::home_dir().expect("could not find home directory");
     home.join(".agent-deck/profiles/default/state.db")
+}
+
+#[tauri::command]
+pub fn check_agent_deck_version() -> Result<VersionCheck, String> {
+    let output = std::process::Command::new("agent-deck")
+        .arg("version")
+        .output()
+        .map_err(|e| format!("Failed to run agent-deck version: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("agent-deck version failed: {}", stderr.trim()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    // Parse "Agent Deck v0.11.2" → "0.11.2"
+    let installed = stdout
+        .strip_prefix("Agent Deck v")
+        .unwrap_or(&stdout)
+        .to_string();
+
+    Ok(VersionCheck {
+        supported: SUPPORTED_VERSION.to_string(),
+        installed,
+    })
 }
 
 #[tauri::command]
@@ -325,12 +352,6 @@ pub fn remove_session(session_id: String) -> Result<(), String> {
 
     conn.execute("DELETE FROM instances WHERE id = ?1", [&session_id])
         .map_err(|e| format!("Failed to delete session: {e}"))?;
-
-    // Also clean up heartbeats
-    let _ = conn.execute(
-        "DELETE FROM instance_heartbeats WHERE instance_id = ?1",
-        [&session_id],
-    );
 
     Ok(())
 }

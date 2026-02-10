@@ -1472,3 +1472,15 @@ body {
   color: var(--accent);
   border-color: var(--accent);
 }
+
+/* Version warning */
+.version-warning-title {
+  color: #f59e0b;
+}
+
+.version-warning-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}

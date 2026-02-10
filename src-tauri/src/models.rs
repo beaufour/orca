@@ -54,3 +54,9 @@ pub struct Session {
     pub claude_session_id: Option<String>,
     pub prompt: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionCheck {
+    pub supported: String,
+    pub installed: String,
+}
