@@ -71,10 +71,6 @@ These columns exist in the schema but Orca ignores them:
 - `metadata` table — not accessed
 - `instance_heartbeats.pid`, `.started`, `.heartbeat`, `.is_primary` — not accessed
 
-### Schema mismatch note
-
-Orca's `remove_session()` runs `DELETE FROM instance_heartbeats WHERE instance_id = ?1`, but the actual table has no `instance_id` column (PK is `pid`). This silently fails because the error is ignored with `let _ =`. Harmless but dead code.
-
 ## DB Queries — Reads
 
 All read queries use `SQLITE_OPEN_READ_ONLY`.

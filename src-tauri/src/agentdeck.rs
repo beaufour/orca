@@ -319,12 +319,6 @@ pub fn remove_session(session_id: String) -> Result<(), String> {
     conn.execute("DELETE FROM instances WHERE id = ?1", [&session_id])
         .map_err(|e| format!("Failed to delete session: {e}"))?;
 
-    // Also clean up heartbeats
-    let _ = conn.execute(
-        "DELETE FROM instance_heartbeats WHERE instance_id = ?1",
-        [&session_id],
-    );
-
     Ok(())
 }
 
