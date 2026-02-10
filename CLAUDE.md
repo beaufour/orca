@@ -2,6 +2,8 @@
 
 GUI for managing parallel Claude Code sessions across repos and git worktrees. Built on top of agent-deck.
 
+**This is a native desktop app (Tauri), not a web app. Do not use the Chrome DevTools MCP tools.**
+
 ## Tech Stack
 
 - **Frontend**: React + TypeScript, Vite, TanStack Query
