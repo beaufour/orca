@@ -8,6 +8,7 @@ import type {
   WorktreeStatus,
   MergeResult,
 } from "../types";
+import { formatPath, formatTime, fallbackAttention } from "../utils";
 import { DiffViewer } from "./DiffViewer";
 
 interface SessionCardProps {
@@ -33,32 +34,6 @@ const ATTENTION_CONFIG: Record<AttentionStatus, { label: string; className: stri
   stale: { label: "Stale", className: "status-stale" },
   unknown: { label: "Unknown", className: "status-stale" },
 };
-
-function formatPath(path: string): string {
-  const home = "/Users/";
-  if (path.startsWith(home)) {
-    const afterHome = path.slice(home.length);
-    const slashIdx = afterHome.indexOf("/");
-    if (slashIdx !== -1) {
-      return "~" + afterHome.slice(slashIdx);
-    }
-  }
-  return path;
-}
-
-function formatTime(epoch: number): string {
-  if (epoch <= 0) return "never";
-  const date = new Date(epoch * 1000);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
-}
 
 export function SessionCard({
   session,
@@ -606,19 +581,4 @@ export function SessionCard({
       {showDiff && <DiffViewer session={session} onClose={() => setShowDiff(false)} />}
     </div>
   );
-}
-
-function fallbackAttention(agentdeckStatus: string): AttentionStatus {
-  switch (agentdeckStatus) {
-    case "running":
-      return "running";
-    case "waiting":
-      return "needs_input";
-    case "error":
-      return "error";
-    case "idle":
-      return "idle";
-    default:
-      return "unknown";
-  }
 }

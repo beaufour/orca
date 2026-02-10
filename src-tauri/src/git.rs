@@ -47,12 +47,9 @@ fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
     Ok(stdout)
 }
 
-#[tauri::command]
-pub fn list_worktrees(repo_path: String) -> Result<Vec<Worktree>, String> {
-    // Find the actual git dir - might be a worktree itself, so go up to find .bare or .git
-    let effective_repo = find_repo_root(&repo_path)?;
-    let output = run_git(&effective_repo, &["worktree", "list", "--porcelain"])?;
-
+/// Parse the porcelain output of `git worktree list --porcelain` into Worktree structs.
+/// Filters out bare entries.
+pub fn parse_worktree_list(output: &str) -> Vec<Worktree> {
     let mut worktrees = Vec::new();
     let mut current_path = String::new();
     let mut current_head = String::new();
@@ -99,7 +96,15 @@ pub fn list_worktrees(repo_path: String) -> Result<Vec<Worktree>, String> {
     // Filter out the bare repo entry
     worktrees.retain(|w| !w.is_bare);
 
-    Ok(worktrees)
+    worktrees
+}
+
+#[tauri::command]
+pub fn list_worktrees(repo_path: String) -> Result<Vec<Worktree>, String> {
+    // Find the actual git dir - might be a worktree itself, so go up to find .bare or .git
+    let effective_repo = find_repo_root(&repo_path)?;
+    let output = run_git(&effective_repo, &["worktree", "list", "--porcelain"])?;
+    Ok(parse_worktree_list(&output))
 }
 
 #[tauri::command]
@@ -422,5 +427,99 @@ pub fn find_bare_root(path: &str) -> Option<std::path::PathBuf> {
             return Some(current.to_path_buf());
         }
         current = current.parent()?;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_empty_input() {
+        let result = parse_worktree_list("");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn parse_single_worktree() {
+        let output = "\
+worktree /home/user/repo/main
+HEAD abc123def456
+branch refs/heads/main
+";
+        let result = parse_worktree_list(output);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].path, "/home/user/repo/main");
+        assert_eq!(result[0].head, "abc123def456");
+        assert_eq!(result[0].branch, "main");
+        assert!(!result[0].is_bare);
+    }
+
+    #[test]
+    fn parse_multiple_worktrees() {
+        let output = "\
+worktree /home/user/repo/main
+HEAD abc123
+branch refs/heads/main
+
+worktree /home/user/repo/feature
+HEAD def456
+branch refs/heads/feature-branch
+";
+        let result = parse_worktree_list(output);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].branch, "main");
+        assert_eq!(result[1].branch, "feature-branch");
+    }
+
+    #[test]
+    fn parse_filters_bare_entry() {
+        let output = "\
+worktree /home/user/repo
+HEAD abc123
+bare
+
+worktree /home/user/repo/main
+HEAD def456
+branch refs/heads/main
+";
+        let result = parse_worktree_list(output);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].path, "/home/user/repo/main");
+    }
+
+    #[test]
+    fn parse_detached_head() {
+        let output = "\
+worktree /home/user/repo/detached
+HEAD abc123
+detached
+";
+        let result = parse_worktree_list(output);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].head, "abc123");
+        assert_eq!(result[0].branch, ""); // no branch line for detached HEAD
+    }
+
+    #[test]
+    fn parse_strips_refs_heads_prefix() {
+        let output = "\
+worktree /home/user/repo/feature
+HEAD abc123
+branch refs/heads/my-feature
+";
+        let result = parse_worktree_list(output);
+        assert_eq!(result[0].branch, "my-feature");
+    }
+
+    #[test]
+    fn parse_branch_without_refs_heads() {
+        let output = "\
+worktree /home/user/repo/feature
+HEAD abc123
+branch some-other-ref
+";
+        let result = parse_worktree_list(output);
+        assert_eq!(result[0].branch, "some-other-ref");
     }
 }

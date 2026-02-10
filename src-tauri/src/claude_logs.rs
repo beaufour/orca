@@ -323,3 +323,285 @@ pub fn get_session_summary(
         last_text: extract_last_text(&lines),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // ── extract_summary ──
+
+    #[test]
+    fn summary_empty_lines() {
+        assert_eq!(extract_summary(&[]), None);
+    }
+
+    #[test]
+    fn summary_single() {
+        let lines = vec![json!({"type": "summary", "summary": "Did some work"})];
+        assert_eq!(extract_summary(&lines), Some("Did some work".into()));
+    }
+
+    #[test]
+    fn summary_latest_wins() {
+        let lines = vec![
+            json!({"type": "summary", "summary": "First"}),
+            json!({"type": "assistant", "message": {"role": "assistant"}}),
+            json!({"type": "summary", "summary": "Second"}),
+        ];
+        assert_eq!(extract_summary(&lines), Some("Second".into()));
+    }
+
+    #[test]
+    fn summary_no_summary_field() {
+        let lines = vec![json!({"type": "summary"})];
+        assert_eq!(extract_summary(&lines), None);
+    }
+
+    #[test]
+    fn summary_ignores_non_summary_types() {
+        let lines = vec![json!({"type": "assistant", "summary": "Not a summary entry"})];
+        assert_eq!(extract_summary(&lines), None);
+    }
+
+    // ── extract_attention ──
+
+    #[test]
+    fn attention_waiting_with_assistant() {
+        let lines = vec![json!({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}
+        })];
+        assert!(matches!(
+            extract_attention(&lines, "waiting"),
+            AttentionStatus::NeedsInput
+        ));
+    }
+
+    #[test]
+    fn attention_waiting_no_assistant() {
+        let lines = vec![json!({
+            "type": "user",
+            "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]}
+        })];
+        assert!(matches!(
+            extract_attention(&lines, "waiting"),
+            AttentionStatus::Idle
+        ));
+    }
+
+    #[test]
+    fn attention_empty_lines_running() {
+        assert!(matches!(
+            extract_attention(&[], "running"),
+            AttentionStatus::Running
+        ));
+    }
+
+    #[test]
+    fn attention_empty_lines_error() {
+        assert!(matches!(
+            extract_attention(&[], "error"),
+            AttentionStatus::Error
+        ));
+    }
+
+    #[test]
+    fn attention_empty_lines_unknown() {
+        assert!(matches!(
+            extract_attention(&[], "something"),
+            AttentionStatus::Unknown
+        ));
+    }
+
+    #[test]
+    fn attention_ask_user_question_tool() {
+        let lines = vec![json!({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "name": "AskUserQuestion"}
+            ]}
+        })];
+        assert!(matches!(
+            extract_attention(&lines, "running"),
+            AttentionStatus::NeedsInput
+        ));
+    }
+
+    #[test]
+    fn attention_exit_plan_mode_tool() {
+        let lines = vec![json!({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "name": "ExitPlanMode"}
+            ]}
+        })];
+        assert!(matches!(
+            extract_attention(&lines, "running"),
+            AttentionStatus::NeedsInput
+        ));
+    }
+
+    #[test]
+    fn attention_enter_plan_mode_tool() {
+        let lines = vec![json!({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "name": "EnterPlanMode"}
+            ]}
+        })];
+        assert!(matches!(
+            extract_attention(&lines, "running"),
+            AttentionStatus::NeedsInput
+        ));
+    }
+
+    #[test]
+    fn attention_stale_timestamp() {
+        let old_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64()
+            - 7200.0; // 2 hours ago
+        let lines = vec![
+            json!({
+                "type": "assistant",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}]}
+            }),
+            json!({"type": "result", "timestamp": old_ts}),
+        ];
+        assert!(matches!(
+            extract_attention(&lines, "running"),
+            AttentionStatus::Stale
+        ));
+    }
+
+    #[test]
+    fn attention_running_fallback() {
+        let recent_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64()
+            - 10.0;
+        let lines = vec![
+            json!({
+                "type": "assistant",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}]}
+            }),
+            json!({"type": "result", "timestamp": recent_ts}),
+        ];
+        assert!(matches!(
+            extract_attention(&lines, "running"),
+            AttentionStatus::Running
+        ));
+    }
+
+    #[test]
+    fn attention_error_fallback() {
+        let recent_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64()
+            - 10.0;
+        let lines = vec![
+            json!({
+                "type": "assistant",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "oops"}]}
+            }),
+            json!({"type": "result", "timestamp": recent_ts}),
+        ];
+        assert!(matches!(
+            extract_attention(&lines, "error"),
+            AttentionStatus::Error
+        ));
+    }
+
+    #[test]
+    fn attention_default_idle() {
+        let recent_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64()
+            - 10.0;
+        let lines = vec![
+            json!({
+                "type": "assistant",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}]}
+            }),
+            json!({"type": "result", "timestamp": recent_ts}),
+        ];
+        assert!(matches!(
+            extract_attention(&lines, "idle"),
+            AttentionStatus::Idle
+        ));
+    }
+
+    // ── extract_last_text ──
+
+    #[test]
+    fn last_text_no_lines() {
+        assert_eq!(extract_last_text(&[]), None);
+    }
+
+    #[test]
+    fn last_text_no_assistant() {
+        let lines = vec![json!({
+            "type": "user",
+            "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]}
+        })];
+        assert_eq!(extract_last_text(&lines), None);
+    }
+
+    #[test]
+    fn last_text_returns_text() {
+        let lines = vec![json!({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [
+                {"type": "text", "text": "Here is the answer"}
+            ]}
+        })];
+        assert_eq!(extract_last_text(&lines), Some("Here is the answer".into()));
+    }
+
+    #[test]
+    fn last_text_truncates_at_200_chars() {
+        let long_text = "a".repeat(300);
+        let lines = vec![json!({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [
+                {"type": "text", "text": long_text}
+            ]}
+        })];
+        let result = extract_last_text(&lines).unwrap();
+        assert_eq!(result.len(), 200);
+    }
+
+    // ── extract_last_tool ──
+
+    #[test]
+    fn last_tool_no_lines() {
+        assert_eq!(extract_last_tool(&[]), None);
+    }
+
+    #[test]
+    fn last_tool_with_tool_use() {
+        let lines = vec![json!({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "name": "Read"}
+            ]}
+        })];
+        assert_eq!(extract_last_tool(&lines), Some("Read".into()));
+    }
+
+    #[test]
+    fn last_tool_no_tool_use() {
+        let lines = vec![json!({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [
+                {"type": "text", "text": "just text"}
+            ]}
+        })];
+        assert_eq!(extract_last_tool(&lines), None);
+    }
+}
