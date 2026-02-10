@@ -1310,10 +1310,61 @@ body {
   margin-bottom: 16px;
 }
 
+/* Wide modal (for issue create/edit) */
+.modal-content-wide {
+  min-width: 480px;
+  max-width: 640px;
+}
+
 /* Modal textarea */
 .modal-textarea {
   resize: vertical;
   min-height: 100px;
   font-family: inherit;
   line-height: 1.5;
+}
+
+/* Modal shortcut hint */
+.modal-shortcut-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+
+/* Issue label picker */
+.issue-label-picker {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.issue-label-option {
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.issue-label-option:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.issue-label-option-active {
+  background: rgba(74, 158, 255, 0.15);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.issue-label-option-active:hover {
+  background: rgba(74, 158, 255, 0.25);
+  color: var(--accent);
+  border-color: var(--accent);
 }

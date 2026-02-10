@@ -167,21 +167,29 @@ pub fn get_issue(repo_path: String, issue_number: u64) -> Result<GitHubIssue, St
 }
 
 #[tauri::command]
-pub fn create_issue(repo_path: String, title: String, body: String) -> Result<GitHubIssue, String> {
+pub fn create_issue(
+    repo_path: String,
+    title: String,
+    body: String,
+    labels: Vec<String>,
+) -> Result<GitHubIssue, String> {
     let owner_repo = get_owner_repo(&repo_path)?;
-    let output = run_gh(
-        &repo_path,
-        &[
-            "issue",
-            "create",
-            "-R",
-            &owner_repo,
-            "--title",
-            &title,
-            "--body",
-            &body,
-        ],
-    )?;
+    let mut args = vec![
+        "issue",
+        "create",
+        "-R",
+        &owner_repo,
+        "--title",
+        &title,
+        "--body",
+        &body,
+    ];
+    let labels_joined = labels.join(",");
+    if !labels.is_empty() {
+        args.push("--label");
+        args.push(&labels_joined);
+    }
+    let output = run_gh(&repo_path, &args)?;
 
     // gh issue create outputs the URL. We need to extract the issue number and fetch it.
     let url = output.trim();
@@ -200,23 +208,28 @@ pub fn update_issue(
     issue_number: u64,
     title: String,
     body: String,
+    labels: Vec<String>,
 ) -> Result<GitHubIssue, String> {
     let owner_repo = get_owner_repo(&repo_path)?;
     let num_str = issue_number.to_string();
-    run_gh(
-        &repo_path,
-        &[
-            "issue",
-            "edit",
-            &num_str,
-            "-R",
-            &owner_repo,
-            "--title",
-            &title,
-            "--body",
-            &body,
-        ],
-    )?;
+    let mut args = vec![
+        "issue",
+        "edit",
+        &num_str,
+        "-R",
+        &owner_repo,
+        "--title",
+        &title,
+        "--body",
+        &body,
+    ];
+    // gh issue edit --add-label replaces; to set exact labels we clear then add
+    let labels_joined = labels.join(",");
+    if !labels.is_empty() {
+        args.push("--add-label");
+        args.push(&labels_joined);
+    }
+    run_gh(&repo_path, &args)?;
 
     get_issue(repo_path, issue_number)
 }
