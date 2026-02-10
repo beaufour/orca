@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useQueryClient } from "@tanstack/react-query";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -22,6 +23,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
   const [attachFailed, setAttachFailed] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [terminalReady, setTerminalReady] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -269,6 +271,44 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     };
   }, [session.id, session.tmux_session]);
 
+  // Handle file drag-and-drop: paste file paths into tmux session
+  useEffect(() => {
+    if (!session.tmux_session) return;
+    const tmuxSession = session.tmux_session;
+
+    // Shell-escape a path by backslash-escaping special characters
+    const shellEscape = (path: string) => path.replace(/([ \\'"()&;|<>$`!#*?[\]{}~^])/g, "\\$1");
+
+    // Check if a position (from Tauri drag-drop event) is within the terminal container
+    const isOverContainer = (pos: { x: number; y: number }): boolean => {
+      const container = containerRef.current;
+      if (!container) return false;
+      const rect = container.getBoundingClientRect();
+      return pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom;
+    };
+
+    const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+      const { payload } = event;
+      if (payload.type === "over" || payload.type === "enter") {
+        setIsDragOver(isOverContainer(payload.position));
+      } else if (payload.type === "drop") {
+        setIsDragOver(false);
+        if (isOverContainer(payload.position)) {
+          const text = payload.paths.map(shellEscape).join(" ");
+          invoke("paste_to_tmux_pane", { tmuxSession, text }).catch(() => {});
+          // Refocus the terminal after drop
+          terminalRef.current?.focus();
+        }
+      } else if (payload.type === "leave") {
+        setIsDragOver(false);
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [session.tmux_session]);
+
   const handleRestart = useCallback(async () => {
     setRestarting(true);
     try {
@@ -333,7 +373,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         </button>
       </div>
       <div
-        className={`xterm-container ${terminalReady ? "" : "xterm-container-loading"}`}
+        className={`xterm-container ${terminalReady ? "" : "xterm-container-loading"} ${isDragOver ? "xterm-container-dragover" : ""}`}
         ref={containerRef}
       />
     </div>
