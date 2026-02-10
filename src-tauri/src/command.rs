@@ -1,34 +1,34 @@
 use std::process::Command;
 
-/// Create a Command with proper PATH for macOS GUI apps.
+/// Inherit the user's shell PATH for macOS GUI apps.
 ///
-/// GUI apps on macOS don't inherit the shell PATH, so git/gh commands may fail
-/// with "No such file or directory". This function adds common binary locations
-/// to the PATH before running the command.
-pub fn new_command(program: &str) -> Command {
-    let mut cmd = Command::new(program);
-
+/// GUI apps on macOS don't inherit the shell PATH, so commands like
+/// git/gh/agent-deck/tmux can't be found. This runs a login shell to
+/// get the user's configured PATH and sets it on the process.
+/// Call once at startup.
+pub fn init_path() {
     #[cfg(target_os = "macos")]
     {
-        // Add common binary locations for Homebrew, system tools, etc.
-        let path_additions = [
-            "/opt/homebrew/bin", // Apple Silicon Homebrew
-            "/usr/local/bin",    // Intel Homebrew
-            "/usr/bin",          // System binaries
-            "/bin",              // Core binaries
-        ];
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        let output = Command::new(&shell)
+            .args(["-l", "-c", "echo $PATH"])
+            .output();
 
-        if let Ok(existing_path) = std::env::var("PATH") {
-            let mut paths: Vec<String> = path_additions
-                .iter()
-                .map(std::string::ToString::to_string)
-                .collect();
-            paths.push(existing_path);
-            cmd.env("PATH", paths.join(":"));
-        } else {
-            cmd.env("PATH", path_additions.join(":"));
+        match output {
+            Ok(out) if out.status.success() => {
+                let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !path.is_empty() {
+                    std::env::set_var("PATH", &path);
+                }
+            }
+            _ => {
+                log::warn!("Failed to get PATH from {shell}, commands may not be found");
+            }
         }
     }
+}
 
-    cmd
+/// Create a Command. Assumes `init_path()` has been called at startup.
+pub fn new_command(program: &str) -> Command {
+    Command::new(program)
 }
