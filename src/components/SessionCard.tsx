@@ -486,7 +486,7 @@ export function SessionCard({
                   e.stopPropagation();
                   mergeCleanupMutation.mutate("remove_all");
                 }}
-                disabled={isPending}
+                disabled={mergeCleanupMutation.isPending}
               >
                 Remove All
               </button>
@@ -496,7 +496,7 @@ export function SessionCard({
                   e.stopPropagation();
                   mergeCleanupMutation.mutate("remove_worktree");
                 }}
-                disabled={isPending}
+                disabled={mergeCleanupMutation.isPending}
               >
                 Remove Worktree
               </button>
@@ -506,6 +506,7 @@ export function SessionCard({
                   e.stopPropagation();
                   mergeCleanupMutation.mutate("keep");
                 }}
+                disabled={mergeCleanupMutation.isPending}
               >
                 Keep
               </button>
@@ -520,7 +521,7 @@ export function SessionCard({
                   e.stopPropagation();
                   abortMergeMutation.mutate();
                 }}
-                disabled={isPending}
+                disabled={abortMergeMutation.isPending || conflictSessionMutation.isPending}
               >
                 Abort
               </button>
@@ -530,7 +531,7 @@ export function SessionCard({
                   e.stopPropagation();
                   conflictSessionMutation.mutate();
                 }}
-                disabled={isPending}
+                disabled={abortMergeMutation.isPending || conflictSessionMutation.isPending}
               >
                 Resolve with Claude
               </button>
