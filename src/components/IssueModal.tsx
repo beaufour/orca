@@ -129,7 +129,15 @@ export function IssueModal({ mode, issue, repoPath, onClose }: IssueModalProps) 
             onClick={handleSubmit}
             disabled={!title.trim() || mutation.isPending}
           >
-            {mode === "create" ? "Create" : "Save"}
+            {mutation.isPending ? (
+              <>
+                <span className="spinner" /> {mode === "create" ? "Creating..." : "Saving..."}
+              </>
+            ) : mode === "create" ? (
+              "Create"
+            ) : (
+              "Save"
+            )}
           </button>
           <span className="modal-shortcut-hint">Cmd+Enter</span>
           <button className="wt-btn wt-btn-cancel" onClick={onClose}>
