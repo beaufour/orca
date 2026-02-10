@@ -94,15 +94,8 @@ export function TodoList({
       }
     }
 
-    // Sort: main first, then by last_accessed descending
-    items.sort((a, b) => {
-      const aBranch = a.session.worktree_branch;
-      const bBranch = b.session.worktree_branch;
-      const aMain = !aBranch || aBranch === "main" || aBranch === "master";
-      const bMain = !bBranch || bBranch === "main" || bBranch === "master";
-      if (aMain !== bMain) return aMain ? -1 : 1;
-      return b.session.last_accessed - a.session.last_accessed;
-    });
+    // Keep input order (already sorted by filteredSessions in App.tsx)
+    // so that focusedIndex matches the visual order.
 
     const todoItems = issues.filter((issue) => !matchedIssueNumbers.has(issue.number));
 
@@ -200,6 +193,7 @@ export function TodoList({
                   repoPath={group.default_path}
                   onSelectSession={onSelectSession}
                   liveTmuxSessions={liveTmuxSessions}
+                  isFocused={index === focusedIndex}
                 />
               ) : (
                 <SessionCard

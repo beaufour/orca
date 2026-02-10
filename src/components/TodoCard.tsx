@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -16,6 +16,7 @@ interface TodoCardProps {
   onStartIssue?: (issue: GitHubIssue) => void;
   onEditIssue?: (issue: GitHubIssue) => void;
   liveTmuxSessions?: Set<string>;
+  isFocused?: boolean;
 }
 
 function labelStyle(color: string): React.CSSProperties {
@@ -50,14 +51,23 @@ function TodoCardInProgress({
   repoPath,
   onSelectSession,
   liveTmuxSessions,
+  isFocused,
 }: {
   issue: GitHubIssue;
   session: Session;
   repoPath: string;
   onSelectSession?: (session: Session) => void;
   liveTmuxSessions?: Set<string>;
+  isFocused?: boolean;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
   const [showDiff, setShowDiff] = useState(false);
+
+  useEffect(() => {
+    if (isFocused && cardRef.current) {
+      cardRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [isFocused]);
 
   const { data: summary } = useQuery<SessionSummary>({
     queryKey: ["summary", session.id],
@@ -87,7 +97,8 @@ function TodoCardInProgress({
 
   return (
     <div
-      className={`session-card attention-${attention}`}
+      ref={cardRef}
+      className={`session-card attention-${attention}${isFocused ? " focused" : ""}`}
       onClick={() => onSelectSession?.(session)}
     >
       <div className="session-card-header">
@@ -145,6 +156,7 @@ export function TodoCard({
   onStartIssue,
   onEditIssue,
   liveTmuxSessions,
+  isFocused,
 }: TodoCardProps) {
   const queryClient = useQueryClient();
   const [confirmClose, setConfirmClose] = useState(false);
@@ -165,6 +177,7 @@ export function TodoCard({
         repoPath={repoPath}
         onSelectSession={onSelectSession}
         liveTmuxSessions={liveTmuxSessions}
+        isFocused={isFocused}
       />
     );
   }

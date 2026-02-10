@@ -312,6 +312,7 @@ function App() {
       switch (e.key) {
         case "j":
         case "ArrowDown":
+        case "ArrowRight":
           e.preventDefault();
           if (count > 0) {
             setFocusedIndex((prev) => Math.min(prev + 1, count - 1));
@@ -319,6 +320,7 @@ function App() {
           break;
         case "k":
         case "ArrowUp":
+        case "ArrowLeft":
           e.preventDefault();
           if (count > 0) {
             setFocusedIndex((prev) => Math.max(prev - 1, 0));

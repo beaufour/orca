@@ -3,8 +3,8 @@ interface ShortcutHelpProps {
 }
 
 const SHORTCUTS = [
-  { key: "j / ↓", desc: "Move focus down" },
-  { key: "k / ↑", desc: "Move focus up" },
+  { key: "j / ↓ / →", desc: "Move focus to next" },
+  { key: "k / ↑ / ←", desc: "Move focus to previous" },
   { key: "Enter", desc: "Open focused session terminal" },
   { key: "Esc", desc: "Close modal / clear search / unfocus" },
   { key: "d", desc: "Remove focused session" },
