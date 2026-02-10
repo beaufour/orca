@@ -2,6 +2,9 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { GitHubIssue, Session, SessionSummary, AttentionStatus } from "../types";
+import { ATTENTION_CONFIG, fallbackAttention, formatTime } from "../utils";
+import { useWorktreeActions } from "../hooks/useWorktreeActions";
+import { WorktreeActions } from "./WorktreeActions";
 import { DiffViewer } from "./DiffViewer";
 
 interface TodoCardProps {
@@ -12,30 +15,6 @@ interface TodoCardProps {
   onStartIssue?: (issue: GitHubIssue) => void;
   onEditIssue?: (issue: GitHubIssue) => void;
   liveTmuxSessions?: Set<string>;
-}
-
-const ATTENTION_CONFIG: Record<AttentionStatus, { label: string; className: string }> = {
-  needs_input: { label: "Needs Input", className: "status-needs-input" },
-  error: { label: "Error", className: "status-error" },
-  running: { label: "Running", className: "status-running" },
-  idle: { label: "Idle", className: "status-idle" },
-  stale: { label: "Stale", className: "status-stale" },
-  unknown: { label: "Unknown", className: "status-stale" },
-};
-
-function fallbackAttention(agentdeckStatus: string): AttentionStatus {
-  switch (agentdeckStatus) {
-    case "running":
-      return "running";
-    case "waiting":
-      return "needs_input";
-    case "error":
-      return "error";
-    case "idle":
-      return "idle";
-    default:
-      return "unknown";
-  }
 }
 
 function labelStyle(color: string): React.CSSProperties {
@@ -50,6 +29,104 @@ function labelStyle(color: string): React.CSSProperties {
   };
 }
 
+function IssueLabels({ labels }: { labels: GitHubIssue["labels"] }) {
+  if (labels.length === 0) return null;
+  return (
+    <div className="issue-labels">
+      {labels.map((label) => (
+        <span key={label.name} className="issue-label" style={labelStyle(label.color)}>
+          {label.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** "In Progress" mode — issue with linked session */
+function TodoCardInProgress({
+  issue,
+  session,
+  repoPath,
+  onSelectSession,
+  liveTmuxSessions,
+}: {
+  issue: GitHubIssue;
+  session: Session;
+  repoPath: string;
+  onSelectSession?: (session: Session) => void;
+  liveTmuxSessions?: Set<string>;
+}) {
+  const [showDiff, setShowDiff] = useState(false);
+
+  const { data: summary } = useQuery<SessionSummary>({
+    queryKey: ["summary", session.id],
+    queryFn: () =>
+      invoke("get_session_summary", {
+        projectPath: session.project_path,
+        claudeSessionId: session.claude_session_id ?? "",
+        agentdeckStatus: session.status,
+        tmuxSession: session.tmux_session || null,
+      }),
+    refetchInterval: 10_000,
+    enabled: !!session.claude_session_id,
+  });
+
+  const sessionRepoPath = session.worktree_repo || session.project_path || repoPath;
+
+  const actions = useWorktreeActions({
+    session,
+    repoPath: sessionRepoPath,
+    onSelectSession,
+    extraInvalidateKeys: [["issues", repoPath]],
+  });
+
+  const attention: AttentionStatus = summary?.attention ?? fallbackAttention(session.status);
+  const statusInfo = ATTENTION_CONFIG[attention];
+  const tmuxAlive = !session.tmux_session || liveTmuxSessions?.has(session.tmux_session) !== false;
+
+  return (
+    <div
+      className={`session-card attention-${attention}`}
+      onClick={() => onSelectSession?.(session)}
+    >
+      <div className="session-card-header">
+        <div className="session-title-row">
+          <span className="issue-number">#{issue.number}</span>
+          <span className="session-title">{issue.title}</span>
+        </div>
+        <div className="session-badges">
+          {!tmuxAlive && (
+            <span className="status-badge status-tmux-dead" title="Tmux session not found">
+              tmux dead
+            </span>
+          )}
+          <span className={`status-badge ${statusInfo.className}`}>{statusInfo.label}</span>
+        </div>
+      </div>
+      <IssueLabels labels={issue.labels} />
+      <div className="session-card-body">
+        {summary?.summary && <div className="session-summary">{summary.summary}</div>}
+        {!summary?.summary && summary?.last_text && (
+          <div className="session-summary session-last-text">{summary.last_text}</div>
+        )}
+      </div>
+      {actions.mutationError && (
+        <div className="session-wt-error">{String(actions.mutationError)}</div>
+      )}
+      <div className="session-card-footer">
+        <WorktreeActions
+          actions={actions}
+          projectPath={session.project_path}
+          worktreeBranch={session.worktree_branch}
+          onShowDiff={() => setShowDiff(true)}
+        />
+        <span className="session-time">{formatTime(session.last_accessed)}</span>
+      </div>
+      {showDiff && <DiffViewer session={session} onClose={() => setShowDiff(false)} />}
+    </div>
+  );
+}
+
 export function TodoCard({
   issue,
   session,
@@ -60,28 +137,7 @@ export function TodoCard({
   liveTmuxSessions,
 }: TodoCardProps) {
   const queryClient = useQueryClient();
-  const [showDiff, setShowDiff] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
-
-  const { data: summary } = useQuery<SessionSummary>({
-    queryKey: ["summary", session?.id],
-    queryFn: () =>
-      invoke("get_session_summary", {
-        projectPath: session!.project_path,
-        claudeSessionId: session!.claude_session_id ?? "",
-        agentdeckStatus: session!.status,
-        tmuxSession: session!.tmux_session || null,
-      }),
-    refetchInterval: 10_000,
-    enabled: !!session?.claude_session_id,
-  });
-
-  const { data: defaultBranch } = useQuery<string>({
-    queryKey: ["defaultBranch", repoPath],
-    queryFn: () => invoke("get_default_branch", { repoPath }),
-    staleTime: 5 * 60 * 1000,
-    enabled: !!session?.worktree_branch,
-  });
 
   const closeMutation = useMutation({
     mutationFn: () => invoke("close_issue", { repoPath, issueNumber: issue.number }),
@@ -91,73 +147,15 @@ export function TodoCard({
     },
   });
 
-  const attention: AttentionStatus =
-    summary?.attention ?? (session ? fallbackAttention(session.status) : "unknown");
-  const statusInfo = ATTENTION_CONFIG[attention];
-
-  const isFeatureBranch =
-    session?.worktree_branch &&
-    session.worktree_branch !== "main" &&
-    session.worktree_branch !== "master" &&
-    session.worktree_branch !== defaultBranch;
-
-  const tmuxAlive = !session?.tmux_session || liveTmuxSessions?.has(session.tmux_session) !== false;
-
   if (session) {
-    // "In Progress" mode — issue with linked session
     return (
-      <div
-        className={`session-card attention-${attention}`}
-        onClick={() => onSelectSession?.(session)}
-      >
-        <div className="session-card-header">
-          <div className="session-title-row">
-            <span className="issue-number">#{issue.number}</span>
-            <span className="session-title">{issue.title}</span>
-          </div>
-          <div className="session-badges">
-            {!tmuxAlive && (
-              <span className="status-badge status-tmux-dead" title="Tmux session not found">
-                tmux dead
-              </span>
-            )}
-            <span className={`status-badge ${statusInfo.className}`}>{statusInfo.label}</span>
-          </div>
-        </div>
-        {issue.labels.length > 0 && (
-          <div className="issue-labels">
-            {issue.labels.map((label) => (
-              <span key={label.name} className="issue-label" style={labelStyle(label.color)}>
-                {label.name}
-              </span>
-            ))}
-          </div>
-        )}
-        <div className="session-card-body">
-          {summary?.summary && <div className="session-summary">{summary.summary}</div>}
-          {!summary?.summary && summary?.last_text && (
-            <div className="session-summary session-last-text">{summary.last_text}</div>
-          )}
-        </div>
-        <div className="session-card-footer">
-          <div className="session-wt-actions">
-            {isFeatureBranch && (
-              <button
-                className="wt-btn wt-btn-action"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowDiff(true);
-                }}
-                title="Show diff vs main"
-              >
-                Diff
-              </button>
-            )}
-          </div>
-          <span className="session-time">wt:{session.worktree_branch}</span>
-        </div>
-        {showDiff && <DiffViewer session={session} onClose={() => setShowDiff(false)} />}
-      </div>
+      <TodoCardInProgress
+        issue={issue}
+        session={session}
+        repoPath={repoPath}
+        onSelectSession={onSelectSession}
+        liveTmuxSessions={liveTmuxSessions}
+      />
     );
   }
 
@@ -170,15 +168,7 @@ export function TodoCard({
           <span className="session-title">{issue.title}</span>
         </div>
       </div>
-      {issue.labels.length > 0 && (
-        <div className="issue-labels">
-          {issue.labels.map((label) => (
-            <span key={label.name} className="issue-label" style={labelStyle(label.color)}>
-              {label.name}
-            </span>
-          ))}
-        </div>
-      )}
+      <IssueLabels labels={issue.labels} />
       {issue.body && (
         <div className="session-card-body">
           <div className="issue-body-preview">{issue.body}</div>
