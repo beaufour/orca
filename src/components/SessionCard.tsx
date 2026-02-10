@@ -393,7 +393,9 @@ export function SessionCard({
         </div>
       )}
       <div className="session-card-body">
-        {summary?.initial_prompt && <div className="session-summary">{summary.initial_prompt}</div>}
+        {(session.prompt || summary?.initial_prompt) && (
+          <div className="session-summary">{session.prompt ?? summary?.initial_prompt}</div>
+        )}
         <div className="session-path">
           {groupName && <span className="session-group">{groupName}</span>}
           {formatPath(session.project_path)}

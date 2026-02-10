@@ -52,4 +52,5 @@ pub struct Session {
     pub worktree_repo: String,
     pub worktree_branch: String,
     pub claude_session_id: Option<String>,
+    pub prompt: Option<String>,
 }

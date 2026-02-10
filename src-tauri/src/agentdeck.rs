@@ -222,6 +222,13 @@ pub fn create_session(
         update_session_worktree(session_id.clone(), wt_path, wt_repo, wt_branch)?;
     }
 
+    // Store the prompt in tool_data so we can display it on the session card
+    if let Some(ref prompt_text) = prompt {
+        if !prompt_text.trim().is_empty() {
+            store_prompt(&session_id, prompt_text)?;
+        }
+    }
+
     // Optionally start the session immediately
     if start.unwrap_or(false) {
         log::info!("agent-deck session start {session_id}");
@@ -539,9 +546,13 @@ pub fn rename_session(session_id: String, new_title: String) -> Result<(), Strin
 
 fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
     let tool_data_str: String = row.get(12)?;
-    let claude_session_id = serde_json::from_str::<serde_json::Value>(&tool_data_str)
-        .ok()
+    let tool_data = serde_json::from_str::<serde_json::Value>(&tool_data_str).ok();
+    let claude_session_id = tool_data
+        .as_ref()
         .and_then(|v| v.get("claude_session_id")?.as_str().map(String::from));
+    let prompt = tool_data
+        .as_ref()
+        .and_then(|v| v.get("prompt")?.as_str().map(String::from));
 
     Ok(Session {
         id: row.get(0)?,
@@ -557,7 +568,35 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
         worktree_repo: row.get(10)?,
         worktree_branch: row.get(11)?,
         claude_session_id,
+        prompt,
     })
+}
+
+/// Store the prompt in the session's tool_data JSON.
+fn store_prompt(session_id: &str, prompt: &str) -> Result<(), String> {
+    let path = db_path();
+    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+
+    let current: String = conn
+        .query_row(
+            "SELECT tool_data FROM instances WHERE id = ?1",
+            [session_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to read tool_data for {session_id}: {e}"))?;
+
+    let mut data: serde_json::Value =
+        serde_json::from_str(&current).unwrap_or(serde_json::json!({}));
+    data["prompt"] = serde_json::Value::String(prompt.to_string());
+
+    let updated = serde_json::to_string(&data).map_err(|e| format!("JSON serialize error: {e}"))?;
+    conn.execute(
+        "UPDATE instances SET tool_data = ?1 WHERE id = ?2",
+        rusqlite::params![updated, session_id],
+    )
+    .map_err(|e| format!("Failed to update tool_data for {session_id}: {e}"))?;
+
+    Ok(())
 }
 
 /// Look up the tmux session name for a given session ID from the agent-deck DB.

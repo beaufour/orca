@@ -20,6 +20,7 @@ export interface Session {
   worktree_repo: string;
   worktree_branch: string;
   claude_session_id: string | null;
+  prompt: string | null;
 }
 
 export type AttentionStatus = "needs_input" | "error" | "running" | "idle" | "stale" | "unknown";
