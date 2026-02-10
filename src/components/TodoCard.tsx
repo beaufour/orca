@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { GitHubIssue, Session, SessionSummary, AttentionStatus } from "../types";
 import { ATTENTION_CONFIG, fallbackAttention, formatTime } from "../utils";
 import { useWorktreeActions } from "../hooks/useWorktreeActions";
@@ -91,7 +92,16 @@ function TodoCardInProgress({
     >
       <div className="session-card-header">
         <div className="session-title-row">
-          <span className="issue-number">#{issue.number}</span>
+          <span
+            className="issue-number issue-number-link"
+            onClick={(e) => {
+              e.stopPropagation();
+              openUrl(issue.html_url);
+            }}
+            title="Open issue in browser"
+          >
+            #{issue.number}
+          </span>
           <span className="session-title">{issue.title}</span>
         </div>
         <div className="session-badges">
@@ -164,7 +174,16 @@ export function TodoCard({
     <div className="session-card attention-idle todo-card-idle">
       <div className="session-card-header">
         <div className="session-title-row">
-          <span className="issue-number">#{issue.number}</span>
+          <span
+            className="issue-number issue-number-link"
+            onClick={(e) => {
+              e.stopPropagation();
+              openUrl(issue.html_url);
+            }}
+            title="Open issue in browser"
+          >
+            #{issue.number}
+          </span>
           <span className="session-title">{issue.title}</span>
         </div>
       </div>

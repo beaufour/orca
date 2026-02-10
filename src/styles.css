@@ -1368,6 +1368,14 @@ body {
   flex-shrink: 0;
 }
 
+.issue-number-link {
+  cursor: pointer;
+}
+
+.issue-number-link:hover {
+  text-decoration: underline;
+}
+
 /* Issue labels */
 .issue-labels {
   display: flex;
