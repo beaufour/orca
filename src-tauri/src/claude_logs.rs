@@ -45,11 +45,20 @@ fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<PathBu
     let encoded = expanded_str.replace('/', "-");
     let base = claude_projects_dir();
 
+    log::debug!(
+        "find_jsonl_path: searching for session {claude_session_id} in {}",
+        base.display()
+    );
+
     // Try the exact encoded path first
     let candidate = base
         .join(&encoded)
         .join(format!("{claude_session_id}.jsonl"));
     if candidate.exists() {
+        log::debug!(
+            "find_jsonl_path: found exact match at {}",
+            candidate.display()
+        );
         return Some(candidate);
     }
 
@@ -60,27 +69,41 @@ fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<PathBu
             if name.starts_with(&encoded) {
                 let candidate = entry.path().join(format!("{claude_session_id}.jsonl"));
                 if candidate.exists() {
+                    log::debug!(
+                        "find_jsonl_path: found worktree match at {}",
+                        candidate.display()
+                    );
                     return Some(candidate);
                 }
             }
         }
     }
 
+    log::debug!("find_jsonl_path: no JSONL file found for session {claude_session_id}");
     None
 }
 
 /// Read the last N bytes of a file and parse JSONL lines from it
 fn read_tail_lines(path: &PathBuf, max_bytes: u64) -> Vec<serde_json::Value> {
     let Ok(file) = File::open(path) else {
+        log::warn!("read_tail_lines: failed to open {}", path.display());
         return vec![];
     };
 
     let Ok(metadata) = file.metadata() else {
+        log::warn!(
+            "read_tail_lines: failed to read metadata for {}",
+            path.display()
+        );
         return vec![];
     };
 
     let file_size = metadata.len();
     let seek_pos = file_size.saturating_sub(max_bytes);
+    log::debug!(
+        "read_tail_lines: file_size={file_size}, seek_pos={seek_pos} for {}",
+        path.display()
+    );
 
     let mut reader = BufReader::new(file);
     if reader.seek(SeekFrom::Start(seek_pos)).is_err() {
@@ -315,6 +338,10 @@ pub fn compute_attention(
     agentdeck_status: &str,
     tmux_session: Option<&str>,
 ) -> AttentionStatus {
+    log::debug!(
+        "compute_attention: session_id={claude_session_id:?}, agentdeck_status={agentdeck_status}, tmux={tmux_session:?}"
+    );
+
     let Some(claude_session_id) = claude_session_id else {
         let attention = match agentdeck_status {
             "running" => AttentionStatus::Running,
@@ -337,7 +364,9 @@ pub fn compute_attention(
     };
 
     let lines = read_tail_lines(&jsonl_path, 256 * 1024);
-    refine_with_tmux(extract_attention(&lines, agentdeck_status), tmux_session)
+    let result = refine_with_tmux(extract_attention(&lines, agentdeck_status), tmux_session);
+    log::debug!("compute_attention: result={result:?}");
+    result
 }
 
 /// Refine a Running status by checking the tmux pane for a permission prompt.
@@ -345,6 +374,7 @@ fn refine_with_tmux(attention: AttentionStatus, tmux_session: Option<&str>) -> A
     if matches!(attention, AttentionStatus::Running) {
         if let Some(ts) = tmux_session {
             if !ts.is_empty() && crate::tmux::is_waiting_for_input(ts) {
+                log::debug!("refine_with_tmux: tmux check upgraded Running -> NeedsInput for {ts}");
                 return AttentionStatus::NeedsInput;
             }
         }
@@ -360,6 +390,7 @@ pub fn get_session_summary(
     tmux_session: Option<String>,
 ) -> SessionSummary {
     let Some(jsonl_path) = find_jsonl_path(&project_path, &claude_session_id) else {
+        log::debug!("get_session_summary: no JSONL for session {claude_session_id}, using agentdeck_status={agentdeck_status}");
         let attention = match agentdeck_status.as_str() {
             "running" => AttentionStatus::Running,
             // No JSONL file means no conversation yet — just the initial prompt
@@ -377,9 +408,19 @@ pub fn get_session_summary(
         };
     };
 
+    log::debug!(
+        "get_session_summary: reading JSONL at {}",
+        jsonl_path.display()
+    );
+
     // Read last 256KB of the file
     let lines = read_tail_lines(&jsonl_path, 256 * 1024);
     let attention = extract_attention(&lines, &agentdeck_status);
+    let final_attention = refine_with_tmux(attention, tmux_session.as_deref());
+
+    log::debug!(
+        "get_session_summary: attention={final_attention:?} for session {claude_session_id}"
+    );
 
     // Read initial prompt from the head of the file
     let head_lines = read_head_lines(&jsonl_path, 32 * 1024);
@@ -388,7 +429,7 @@ pub fn get_session_summary(
     SessionSummary {
         summary: extract_summary(&lines),
         initial_prompt,
-        attention: refine_with_tmux(attention, tmux_session.as_deref()),
+        attention: final_attention,
         last_tool: extract_last_tool(&lines),
         last_text: extract_last_text(&lines),
     }

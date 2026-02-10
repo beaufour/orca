@@ -9,6 +9,10 @@ use tauri::command;
 /// Used for Shift+Enter (paste a newline without submitting).
 #[command]
 pub fn paste_to_tmux_pane(tmux_session: String, text: String) -> Result<(), String> {
+    log::info!(
+        "paste_to_tmux_pane: tmux_session={tmux_session}, text_len={}",
+        text.len()
+    );
     let status = new_command("tmux")
         .args(["set-buffer", "-b", "_orca", "--", &text])
         .status()
@@ -44,6 +48,9 @@ pub fn paste_to_tmux_pane(tmux_session: String, text: String) -> Result<(), Stri
 /// Uses `-e` flag so copy mode auto-exits when scrolled back to the bottom.
 #[command]
 pub fn scroll_tmux_pane(tmux_session: String, direction: String, lines: u32) -> Result<(), String> {
+    log::debug!(
+        "scroll_tmux_pane: tmux_session={tmux_session}, direction={direction}, lines={lines}"
+    );
     if direction == "up" {
         // Enter copy mode with auto-exit at bottom (-e)
         let _ = new_command("tmux")
@@ -84,7 +91,9 @@ pub fn is_waiting_for_input(tmux_session: &str) -> bool {
     };
 
     let text = String::from_utf8_lossy(&output.stdout);
-    text.contains("Do you want to proceed?")
+    let waiting = text.contains("Do you want to proceed?");
+    log::debug!("is_waiting_for_input: tmux_session={tmux_session}, result={waiting}");
+    waiting
 }
 
 #[tauri::command]

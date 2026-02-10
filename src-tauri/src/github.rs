@@ -93,7 +93,11 @@ fn get_owner_repo(repo_path: &str) -> Result<String, String> {
     }
 
     let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    parse_owner_repo(&url)
+    let result = parse_owner_repo(&url);
+    if let Ok(ref owner_repo) = result {
+        log::debug!("get_owner_repo: resolved {repo_path} -> {owner_repo}");
+    }
+    result
 }
 
 fn parse_owner_repo(url: &str) -> Result<String, String> {
@@ -131,11 +135,14 @@ fn run_gh(repo_path: &str, args: &[&str]) -> Result<String, String> {
         return Err(format!("gh {} failed: {}", args.join(" "), stderr.trim()));
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    log::debug!("gh {} succeeded ({} bytes)", args.join(" "), stdout.len());
+    Ok(stdout)
 }
 
 #[tauri::command]
 pub fn list_issues(repo_path: String) -> Result<Vec<GitHubIssue>, String> {
+    log::info!("list_issues: repo_path={repo_path}");
     let owner_repo = get_owner_repo(&repo_path)?;
     let output = run_gh(
         &repo_path,
@@ -160,6 +167,7 @@ pub fn list_issues(repo_path: String) -> Result<Vec<GitHubIssue>, String> {
 
 #[tauri::command]
 pub fn get_issue(repo_path: String, issue_number: u64) -> Result<GitHubIssue, String> {
+    log::info!("get_issue: repo_path={repo_path}, issue_number={issue_number}");
     let owner_repo = get_owner_repo(&repo_path)?;
     let num_str = issue_number.to_string();
     let output = run_gh(
@@ -187,6 +195,7 @@ pub fn create_issue(
     body: String,
     labels: Vec<String>,
 ) -> Result<GitHubIssue, String> {
+    log::info!("create_issue: repo_path={repo_path}, title={title}");
     let owner_repo = get_owner_repo(&repo_path)?;
     let mut args = vec![
         "issue",
@@ -224,6 +233,7 @@ pub fn update_issue(
     body: String,
     labels: Vec<String>,
 ) -> Result<GitHubIssue, String> {
+    log::info!("update_issue: repo_path={repo_path}, issue_number={issue_number}");
     let owner_repo = get_owner_repo(&repo_path)?;
     let num_str = issue_number.to_string();
     let mut args = vec![
@@ -250,6 +260,7 @@ pub fn update_issue(
 
 #[tauri::command]
 pub fn close_issue(repo_path: String, issue_number: u64) -> Result<(), String> {
+    log::info!("close_issue: repo_path={repo_path}, issue_number={issue_number}");
     let owner_repo = get_owner_repo(&repo_path)?;
     let num_str = issue_number.to_string();
     run_gh(&repo_path, &["issue", "close", &num_str, "-R", &owner_repo])?;

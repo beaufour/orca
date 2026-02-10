@@ -31,6 +31,7 @@ struct PtySession {
 ///
 /// See `docs/bug-newlines-research.md` for the full investigation.
 fn shutdown_session(mut session: PtySession) {
+    log::debug!("shutdown_session: killing child process");
     session.shutdown.store(true, Ordering::Relaxed);
     let _ = session.child.kill();
     let _ = session.child.wait();
@@ -52,6 +53,7 @@ pub fn attach_pty(
     rows: u16,
     on_output: Channel<String>,
 ) -> Result<(), String> {
+    log::info!("attach_pty: session_id={session_id}, tmux_session={tmux_session}, cols={cols}, rows={rows}");
     let pty_system = native_pty_system();
 
     let pair = pty_system
@@ -146,6 +148,7 @@ pub fn attach_pty(
         .lock()
         .map_err(|e| format!("Lock error: {e}"))?;
     if let Some(old) = sessions.remove(&session_id) {
+        log::debug!("attach_pty: cleaning up existing PTY session for {session_id}");
         // Drop lock before blocking on shutdown to avoid holding it during wait()
         drop(sessions);
         shutdown_session(old);
@@ -175,19 +178,20 @@ pub fn write_pty(
         .get_mut(&session_id)
         .ok_or_else(|| format!("No PTY session: {session_id}"))?;
 
-    let bytes = BASE64
-        .decode(&data)
-        .map_err(|e| format!("Base64 decode error: {e}"))?;
+    let bytes = BASE64.decode(&data).map_err(|e| {
+        log::error!("write_pty: base64 decode error for {session_id}: {e}");
+        format!("Base64 decode error: {e}")
+    })?;
 
-    session
-        .writer
-        .write_all(&bytes)
-        .map_err(|e| format!("PTY write error: {e}"))?;
+    session.writer.write_all(&bytes).map_err(|e| {
+        log::error!("write_pty: write error for {session_id}: {e}");
+        format!("PTY write error: {e}")
+    })?;
 
-    session
-        .writer
-        .flush()
-        .map_err(|e| format!("PTY flush error: {e}"))?;
+    session.writer.flush().map_err(|e| {
+        log::error!("write_pty: flush error for {session_id}: {e}");
+        format!("PTY flush error: {e}")
+    })?;
 
     Ok(())
 }
@@ -199,6 +203,7 @@ pub fn resize_pty(
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
+    log::debug!("resize_pty: session_id={session_id}, cols={cols}, rows={rows}");
     let sessions = state
         .sessions
         .lock()
@@ -223,6 +228,7 @@ pub fn resize_pty(
 
 #[tauri::command]
 pub fn close_pty(state: State<'_, PtyManager>, session_id: String) -> Result<(), String> {
+    log::info!("close_pty: session_id={session_id}");
     let mut sessions = state
         .sessions
         .lock()

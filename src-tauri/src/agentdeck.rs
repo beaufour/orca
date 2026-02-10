@@ -50,6 +50,7 @@ pub fn check_agent_deck_version() -> Result<VersionCheck, String> {
 #[tauri::command]
 pub fn get_groups() -> Result<Vec<Group>, String> {
     let path = db_path();
+    log::debug!("get_groups: opening DB at {}", path.display());
     let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
 
@@ -73,12 +74,14 @@ pub fn get_groups() -> Result<Vec<Group>, String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
+    log::debug!("get_groups: found {} groups", groups.len());
     Ok(groups)
 }
 
 #[tauri::command]
 pub fn get_sessions(group_path: Option<String>) -> Result<Vec<Session>, String> {
     let path = db_path();
+    log::debug!("get_sessions: group_path={group_path:?}");
     let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
 
@@ -87,6 +90,7 @@ pub fn get_sessions(group_path: Option<String>) -> Result<Vec<Session>, String> 
         None => query_sessions_all(&conn)?,
     };
 
+    log::debug!("get_sessions: found {} sessions", sessions.len());
     Ok(sessions)
 }
 
@@ -403,9 +407,11 @@ pub fn get_attention_counts() -> Result<AttentionCounts, String> {
         })
         .map_err(|e| e.to_string())?;
 
+    let mut candidate_count = 0u32;
     for row in rows {
         let (project_path, group_path, status, claude_session_id) =
             row.map_err(|e| e.to_string())?;
+        candidate_count += 1;
 
         // tmux check not needed — this query only covers "waiting"/"error"
         let attention = claude_logs::compute_attention(
@@ -431,6 +437,7 @@ pub fn get_attention_counts() -> Result<AttentionCounts, String> {
         }
     }
 
+    log::debug!("get_attention_counts: {candidate_count} candidates, {total} need attention");
     Ok(AttentionCounts { total, groups })
 }
 
@@ -482,6 +489,7 @@ pub fn update_session_worktree(
     worktree_repo: String,
     worktree_branch: String,
 ) -> Result<(), String> {
+    log::info!("update_session_worktree: session_id={session_id}, branch={worktree_branch}");
     let path = db_path();
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
@@ -496,6 +504,7 @@ pub fn update_session_worktree(
 
 #[tauri::command]
 pub fn clear_session_worktree(session_id: String) -> Result<(), String> {
+    log::info!("clear_session_worktree: session_id={session_id}");
     let path = db_path();
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
@@ -519,6 +528,7 @@ pub fn clear_session_worktree(session_id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn create_group(name: String, default_path: String) -> Result<(), String> {
+    log::info!("create_group: name={name}, default_path={default_path}");
     let path = db_path();
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
@@ -549,6 +559,7 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn move_session(session_id: String, new_group_path: String) -> Result<(), String> {
+    log::info!("move_session: session_id={session_id}, new_group_path={new_group_path}");
     let path = db_path();
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
@@ -572,6 +583,7 @@ pub fn move_session(session_id: String, new_group_path: String) -> Result<(), St
 
 #[tauri::command]
 pub fn rename_session(session_id: String, new_title: String) -> Result<(), String> {
+    log::info!("rename_session: session_id={session_id}, new_title={new_title}");
     let path = db_path();
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
