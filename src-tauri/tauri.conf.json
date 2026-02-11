@@ -35,6 +35,13 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEwODU2MjQ2REVGRDg4MDkKUldRSmlQM2VSbUtGRURtcG53OCtqWlMxNUZUeSszRHp2YTJXUjN6dkMxMXNjTlB3M1YxejRLUzAK",
+      "endpoints": ["https://github.com/beaufour/orca/releases/latest/download/latest.json"]
+    }
   }
 }

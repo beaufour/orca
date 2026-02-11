@@ -14,7 +14,10 @@ import { CreateGroupModal } from "./components/CreateGroupModal";
 import { IssueModal } from "./components/IssueModal";
 import { GroupSettingsModal } from "./components/GroupSettingsModal";
 import { getVersion } from "@tauri-apps/api/app";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { VersionWarning } from "./components/VersionWarning";
+import { UpdateNotification } from "./components/UpdateNotification";
 import type { Group, Session } from "./types";
 
 const MIN_SIDEBAR_WIDTH = 48;
@@ -56,6 +59,7 @@ function App() {
     supported: string;
     installed: string;
   } | null>(null);
+  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const handleDismiss = useCallback((sessionId: string) => {
     setDismissedIds((prev) => {
       const next = new Set(prev);
@@ -91,6 +95,19 @@ function App() {
       })
       .catch((err) => {
         console.warn("Failed to check agent-deck version:", err);
+      });
+  }, []);
+
+  // Check for app updates on mount
+  useEffect(() => {
+    check()
+      .then((update) => {
+        if (update) {
+          setPendingUpdate(update);
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to check for updates:", err);
       });
   }, []);
 
@@ -621,6 +638,17 @@ function App() {
           supported={versionMismatch.supported}
           installed={versionMismatch.installed}
           onClose={() => setVersionMismatch(null)}
+        />
+      )}
+      {pendingUpdate && (
+        <UpdateNotification
+          version={pendingUpdate.version}
+          notes={pendingUpdate.body ?? ""}
+          onInstall={async () => {
+            await pendingUpdate.downloadAndInstall();
+            await relaunch();
+          }}
+          onDismiss={() => setPendingUpdate(null)}
         />
       )}
     </div>
