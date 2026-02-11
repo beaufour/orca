@@ -1,6 +1,7 @@
 use crate::command::new_command;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
+use tauri::Emitter;
 
 use crate::claude_logs::{self, AttentionStatus};
 use crate::models::{AttentionCounts, Group, Session, VersionCheck};
@@ -169,6 +170,54 @@ fn query_sessions_all(conn: &Connection) -> Result<Vec<Session>, String> {
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn create_session(
+    app: tauri::AppHandle,
+    creation_id: String,
+    project_path: String,
+    group: String,
+    title: String,
+    tool: Option<String>,
+    worktree_branch: Option<String>,
+    new_branch: bool,
+    start: Option<bool>,
+    prompt: Option<String>,
+) -> Result<(), String> {
+    // Spawn the work to a background thread and return immediately
+    std::thread::spawn(move || {
+        match create_session_impl(
+            project_path,
+            group,
+            title,
+            tool,
+            worktree_branch,
+            new_branch,
+            start,
+            prompt,
+        ) {
+            Ok(session_id) => {
+                let _ = app.emit(
+                    "session-created",
+                    serde_json::json!({
+                        "creation_id": creation_id,
+                        "session_id": session_id,
+                    }),
+                );
+            }
+            Err(error) => {
+                let _ = app.emit(
+                    "session-creation-failed",
+                    serde_json::json!({
+                        "creation_id": creation_id,
+                        "error": error,
+                    }),
+                );
+            }
+        }
+    });
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_session_impl(
     project_path: String,
     group: String,
     title: String,

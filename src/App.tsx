@@ -15,6 +15,7 @@ import { IssueModal } from "./components/IssueModal";
 import { GroupSettingsModal } from "./components/GroupSettingsModal";
 import { getVersion } from "@tauri-apps/api/app";
 import { VersionWarning } from "./components/VersionWarning";
+import { useSessionCreation } from "./hooks/useSessionCreation";
 import type { Group, Session } from "./types";
 
 const MIN_SIDEBAR_WIDTH = 48;
@@ -76,6 +77,16 @@ function App() {
       return next;
     });
   }, []);
+
+  const { pendingCreations, createSession, dismissPending } = useSessionCreation({
+    onCreated: async (_creationId, sessionId) => {
+      const { data } = await refetchSessions();
+      const newSession = data?.find((s) => s.id === sessionId);
+      if (newSession) {
+        setSelectedSession(newSession);
+      }
+    },
+  });
 
   // Check agent-deck version on mount
   useEffect(() => {
@@ -571,6 +582,9 @@ function App() {
                   dismissedIds={dismissedIds}
                   onDismiss={handleDismiss}
                   onUndismiss={handleUndismiss}
+                  pendingCreations={pendingCreations}
+                  onDismissPending={dismissPending}
+                  createSession={createSession}
                 />
               )}
             </main>
@@ -581,13 +595,8 @@ function App() {
                 groupPath={selectedGroup.path}
                 groupName={selectedGroup.name}
                 sessions={sessions ?? []}
-                onSessionCreated={async (sessionId) => {
-                  const { data } = await refetchSessions();
-                  const newSession = data?.find((s) => s.id === sessionId);
-                  if (newSession) {
-                    setSelectedSession(newSession);
-                  }
-                }}
+                createSession={createSession}
+                pendingCreations={pendingCreations}
               />
             )}
           </>

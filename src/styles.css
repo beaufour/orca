@@ -422,6 +422,39 @@ body {
   pointer-events: none;
 }
 
+/* Pending session creation card */
+.session-card-creating {
+  opacity: 0.6;
+  border-style: dashed;
+  border-left-width: 3px;
+  border-left-color: var(--accent);
+  pointer-events: none;
+}
+
+.session-card-creating:has(.session-creating-error) {
+  pointer-events: auto;
+  opacity: 0.8;
+  border-left-color: var(--status-error);
+}
+
+.session-creating-slow {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.session-creating-error {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--status-error);
+}
+
+.session-creating-error .wt-btn {
+  align-self: flex-start;
+}
+
 .session-ghost-hint {
   color: var(--text-muted);
   font-style: italic;

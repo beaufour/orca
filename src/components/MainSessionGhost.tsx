@@ -1,15 +1,26 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import type { Session } from "../types";
+
+interface CreateSessionParams {
+  projectPath: string;
+  group: string;
+  title: string;
+  tool?: string;
+  worktreeBranch?: string | null;
+  newBranch?: boolean;
+  start?: boolean;
+  prompt?: string | null;
+}
 
 interface MainSessionGhostProps {
   repoPath: string;
   groupPath: string;
-  onSessionReady?: (session: Session) => void;
+  createSession?: (params: CreateSessionParams) => void;
 }
 
-export function MainSessionGhost({ repoPath, groupPath, onSessionReady }: MainSessionGhostProps) {
-  const queryClient = useQueryClient();
+export function MainSessionGhost({ repoPath, groupPath, createSession }: MainSessionGhostProps) {
+  const [clicked, setClicked] = useState(false);
 
   const { data: defaultBranch } = useQuery<string>({
     queryKey: ["defaultBranch", repoPath],
@@ -17,38 +28,26 @@ export function MainSessionGhost({ repoPath, groupPath, onSessionReady }: MainSe
     staleTime: 5 * 60 * 1000,
   });
 
-  const createMutation = useMutation({
-    mutationFn: () =>
-      invoke<string>("create_session", {
-        projectPath: repoPath,
-        group: groupPath,
-        title: defaultBranch ?? "main",
-        tool: "claude",
-        worktreeBranch: null,
-        newBranch: false,
-        start: true,
-      }),
-    onSuccess: async (sessionId) => {
-      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      // Fetch fresh session list and auto-open the new session
-      if (onSessionReady) {
-        const sessions = await invoke<Session[]>("get_sessions", {
-          groupPath: groupPath,
-        });
-        const created = sessions.find((s) => s.id === sessionId);
-        if (created) onSessionReady(created);
-      }
-    },
-  });
-
   const branchLabel = defaultBranch ?? "main";
+
+  const handleClick = () => {
+    if (clicked || !createSession) return;
+    setClicked(true);
+    createSession({
+      projectPath: repoPath,
+      group: groupPath,
+      title: branchLabel,
+      tool: "claude",
+      worktreeBranch: null,
+      newBranch: false,
+      start: true,
+    });
+  };
 
   return (
     <div
-      className={`session-card session-card-ghost ${createMutation.isPending ? "session-card-ghost-creating" : ""}`}
-      onClick={() => {
-        if (!createMutation.isPending) createMutation.mutate();
-      }}
+      className={`session-card session-card-ghost ${clicked ? "session-card-ghost-creating" : ""}`}
+      onClick={handleClick}
     >
       <div className="session-card-header">
         <div className="session-title-row">
@@ -57,7 +56,7 @@ export function MainSessionGhost({ repoPath, groupPath, onSessionReady }: MainSe
       </div>
       <div className="session-card-body">
         <div className="session-summary session-ghost-hint">
-          {createMutation.isPending ? (
+          {clicked ? (
             <>
               <span className="spinner" /> Creating session...
             </>
@@ -66,9 +65,6 @@ export function MainSessionGhost({ repoPath, groupPath, onSessionReady }: MainSe
           )}
         </div>
       </div>
-      {createMutation.error && (
-        <div className="session-wt-error">{String(createMutation.error)}</div>
-      )}
     </div>
   );
 }
