@@ -282,6 +282,15 @@ fn create_session_impl(
 
     let bare_root = crate::git::find_bare_root(&effective_path);
 
+    // For bare repos with no worktree branch (i.e. a "main session"), resolve
+    // to the default branch worktree so the session points at main, not
+    // whatever worktree happened to be passed in.
+    if bare_root.is_some() && worktree_branch.is_none() {
+        if let Ok(default_wt) = find_default_branch_worktree(&effective_path) {
+            effective_path = default_wt;
+        }
+    }
+
     // For bare worktree repos, create the worktree ourselves so it lands at
     // <bare_root>/<branch> instead of agent-deck's default <dir>-<branch>.
     let bare_worktree_info = if let Some(ref root) = bare_root {
@@ -665,7 +674,15 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
 
     // Expand tilde in default_path before storing
     let expanded_default_path = expand_tilde(&default_path);
-    let default_path_str = expanded_default_path.to_string_lossy().to_string();
+    // If the path is inside a bare worktree repo, resolve to the bare root
+    // so the group always references the repo root, not a specific worktree.
+    let default_path_str = if let Some(bare_root) =
+        crate::git::find_bare_root(&expanded_default_path.to_string_lossy())
+    {
+        bare_root.to_string_lossy().to_string()
+    } else {
+        expanded_default_path.to_string_lossy().to_string()
+    };
 
     // Get max sort_order to append at end
     let max_sort: i32 = conn
@@ -964,4 +981,52 @@ fn find_worktree_in_bare(bare_path: &str) -> Result<String, String> {
     }
 
     Err(format!("No worktrees found in bare repo at {bare_path}"))
+}
+
+/// Find the worktree for the default branch (main/master) in a bare repo.
+/// `any_worktree` should be a path inside the repo (used to run git commands).
+fn find_default_branch_worktree(any_worktree: &str) -> Result<String, String> {
+    let output = new_command("git")
+        .current_dir(any_worktree)
+        .args(["worktree", "list", "--porcelain"])
+        .output()
+        .map_err(|e| format!("Failed to list worktrees: {e}"))?;
+
+    if !output.status.success() {
+        return Err("Failed to list worktrees".to_string());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let worktrees = crate::git::parse_worktree_list(&stdout);
+
+    // Determine default branch name
+    let default_branch = new_command("git")
+        .current_dir(any_worktree)
+        .args(["symbolic-ref", "refs/remotes/origin/HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            s.strip_prefix("refs/remotes/origin/").map(str::to_string)
+        })
+        .unwrap_or_else(|| "main".to_string());
+
+    // Find the worktree on the default branch
+    if let Some(wt) = worktrees.iter().find(|w| w.branch == default_branch) {
+        return Ok(wt.path.clone());
+    }
+    // Fallback: try "master" if default was "main" or vice versa
+    let fallback = if default_branch == "main" {
+        "master"
+    } else {
+        "main"
+    };
+    if let Some(wt) = worktrees.iter().find(|w| w.branch == fallback) {
+        return Ok(wt.path.clone());
+    }
+
+    Err(format!(
+        "No worktree found for default branch '{default_branch}'"
+    ))
 }
