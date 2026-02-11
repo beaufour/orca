@@ -12,6 +12,18 @@ fn db_path() -> Result<PathBuf, String> {
     Ok(home.join(".agent-deck/profiles/default/state.db"))
 }
 
+fn open_db() -> Result<Connection, String> {
+    let path = db_path()?;
+    Connection::open(&path)
+        .map_err(|e| format!("Failed to open agent-deck DB at {}: {e}", path.display()))
+}
+
+fn open_db_readonly() -> Result<Connection, String> {
+    let path = db_path()?;
+    Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| format!("Failed to open agent-deck DB at {}: {e}", path.display()))
+}
+
 #[tauri::command]
 pub fn check_agent_deck_version() -> Result<VersionCheck, String> {
     let output = new_command("agent-deck")
@@ -59,10 +71,8 @@ fn ensure_github_issues_column(conn: &Connection) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_groups() -> Result<Vec<Group>, String> {
-    let path = db_path()?;
-    log::debug!("get_groups: opening DB at {}", path.display());
-    let conn = Connection::open(&path)
-        .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
+    log::debug!("get_groups");
+    let conn = open_db()?;
 
     ensure_github_issues_column(&conn)?;
 
@@ -96,8 +106,7 @@ pub fn update_group_settings(
     group_path: String,
     github_issues_enabled: bool,
 ) -> Result<(), String> {
-    let path = db_path()?;
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     conn.execute(
         "UPDATE groups SET github_issues_enabled = ?1 WHERE path = ?2",
@@ -110,10 +119,8 @@ pub fn update_group_settings(
 
 #[tauri::command]
 pub fn get_sessions(group_path: Option<String>) -> Result<Vec<Session>, String> {
-    let path = db_path()?;
     log::debug!("get_sessions: group_path={group_path:?}");
-    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
+    let conn = open_db_readonly()?;
 
     let sessions = query_sessions(&conn, group_path.as_deref())?;
 
@@ -375,8 +382,7 @@ pub fn remove_session(session_id: String) -> Result<(), String> {
     // agent-deck remove has a bug where worktree removal failure prevents
     // the DB deletion even though it reports success. Fall back to direct
     // DB deletion if the session still exists.
-    let path = db_path()?;
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     conn.execute("DELETE FROM instances WHERE id = ?1", [&session_id])
         .map_err(|e| format!("Failed to delete session: {e}"))?;
@@ -386,9 +392,7 @@ pub fn remove_session(session_id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_attention_counts() -> Result<AttentionCounts, String> {
-    let path = db_path()?;
-    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
+    let conn = open_db_readonly()?;
 
     // Fetch candidate sessions and refine with JSONL analysis
     let mut stmt = conn
@@ -452,9 +456,7 @@ pub fn get_attention_counts() -> Result<AttentionCounts, String> {
 
 #[tauri::command]
 pub fn get_attention_sessions() -> Result<Vec<Session>, String> {
-    let path = db_path()?;
-    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
+    let conn = open_db_readonly()?;
 
     let mut stmt = conn
         .prepare(
@@ -499,8 +501,7 @@ pub fn update_session_worktree(
     worktree_branch: String,
 ) -> Result<(), String> {
     log::info!("update_session_worktree: session_id={session_id}, branch={worktree_branch}");
-    let path = db_path()?;
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     conn.execute(
         "UPDATE instances SET worktree_path = ?1, worktree_repo = ?2, worktree_branch = ?3, project_path = ?1 WHERE id = ?4",
@@ -514,8 +515,7 @@ pub fn update_session_worktree(
 #[tauri::command]
 pub fn clear_session_worktree(session_id: String) -> Result<(), String> {
     log::info!("clear_session_worktree: session_id={session_id}");
-    let path = db_path()?;
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     // Get the worktree_repo so we can reset project_path to it
     let repo: String = conn
@@ -538,8 +538,7 @@ pub fn clear_session_worktree(session_id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn create_group(name: String, default_path: String) -> Result<(), String> {
     log::info!("create_group: name={name}, default_path={default_path}");
-    let path = db_path()?;
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     // Use name as path (agent-deck convention)
     let group_path = name.clone();
@@ -569,8 +568,7 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn move_session(session_id: String, new_group_path: String) -> Result<(), String> {
     log::info!("move_session: session_id={session_id}, new_group_path={new_group_path}");
-    let path = db_path()?;
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     // Get max sort_order in target group to append at end
     let max_sort: i32 = conn
@@ -593,8 +591,7 @@ pub fn move_session(session_id: String, new_group_path: String) -> Result<(), St
 #[tauri::command]
 pub fn rename_session(session_id: String, new_title: String) -> Result<(), String> {
     log::info!("rename_session: session_id={session_id}, new_title={new_title}");
-    let path = db_path()?;
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     conn.execute(
         "UPDATE instances SET title = ?1 WHERE id = ?2",
@@ -635,8 +632,7 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
 
 /// Store the prompt in the session's tool_data JSON.
 fn store_prompt(session_id: &str, prompt: &str) -> Result<(), String> {
-    let path = db_path()?;
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     let current: String = conn
         .query_row(
@@ -662,9 +658,7 @@ fn store_prompt(session_id: &str, prompt: &str) -> Result<(), String> {
 
 /// Look up the tmux session name for a given session ID from the agent-deck DB.
 fn get_tmux_session_name(session_id: &str) -> Result<String, String> {
-    let path = db_path()?;
-    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db_readonly()?;
 
     conn.query_row(
         "SELECT tmux_session FROM instances WHERE id = ?1",
