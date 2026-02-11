@@ -1,10 +1,20 @@
 import { useState, useImperativeHandle } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
 import type { Session } from "../types";
+import type { PendingCreation } from "../hooks/useSessionCreation";
 
 export interface AddSessionBarHandle {
   toggleForm: () => void;
+}
+
+interface CreateSessionParams {
+  projectPath: string;
+  group: string;
+  title: string;
+  tool?: string;
+  worktreeBranch?: string | null;
+  newBranch?: boolean;
+  start?: boolean;
+  prompt?: string | null;
 }
 
 interface AddSessionBarProps {
@@ -14,7 +24,8 @@ interface AddSessionBarProps {
   groupName: string;
   sessions: Session[];
   isGitRepo: boolean;
-  onSessionCreated?: (sessionId: string) => void;
+  createSession: (params: CreateSessionParams) => void;
+  pendingCreations: Map<string, PendingCreation>;
 }
 
 type SessionMode = "worktree" | "plain";
@@ -27,13 +38,13 @@ export function AddSessionBar({
   groupName,
   sessions,
   isGitRepo,
-  onSessionCreated,
+  createSession,
+  pendingCreations,
 }: AddSessionBarProps) {
   const [showForm, setShowForm] = useState(false);
   useImperativeHandle(ref, () => ({
     toggleForm: () => setShowForm((prev) => !prev),
   }));
-  const queryClient = useQueryClient();
   const [branchName, setBranchName] = useState("");
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -44,34 +55,9 @@ export function AddSessionBar({
     (s) => !s.worktree_branch || s.worktree_branch === "main" || s.worktree_branch === "master",
   );
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ["sessions"] });
-  };
-
-  const createMutation = useMutation({
-    mutationFn: (params: {
-      title: string;
-      tool: string;
-      worktreeBranch: string | null;
-      newBranch: boolean;
-      prompt: string | null;
-    }) =>
-      invoke<string>("create_session", {
-        projectPath: repoPath,
-        group: groupPath,
-        title: params.title,
-        tool: params.tool,
-        worktreeBranch: params.worktreeBranch,
-        newBranch: params.newBranch,
-        start: true,
-        prompt: params.prompt,
-      }),
-    onSuccess: (sessionId) => {
-      invalidate();
-      resetForm();
-      onSessionCreated?.(sessionId);
-    },
-  });
+  const hasPending = Array.from(pendingCreations.values()).some(
+    (p) => p.groupPath === groupPath && !p.error,
+  );
 
   const resetForm = () => {
     setBranchName("");
@@ -93,31 +79,40 @@ export function AddSessionBar({
     const promptValue = prompt.trim() || null;
     if (mode === "worktree") {
       if (!branchName.trim()) return;
-      createMutation.mutate({
+      createSession({
+        projectPath: repoPath,
+        group: groupPath,
         title: deriveTitle(branchName.trim()),
         tool,
         worktreeBranch: branchName.trim(),
         newBranch: true,
+        start: true,
         prompt: promptValue,
       });
     } else {
-      createMutation.mutate({
+      createSession({
+        projectPath: repoPath,
+        group: groupPath,
         title: deriveTitle("session"),
         tool,
         worktreeBranch: null,
         newBranch: false,
+        start: true,
         prompt: promptValue,
       });
     }
+    resetForm();
   };
 
   const handleStartMain = () => {
-    createMutation.mutate({
+    createSession({
+      projectPath: repoPath,
+      group: groupPath,
       title: "main",
       tool: "claude",
       worktreeBranch: null,
       newBranch: false,
-      prompt: null,
+      start: true,
     });
   };
 
@@ -130,7 +125,7 @@ export function AddSessionBar({
             <button
               className="wt-btn wt-btn-main"
               onClick={handleStartMain}
-              disabled={createMutation.isPending}
+              disabled={hasPending}
               title="Start a session on the main branch"
             >
               + Main Session
@@ -140,7 +135,7 @@ export function AddSessionBar({
             <button
               className="wt-btn wt-btn-add"
               onClick={() => setShowForm(!showForm)}
-              disabled={createMutation.isPending}
+              disabled={hasPending}
             >
               + Add Session
             </button>
@@ -235,7 +230,6 @@ export function AddSessionBar({
               className="wt-btn wt-btn-confirm"
               type="submit"
               disabled={
-                createMutation.isPending ||
                 (mode === "worktree" && !branchName.trim()) ||
                 (mode === "plain" && !title.trim() && !prompt.trim())
               }
@@ -248,8 +242,6 @@ export function AddSessionBar({
           </div>
         </form>
       )}
-
-      {createMutation.error && <div className="wt-error">{String(createMutation.error)}</div>}
     </div>
   );
 }

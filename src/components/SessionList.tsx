@@ -1,6 +1,19 @@
 import type { Session } from "../types";
+import type { PendingCreation } from "../hooks/useSessionCreation";
 import { SessionCard } from "./SessionCard";
 import { MainSessionGhost } from "./MainSessionGhost";
+import { PendingSessionCard } from "./PendingSessionCard";
+
+interface CreateSessionParams {
+  projectPath: string;
+  group: string;
+  title: string;
+  tool?: string;
+  worktreeBranch?: string | null;
+  newBranch?: boolean;
+  start?: boolean;
+  prompt?: string | null;
+}
 
 interface SessionListProps {
   sessions: Session[] | undefined;
@@ -19,6 +32,9 @@ interface SessionListProps {
   dismissedIds?: Set<string>;
   onDismiss?: (sessionId: string) => void;
   onUndismiss?: (sessionId: string) => void;
+  pendingCreations?: Map<string, PendingCreation>;
+  onDismissPending?: (creationId: string) => void;
+  createSession?: (params: CreateSessionParams) => void;
 }
 
 export function SessionList({
@@ -38,6 +54,9 @@ export function SessionList({
   dismissedIds,
   onDismiss,
   onUndismiss,
+  pendingCreations,
+  onDismissPending,
+  createSession,
 }: SessionListProps) {
   if (error) {
     return (
@@ -64,7 +83,12 @@ export function SessionList({
     );
   }
 
-  if (sessions.length === 0) {
+  // Filter pending creations to current group (needed before empty check)
+  const groupPending = pendingCreations
+    ? Array.from(pendingCreations.values()).filter((p) => !groupPath || p.groupPath === groupPath)
+    : [];
+
+  if (sessions.length === 0 && groupPending.length === 0) {
     return <div className="session-list-empty">No sessions found</div>;
   }
 
@@ -81,7 +105,7 @@ export function SessionList({
           <MainSessionGhost
             repoPath={repoPath}
             groupPath={groupPath}
-            onSessionReady={onSelectSession}
+            createSession={createSession}
           />
         )}
         {sessions.map((session, index) => (
@@ -107,6 +131,13 @@ export function SessionList({
             isDismissed={dismissedIds?.has(session.id)}
             onDismiss={onDismiss ? () => onDismiss(session.id) : undefined}
             onUndismiss={onUndismiss ? () => onUndismiss(session.id) : undefined}
+          />
+        ))}
+        {groupPending.map((pending) => (
+          <PendingSessionCard
+            key={pending.creationId}
+            pending={pending}
+            onDismiss={() => onDismissPending?.(pending.creationId)}
           />
         ))}
       </div>

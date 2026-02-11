@@ -18,6 +18,7 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { VersionWarning } from "./components/VersionWarning";
 import { UpdateNotification } from "./components/UpdateNotification";
+import { useSessionCreation } from "./hooks/useSessionCreation";
 import type { Group, Session } from "./types";
 
 const MIN_SIDEBAR_WIDTH = 48;
@@ -81,6 +82,22 @@ function App() {
       return next;
     });
   }, []);
+
+  const selectedGroupRef = useRef(selectedGroup);
+  useEffect(() => {
+    selectedGroupRef.current = selectedGroup;
+  });
+
+  const { pendingCreations, createSession, dismissPending } = useSessionCreation({
+    onCreated: async (_creationId, sessionId) => {
+      const { data } = await refetchSessions();
+      const newSession = data?.find((s) => s.id === sessionId);
+      // Only auto-open if the user is still viewing the group where the session was created
+      if (newSession && newSession.group_path === selectedGroupRef.current?.path) {
+        setSelectedSession(newSession);
+      }
+    },
+  });
 
   // Check agent-deck version on mount
   useEffect(() => {
@@ -593,7 +610,9 @@ function App() {
                   confirmingRemoveId={confirmingRemoveId}
                   onConfirmingRemoveChange={setConfirmingRemoveId}
                   focusedIndex={focusedIndex}
-                  refetchSessions={refetchSessions}
+                  pendingCreations={pendingCreations}
+                  onDismissPending={dismissPending}
+                  createSession={createSession}
                 />
               ) : (
                 <SessionList
@@ -613,6 +632,9 @@ function App() {
                   dismissedIds={dismissedIds}
                   onDismiss={handleDismiss}
                   onUndismiss={handleUndismiss}
+                  pendingCreations={pendingCreations}
+                  onDismissPending={dismissPending}
+                  createSession={createSession}
                 />
               )}
             </main>
@@ -624,13 +646,8 @@ function App() {
                 groupName={selectedGroup.name}
                 sessions={sessions ?? []}
                 isGitRepo={selectedGroup.is_git_repo}
-                onSessionCreated={async (sessionId) => {
-                  const { data } = await refetchSessions();
-                  const newSession = data?.find((s) => s.id === sessionId);
-                  if (newSession) {
-                    setSelectedSession(newSession);
-                  }
-                }}
+                createSession={createSession}
+                pendingCreations={pendingCreations}
               />
             )}
           </>
