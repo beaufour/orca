@@ -21,6 +21,16 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
         mergeWorkflow: mergeWorkflow,
       }),
     onSuccess: () => {
+      // Optimistically update the cache so the new value is available
+      // immediately — invalidateQueries refetches async and the stale
+      // data stays in the cache until the refetch completes.
+      queryClient.setQueryData<Group[]>(["groups"], (old) =>
+        old?.map((g) =>
+          g.path === group.path
+            ? { ...g, github_issues_enabled: githubIssuesEnabled, merge_workflow: mergeWorkflow }
+            : g,
+        ),
+      );
       queryClient.invalidateQueries({ queryKey: ["groups"] });
       onClose();
     },
