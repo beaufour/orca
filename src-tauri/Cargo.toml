@@ -28,6 +28,7 @@ tauri-plugin-dialog = "2.6.0"
 tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tokio = { version = "1", features = ["rt"] }
 
 [lints.rust]
 unsafe_code = "deny"
