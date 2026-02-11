@@ -83,7 +83,7 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
       // Auto-start a main session so the user doesn't have to
       await invoke("create_session", {
         projectPath: repoPath,
-        group: repoPath,
+        group: name.trim(),
         title: "main",
         tool: "claude",
         worktreeBranch: null,
