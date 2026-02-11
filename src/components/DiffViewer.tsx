@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session } from "../types";
 import { parseDiff, fileName, fileDir } from "../utils";
+import { queryKeys } from "../queryKeys";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface DiffViewerProps {
@@ -12,7 +13,7 @@ interface DiffViewerProps {
 
 export function DiffViewer({ session, onClose }: DiffViewerProps) {
   const { data, isLoading, error } = useQuery<string>({
-    queryKey: ["branch-diff", session.id],
+    queryKey: queryKeys.branchDiff(session.id),
     queryFn: () =>
       invoke("get_branch_diff", {
         worktreePath: session.worktree_path,

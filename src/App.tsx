@@ -20,6 +20,7 @@ import { VersionWarning } from "./components/VersionWarning";
 import { UpdateNotification } from "./components/UpdateNotification";
 import type { Group, Session } from "./types";
 import { isMainSession } from "./utils";
+import { queryKeys } from "./queryKeys";
 import { useSidebarResize } from "./hooks/useSidebarResize";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 
@@ -117,8 +118,8 @@ function App() {
     refetch: refetchSessions,
   } = useQuery<Session[]>({
     queryKey: needsActionFilter
-      ? ["sessions", "__needs_action__"]
-      : ["sessions", selectedGroup?.path ?? null],
+      ? queryKeys.attentionSessions
+      : queryKeys.sessions(selectedGroup?.path ?? null),
     queryFn: () =>
       needsActionFilter
         ? invoke("get_attention_sessions")
@@ -129,12 +130,12 @@ function App() {
   });
 
   const { data: groups } = useQuery<Group[]>({
-    queryKey: ["groups"],
+    queryKey: queryKeys.groups,
     queryFn: () => invoke("get_groups"),
   });
 
   const { data: liveTmuxSessions } = useQuery<string[]>({
-    queryKey: ["tmuxSessions"],
+    queryKey: queryKeys.tmuxSessions,
     queryFn: () => invoke("list_tmux_sessions"),
     refetchInterval: 5_000,
   });

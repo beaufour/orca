@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session, WorktreeStatus, MergeResult } from "../types";
+import { queryKeys } from "../queryKeys";
 
 export type MergeState = "idle" | "confirming" | "merging" | "success" | "conflict";
 
@@ -56,7 +57,7 @@ export function useWorktreeActions({
   const isWorktree = !!session.worktree_branch;
 
   const { data: worktreeStatus, isLoading: statusLoading } = useQuery<WorktreeStatus>({
-    queryKey: ["worktreeStatus", session.worktree_path],
+    queryKey: queryKeys.worktreeStatus(session.worktree_path ?? ""),
     queryFn: () =>
       invoke("check_worktree_status", {
         repoPath,
@@ -74,8 +75,8 @@ export function useWorktreeActions({
   const hasMergeWarnings = mergeWarnings.length > 0;
 
   const invalidateAll = () => {
-    queryClient.invalidateQueries({ queryKey: ["worktrees", repoPath] });
-    queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.worktrees(repoPath) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
     for (const key of extraInvalidateKeys ?? []) {
       queryClient.invalidateQueries({ queryKey: key as readonly unknown[] });
     }
@@ -102,7 +103,7 @@ export function useWorktreeActions({
   });
 
   const { data: defaultBranch } = useQuery<string>({
-    queryKey: ["defaultBranch", repoPath],
+    queryKey: queryKeys.defaultBranch(repoPath),
     queryFn: () => invoke("get_default_branch", { repoPath }),
     staleTime: 5 * 60 * 1000,
     enabled: isWorktree,
@@ -182,7 +183,7 @@ export function useWorktreeActions({
     onSuccess: async (sessionId) => {
       setMergeState("idle");
       setMergeResult(null);
-      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
       if (onSelectSession) {
         const sessions = await invoke<Session[]>("get_sessions", {
           groupPath: session.group_path,

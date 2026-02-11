@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Group } from "../types";
+import { queryKeys } from "../queryKeys";
 
 interface GroupSettingsModalProps {
   group: Group;
@@ -19,7 +20,7 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
         githubIssuesEnabled: githubIssuesEnabled,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["groups"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups });
       onClose();
     },
   });

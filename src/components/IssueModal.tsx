@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { GitHubIssue } from "../types";
+import { queryKeys } from "../queryKeys";
 
 const LABEL_OPTIONS = ["bug", "documentation", "enhancement"] as const;
 
@@ -46,7 +47,7 @@ export function IssueModal({ mode, issue, repoPath, onClose }: IssueModalProps) 
         labels: [...selectedLabels],
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["issues", repoPath] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues(repoPath) });
       onClose();
     },
   });
@@ -61,7 +62,7 @@ export function IssueModal({ mode, issue, repoPath, onClose }: IssueModalProps) 
         labels: [...selectedLabels],
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["issues", repoPath] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues(repoPath) });
       onClose();
     },
   });

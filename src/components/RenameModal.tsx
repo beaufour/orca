@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session } from "../types";
+import { queryKeys } from "../queryKeys";
 
 interface RenameModalProps {
   session: Session;
@@ -19,7 +20,7 @@ export function RenameModal({ session, onClose }: RenameModalProps) {
         newTitle: title.trim(),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
       onClose();
     },
   });

@@ -9,6 +9,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import "@xterm/xterm/css/xterm.css";
 import type { Session } from "../types";
+import { queryKeys } from "../queryKeys";
 import { DiffViewer } from "./DiffViewer";
 
 interface TerminalViewProps {
@@ -324,7 +325,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       await invoke("restart_session", { sessionId: session.id });
       // Invalidate and wait for refetch; the parent syncs selectedSession
       // from query data, which re-triggers our setup effect with the new tmux_session
-      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
     } catch (err) {
       terminalRef.current?.write(`\r\n  \x1b[31mRestart failed:\x1b[0m ${String(err)}\r\n`);
     } finally {

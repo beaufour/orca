@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session, Group } from "../types";
+import { queryKeys } from "../queryKeys";
 
 interface MoveSessionModalProps {
   session: Session;
@@ -18,8 +19,8 @@ export function MoveSessionModal({ session, groups, onClose }: MoveSessionModalP
         newGroupPath,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["groups"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups });
       onClose();
     },
   });

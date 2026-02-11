@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session } from "../types";
+import { queryKeys } from "../queryKeys";
 
 interface MainSessionGhostProps {
   repoPath: string;
@@ -12,7 +13,7 @@ export function MainSessionGhost({ repoPath, groupPath, onSessionReady }: MainSe
   const queryClient = useQueryClient();
 
   const { data: defaultBranch } = useQuery<string>({
-    queryKey: ["defaultBranch", repoPath],
+    queryKey: queryKeys.defaultBranch(repoPath),
     queryFn: () => invoke("get_default_branch", { repoPath }),
     staleTime: 5 * 60 * 1000,
   });
@@ -29,7 +30,7 @@ export function MainSessionGhost({ repoPath, groupPath, onSessionReady }: MainSe
         start: true,
       }),
     onSuccess: async (sessionId) => {
-      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
       // Fetch fresh session list and auto-open the new session
       if (onSessionReady) {
         const sessions = await invoke<Session[]>("get_sessions", {

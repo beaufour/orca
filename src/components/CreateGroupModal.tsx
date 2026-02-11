@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { queryKeys } from "../queryKeys";
 
 interface CreateGroupModalProps {
   onClose: () => void;
@@ -28,7 +29,7 @@ export function CreateGroupModal({ onClose }: CreateGroupModalProps) {
         defaultPath: defaultPath.trim(),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["groups"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups });
       onClose();
     },
   });

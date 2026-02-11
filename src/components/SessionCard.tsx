@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session, SessionSummary, AttentionStatus } from "../types";
 import { ATTENTION_CONFIG, fallbackAttention, formatPath, formatTime } from "../utils";
+import { queryKeys } from "../queryKeys";
 import { useWorktreeActions } from "../hooks/useWorktreeActions";
 import { WorktreeActions } from "./WorktreeActions";
 import { DiffViewer } from "./DiffViewer";
@@ -67,7 +68,7 @@ export function SessionCard({
   }, [isFocused]);
 
   const { data: summary } = useQuery<SessionSummary>({
-    queryKey: ["summary", session.id],
+    queryKey: queryKeys.summary(session.id),
     queryFn: () =>
       invoke("get_session_summary", {
         projectPath: session.project_path,
@@ -95,8 +96,8 @@ export function SessionCard({
     onSuccess: () => {
       setShowAddWorktree(false);
       setBranchName("");
-      queryClient.invalidateQueries({ queryKey: ["worktrees", repoPath] });
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.worktrees(repoPath) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
     },
   });
 
