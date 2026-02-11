@@ -5,6 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import "@xterm/xterm/css/xterm.css";
 import type { Session } from "../types";
 import { DiffViewer } from "./DiffViewer";
@@ -72,6 +74,11 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
 
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
+    terminal.loadAddon(
+      new WebLinksAddon((_event, url) => {
+        openUrl(url);
+      }),
+    );
 
     terminal.open(containerRef.current);
 
