@@ -659,6 +659,7 @@ function App() {
             </main>
             {selectedGroup && (
               <AddSessionBar
+                key={selectedGroup.path}
                 ref={addSessionBarRef}
                 repoPath={selectedGroup.default_path}
                 groupPath={selectedGroup.path}
