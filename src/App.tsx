@@ -23,6 +23,7 @@ import { isMainSession, storageGet, storageSet } from "./utils";
 import { queryKeys } from "./queryKeys";
 import { useSidebarResize } from "./hooks/useSidebarResize";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useDebouncedValue } from "./hooks/useDebouncedValue";
 
 const SELECTED_VIEW_KEY = "orca-selected-view";
 const VIEW_NEEDS_ACTION = "__needs_action__";
@@ -41,6 +42,7 @@ function App() {
   );
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 150);
   const [searchVisible, setSearchVisible] = useState(false);
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
@@ -171,8 +173,8 @@ function App() {
     if (needsActionFilter) {
       list = list.filter((s) => !dismissedIds.has(s.id));
     }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    if (debouncedSearchQuery) {
+      const q = debouncedSearchQuery.toLowerCase();
       list = list.filter(
         (s) =>
           s.title.toLowerCase().includes(q) ||
@@ -187,7 +189,7 @@ function App() {
       if (aMain !== bMain) return aMain ? -1 : 1;
       return 0;
     });
-  }, [sessions, searchQuery, needsActionFilter, dismissedIds]);
+  }, [sessions, debouncedSearchQuery, needsActionFilter, dismissedIds]);
 
   // Sidebar resize
   const { sidebarWidth, sidebarCollapsed, setSidebarCollapsed, isResizing, handleMouseDown } =
