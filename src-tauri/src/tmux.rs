@@ -53,9 +53,12 @@ pub fn scroll_tmux_pane(tmux_session: String, direction: String, lines: u32) -> 
     );
     if direction == "up" {
         // Enter copy mode with auto-exit at bottom (-e)
-        let _ = new_command("tmux")
+        if let Err(e) = new_command("tmux")
             .args(["copy-mode", "-t", &tmux_session, "-e"])
-            .output();
+            .output()
+        {
+            log::warn!("tmux copy-mode failed for '{tmux_session}': {e}");
+        }
     }
 
     let scroll_cmd = if direction == "up" {
@@ -63,7 +66,7 @@ pub fn scroll_tmux_pane(tmux_session: String, direction: String, lines: u32) -> 
     } else {
         "scroll-down"
     };
-    let _ = new_command("tmux")
+    if let Err(e) = new_command("tmux")
         .args([
             "send-keys",
             "-t",
@@ -73,7 +76,10 @@ pub fn scroll_tmux_pane(tmux_session: String, direction: String, lines: u32) -> 
             &lines.to_string(),
             scroll_cmd,
         ])
-        .output();
+        .output()
+    {
+        log::warn!("tmux scroll ({scroll_cmd}) failed for '{tmux_session}': {e}");
+    }
 
     Ok(())
 }

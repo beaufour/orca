@@ -154,10 +154,12 @@ pub fn remove_worktree(repo_path: String, worktree_path: String) -> Result<(), S
         &["worktree", "remove", &worktree_path, "--force"],
     )?;
 
-    // Clean up the branch
+    // Clean up the branch (best-effort — worktree is already removed)
     if let Some(branch_name) = branch {
         if branch_name != "main" && branch_name != "master" {
-            let _ = run_git(&effective_repo, &["branch", "-D", &branch_name]);
+            if let Err(e) = run_git(&effective_repo, &["branch", "-D", &branch_name]) {
+                log::warn!("Failed to delete branch '{branch_name}' after worktree removal: {e}");
+            }
         }
     }
 
@@ -183,10 +185,14 @@ pub fn merge_worktree(
     // Merge the branch into main from the main worktree
     run_git(&main_wt.path, &["merge", &branch])?;
 
-    // Find and remove the branch worktree
+    // Clean up the branch worktree (best-effort — merge already succeeded)
     if let Some(branch_wt) = worktrees.iter().find(|w| w.branch == branch) {
-        let _ = run_git(&effective_repo, &["worktree", "remove", &branch_wt.path]);
-        let _ = run_git(&effective_repo, &["branch", "-d", &branch]);
+        if let Err(e) = run_git(&effective_repo, &["worktree", "remove", &branch_wt.path]) {
+            log::warn!("Failed to remove worktree '{}': {e}", branch_wt.path);
+        }
+        if let Err(e) = run_git(&effective_repo, &["branch", "-d", &branch]) {
+            log::warn!("Failed to delete branch '{branch}': {e}");
+        }
     }
 
     Ok(())
@@ -196,8 +202,10 @@ pub fn merge_worktree(
 pub fn rebase_worktree(worktree_path: String, main_branch: Option<String>) -> Result<(), String> {
     let target = main_branch.unwrap_or_else(|| "main".to_string());
 
-    // Fetch latest and rebase
-    let _ = run_git(&worktree_path, &["fetch", "origin", &target]);
+    // Fetch latest (best-effort — may be offline) then rebase
+    if let Err(e) = run_git(&worktree_path, &["fetch", "origin", &target]) {
+        log::warn!("Failed to fetch origin/{target}, rebasing against local: {e}");
+    }
     run_git(&worktree_path, &["rebase", &target])?;
 
     Ok(())
@@ -359,8 +367,10 @@ pub fn try_merge_branch(
         ));
     }
 
-    // Best-effort pull on main (ignore failure — may be offline or no remote)
-    let _ = run_git_status(&main_path, &["pull", "--ff-only"]);
+    // Best-effort pull on main (may be offline or have no remote)
+    if let Err(e) = run_git(&main_path, &["pull", "--ff-only"]) {
+        log::warn!("Failed to pull --ff-only on '{target}', merging against local: {e}");
+    }
 
     // Try merge — need both stdout and stderr for conflict info
     log::info!("git merge {branch} --no-edit (cwd: {main_path})");
