@@ -1,5 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useState } from "react";
+import { storageSet } from "../utils";
 
 const DISMISS_KEY = "orca-version-warning-dismissed";
 
@@ -18,7 +19,7 @@ export function VersionWarning({ supported, installed, onClose }: VersionWarning
 
   const handleDismissPermanently = () => {
     if (appVersion) {
-      localStorage.setItem(DISMISS_KEY, `${appVersion}:${installed}`);
+      storageSet(DISMISS_KEY, `${appVersion}:${installed}`);
     }
     onClose();
   };

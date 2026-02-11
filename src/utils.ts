@@ -135,3 +135,21 @@ export function fileDir(path: string): string {
   const i = path.lastIndexOf("/");
   return i === -1 ? "" : path.slice(0, i + 1);
 }
+
+/** Safe localStorage.getItem — returns null on error (e.g. private browsing). */
+export function storageGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** Safe localStorage.setItem — silently ignores errors (e.g. quota exceeded). */
+export function storageSet(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore — storage may be full or unavailable
+  }
+}

@@ -19,7 +19,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { VersionWarning } from "./components/VersionWarning";
 import { UpdateNotification } from "./components/UpdateNotification";
 import type { Group, Session } from "./types";
-import { isMainSession } from "./utils";
+import { isMainSession, storageGet, storageSet } from "./utils";
 import { queryKeys } from "./queryKeys";
 import { useSidebarResize } from "./hooks/useSidebarResize";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -28,7 +28,7 @@ const SELECTED_VIEW_KEY = "orca-selected-view";
 const VIEW_NEEDS_ACTION = "__needs_action__";
 const VIEW_ALL = "__all__";
 
-const initialSavedView = localStorage.getItem(SELECTED_VIEW_KEY);
+const initialSavedView = storageGet(SELECTED_VIEW_KEY);
 
 function App() {
   const savedView = useRef(initialSavedView);
@@ -83,7 +83,7 @@ function App() {
     invoke<{ supported: string; installed: string }>("check_agent_deck_version")
       .then(async ({ supported, installed }) => {
         if (supported !== installed) {
-          const stored = localStorage.getItem("orca-version-warning-dismissed");
+          const stored = storageGet("orca-version-warning-dismissed");
           const appVersion = await getVersion();
           if (stored !== `${appVersion}:${installed}`) {
             setVersionMismatch({ supported, installed });
@@ -268,11 +268,11 @@ function App() {
   useEffect(() => {
     if (!initialRestoreDone.current) return;
     if (needsActionFilter) {
-      localStorage.setItem(SELECTED_VIEW_KEY, VIEW_NEEDS_ACTION);
+      storageSet(SELECTED_VIEW_KEY, VIEW_NEEDS_ACTION);
     } else if (selectedGroup) {
-      localStorage.setItem(SELECTED_VIEW_KEY, selectedGroup.path);
+      storageSet(SELECTED_VIEW_KEY, selectedGroup.path);
     } else {
-      localStorage.setItem(SELECTED_VIEW_KEY, VIEW_ALL);
+      storageSet(SELECTED_VIEW_KEY, VIEW_ALL);
     }
   }, [selectedGroup, needsActionFilter]);
 
