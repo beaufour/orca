@@ -305,9 +305,9 @@ pub fn create_session(
 
     // Only let agent-deck handle worktree creation for non-bare repos
     if bare_worktree_info.is_none() {
-        if let Some(ref branch) = worktree_branch {
+        if let Some(branch) = worktree_branch {
             args.push("-w".to_string());
-            args.push(branch.clone());
+            args.push(branch);
             if new_branch {
                 args.push("-b".to_string());
             }
@@ -540,9 +540,6 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
     log::info!("create_group: name={name}, default_path={default_path}");
     let conn = open_db()?;
 
-    // Use name as path (agent-deck convention)
-    let group_path = name.clone();
-
     // Expand tilde in default_path before storing
     let expanded_default_path = expand_tilde(&default_path);
     let default_path_str = expanded_default_path.to_string_lossy().to_string();
@@ -556,9 +553,10 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
         )
         .unwrap_or(-1);
 
+    // Use name as both path and name (agent-deck convention)
     conn.execute(
         "INSERT INTO groups (path, name, expanded, sort_order, default_path) VALUES (?1, ?2, 1, ?3, ?4)",
-        rusqlite::params![group_path, name, max_sort + 1, default_path_str],
+        rusqlite::params![name, name, max_sort + 1, default_path_str],
     )
     .map_err(|e| format!("Failed to create group: {e}"))?;
 

@@ -142,7 +142,7 @@ pub fn merge_worktree(
     let target = main_branch.unwrap_or_else(|| "main".to_string());
 
     // Find the main worktree path
-    let worktrees = list_worktrees(repo_path.clone())?;
+    let worktrees = list_worktrees(repo_path)?;
     let main_wt = worktrees
         .iter()
         .find(|w| w.branch == target)
