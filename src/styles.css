@@ -1525,3 +1525,81 @@ body {
   margin-bottom: 16px;
   line-height: 1.4;
 }
+
+/* Settings radio group */
+.settings-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.settings-radio-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-radio-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.settings-radio-option input[type="radio"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.settings-radio-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.settings-radio-text strong {
+  color: var(--text-primary);
+}
+
+/* PR button */
+.wt-btn-pr {
+  color: #a78bfa;
+  border-color: #a78bfa;
+}
+
+.wt-btn-pr:hover:not(:disabled) {
+  background: rgba(167, 139, 250, 0.15);
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+
+/* PR link */
+.pr-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: #a78bfa;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pr-link:hover {
+  text-decoration: underline;
+  color: #c4b5fd;
+}
+
+/* PR merged label */
+.pr-merged-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--status-idle);
+  margin-right: 4px;
+}
+
+/* PR modal branch info */
+.pr-modal-branch-info {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  font-family: "SF Mono", "Menlo", monospace;
+}

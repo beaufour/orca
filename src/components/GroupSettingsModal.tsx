@@ -10,6 +10,7 @@ interface GroupSettingsModalProps {
 
 export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) {
   const [githubIssuesEnabled, setGithubIssuesEnabled] = useState(group.github_issues_enabled);
+  const [mergeWorkflow, setMergeWorkflow] = useState(group.merge_workflow);
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
@@ -17,6 +18,7 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
       invoke("update_group_settings", {
         groupPath: group.path,
         githubIssuesEnabled: githubIssuesEnabled,
+        mergeWorkflow: mergeWorkflow,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groups"] });
@@ -25,7 +27,10 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
   });
 
   const handleSubmit = () => {
-    if (githubIssuesEnabled === group.github_issues_enabled) {
+    if (
+      githubIssuesEnabled === group.github_issues_enabled &&
+      mergeWorkflow === group.merge_workflow
+    ) {
       onClose();
       return;
     }
@@ -55,6 +60,33 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
           Show GitHub issues as a todo list for this group. Disable if this group is not backed by a
           GitHub repository.
         </p>
+        <div className="settings-radio-group">
+          <span className="settings-radio-label">Merge Workflow</span>
+          <label className="settings-radio-option">
+            <input
+              type="radio"
+              name="mergeWorkflow"
+              value="merge"
+              checked={mergeWorkflow === "merge"}
+              onChange={() => setMergeWorkflow("merge")}
+            />
+            <span className="settings-radio-text">
+              <strong>Direct Merge</strong> — merge branches locally into main
+            </span>
+          </label>
+          <label className="settings-radio-option">
+            <input
+              type="radio"
+              name="mergeWorkflow"
+              value="pr"
+              checked={mergeWorkflow === "pr"}
+              onChange={() => setMergeWorkflow("pr")}
+            />
+            <span className="settings-radio-text">
+              <strong>Pull Request</strong> — push branches and create GitHub PRs
+            </span>
+          </label>
+        </div>
         {mutation.error && <div className="wt-error">{String(mutation.error)}</div>}
         <div className="modal-actions">
           <button

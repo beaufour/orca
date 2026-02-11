@@ -36,6 +36,7 @@ pub struct Group {
     pub sort_order: i32,
     pub default_path: String,
     pub github_issues_enabled: bool,
+    pub merge_workflow: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +55,9 @@ pub struct Session {
     pub worktree_branch: String,
     pub claude_session_id: Option<String>,
     pub prompt: Option<String>,
+    pub pr_url: Option<String>,
+    pub pr_number: Option<u64>,
+    pub pr_state: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

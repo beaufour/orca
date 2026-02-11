@@ -5,7 +5,9 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import type { GitHubIssue, Session, SessionSummary, AttentionStatus } from "../types";
 import { ATTENTION_CONFIG, fallbackAttention, formatTime } from "../utils";
 import { useWorktreeActions } from "../hooks/useWorktreeActions";
+import { usePrWorkflowActions } from "../hooks/usePrWorkflowActions";
 import { WorktreeActions } from "./WorktreeActions";
+import { PrWorkflowActions } from "./PrWorkflowActions";
 import { DiffViewer } from "./DiffViewer";
 
 interface TodoCardProps {
@@ -17,6 +19,7 @@ interface TodoCardProps {
   onEditIssue?: (issue: GitHubIssue) => void;
   liveTmuxSessions?: Set<string>;
   isFocused?: boolean;
+  mergeWorkflow?: "merge" | "pr";
 }
 
 function labelStyle(color: string): React.CSSProperties {
@@ -52,6 +55,7 @@ function TodoCardInProgress({
   onSelectSession,
   liveTmuxSessions,
   isFocused,
+  mergeWorkflow,
 }: {
   issue: GitHubIssue;
   session: Session;
@@ -59,6 +63,7 @@ function TodoCardInProgress({
   onSelectSession?: (session: Session) => void;
   liveTmuxSessions?: Set<string>;
   isFocused?: boolean;
+  mergeWorkflow?: "merge" | "pr";
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [showDiff, setShowDiff] = useState(false);
@@ -89,6 +94,15 @@ function TodoCardInProgress({
     repoPath: sessionRepoPath,
     onSelectSession,
     extraInvalidateKeys: [["issues", repoPath]],
+  });
+
+  const prActions = usePrWorkflowActions({
+    session,
+    repoPath: sessionRepoPath,
+    onSelectSession,
+    extraInvalidateKeys: [["issues", repoPath]],
+    enabled: mergeWorkflow === "pr",
+    defaultBranch: actions.defaultBranch,
   });
 
   const attention: AttentionStatus = summary?.attention ?? fallbackAttention(session.status);
@@ -131,16 +145,28 @@ function TodoCardInProgress({
           <div className="session-summary session-last-text">{summary.last_text}</div>
         )}
       </div>
-      {actions.mutationError && (
-        <div className="session-wt-error">{String(actions.mutationError)}</div>
+      {(mergeWorkflow === "pr" ? prActions.mutationError : actions.mutationError) && (
+        <div className="session-wt-error">
+          {String(mergeWorkflow === "pr" ? prActions.mutationError : actions.mutationError)}
+        </div>
       )}
       <div className="session-card-footer">
-        <WorktreeActions
-          actions={actions}
-          projectPath={session.project_path}
-          worktreeBranch={session.worktree_branch}
-          onShowDiff={() => setShowDiff(true)}
-        />
+        {mergeWorkflow === "pr" ? (
+          <PrWorkflowActions
+            actions={prActions}
+            projectPath={session.project_path}
+            worktreeBranch={session.worktree_branch}
+            sessionTitle={session.title}
+            onShowDiff={() => setShowDiff(true)}
+          />
+        ) : (
+          <WorktreeActions
+            actions={actions}
+            projectPath={session.project_path}
+            worktreeBranch={session.worktree_branch}
+            onShowDiff={() => setShowDiff(true)}
+          />
+        )}
         <span className="session-time">{formatTime(session.last_accessed)}</span>
       </div>
       {showDiff && <DiffViewer session={session} onClose={() => setShowDiff(false)} />}
@@ -157,6 +183,7 @@ export function TodoCard({
   onEditIssue,
   liveTmuxSessions,
   isFocused,
+  mergeWorkflow,
 }: TodoCardProps) {
   const queryClient = useQueryClient();
   const [confirmClose, setConfirmClose] = useState(false);
@@ -178,6 +205,7 @@ export function TodoCard({
         onSelectSession={onSelectSession}
         liveTmuxSessions={liveTmuxSessions}
         isFocused={isFocused}
+        mergeWorkflow={mergeWorkflow}
       />
     );
   }

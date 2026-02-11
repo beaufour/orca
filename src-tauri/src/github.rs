@@ -1,7 +1,7 @@
 use crate::command::new_command;
 use crate::git::find_bare_root;
 use crate::models::{GitHubIssue, GitHubLabel};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Raw shape returned by `gh issue list/view --json ...`
@@ -275,6 +275,98 @@ pub fn assign_issue(repo_path: String, issue_number: u64) -> Result<(), String> 
         ],
     )?;
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrInfo {
+    pub number: u64,
+    pub url: String,
+    pub state: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhPrStatus {
+    number: u64,
+    url: String,
+    state: String,
+    #[serde(rename = "mergedAt")]
+    merged_at: Option<String>,
+}
+
+#[tauri::command]
+pub fn create_pr(
+    repo_path: String,
+    branch: String,
+    base_branch: String,
+    title: String,
+    body: String,
+) -> Result<PrInfo, String> {
+    log::info!("create_pr: repo_path={repo_path}, branch={branch}, base={base_branch}");
+    let owner_repo = get_owner_repo(&repo_path)?;
+    let output = run_gh(
+        &repo_path,
+        &[
+            "pr",
+            "create",
+            "-R",
+            &owner_repo,
+            "--head",
+            &branch,
+            "--base",
+            &base_branch,
+            "--title",
+            &title,
+            "--body",
+            &body,
+        ],
+    )?;
+
+    // gh pr create outputs the PR URL. Extract number and fetch details.
+    let url = output.trim().to_string();
+    let number: u64 = url
+        .rsplit('/')
+        .next()
+        .and_then(|s| s.parse().ok())
+        .ok_or_else(|| format!("Cannot parse PR number from URL: {url}"))?;
+
+    Ok(PrInfo {
+        number,
+        url,
+        state: "OPEN".to_string(),
+    })
+}
+
+#[tauri::command]
+pub fn check_pr_status(repo_path: String, branch: String) -> Result<PrInfo, String> {
+    log::info!("check_pr_status: repo_path={repo_path}, branch={branch}");
+    let owner_repo = get_owner_repo(&repo_path)?;
+    let output = run_gh(
+        &repo_path,
+        &[
+            "pr",
+            "view",
+            &branch,
+            "-R",
+            &owner_repo,
+            "--json",
+            "number,state,url,mergedAt",
+        ],
+    )?;
+
+    let raw: GhPrStatus =
+        serde_json::from_str(&output).map_err(|e| format!("Failed to parse gh pr output: {e}"))?;
+
+    let state = if raw.merged_at.is_some() {
+        "MERGED".to_string()
+    } else {
+        raw.state
+    };
+
+    Ok(PrInfo {
+        number: raw.number,
+        url: raw.url,
+        state,
+    })
 }
 
 #[tauri::command]

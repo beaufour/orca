@@ -19,6 +19,7 @@ interface SessionListProps {
   dismissedIds?: Set<string>;
   onDismiss?: (sessionId: string) => void;
   onUndismiss?: (sessionId: string) => void;
+  mergeWorkflow?: "merge" | "pr";
 }
 
 export function SessionList({
@@ -38,6 +39,7 @@ export function SessionList({
   dismissedIds,
   onDismiss,
   onUndismiss,
+  mergeWorkflow,
 }: SessionListProps) {
   if (error) {
     return (
@@ -107,6 +109,7 @@ export function SessionList({
             isDismissed={dismissedIds?.has(session.id)}
             onDismiss={onDismiss ? () => onDismiss(session.id) : undefined}
             onUndismiss={onUndismiss ? () => onUndismiss(session.id) : undefined}
+            mergeWorkflow={mergeWorkflow}
           />
         ))}
       </div>

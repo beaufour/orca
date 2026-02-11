@@ -142,7 +142,11 @@ function App() {
   useEffect(() => {
     if (selectedGroup && groups) {
       const updated = groups.find((g) => g.path === selectedGroup.path);
-      if (updated && updated.github_issues_enabled !== selectedGroup.github_issues_enabled) {
+      if (
+        updated &&
+        (updated.github_issues_enabled !== selectedGroup.github_issues_enabled ||
+          updated.merge_workflow !== selectedGroup.merge_workflow)
+      ) {
         setSelectedGroup(updated);
       }
     }
@@ -571,6 +575,7 @@ function App() {
                   dismissedIds={dismissedIds}
                   onDismiss={handleDismiss}
                   onUndismiss={handleUndismiss}
+                  mergeWorkflow={selectedGroup?.merge_workflow}
                 />
               )}
             </main>

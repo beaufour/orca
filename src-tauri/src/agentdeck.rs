@@ -67,6 +67,25 @@ fn ensure_github_issues_column(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+/// Ensure the `merge_workflow` column exists on the `groups` table.
+fn ensure_merge_workflow_column(conn: &Connection) -> Result<(), String> {
+    let has_column: bool = conn
+        .prepare("PRAGMA table_info(groups)")
+        .map_err(|e| e.to_string())?
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?
+        .any(|name| name.as_deref() == Ok("merge_workflow"));
+
+    if !has_column {
+        conn.execute(
+            "ALTER TABLE groups ADD COLUMN merge_workflow TEXT DEFAULT 'merge'",
+            [],
+        )
+        .map_err(|e| format!("Failed to add merge_workflow column: {e}"))?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn get_groups() -> Result<Vec<Group>, String> {
     let path = db_path();
@@ -75,10 +94,11 @@ pub fn get_groups() -> Result<Vec<Group>, String> {
         .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
 
     ensure_github_issues_column(&conn)?;
+    ensure_merge_workflow_column(&conn)?;
 
     let mut stmt = conn
         .prepare(
-            "SELECT path, name, expanded, sort_order, default_path, github_issues_enabled FROM groups ORDER BY sort_order",
+            "SELECT path, name, expanded, sort_order, default_path, github_issues_enabled, merge_workflow FROM groups ORDER BY sort_order",
         )
         .map_err(|e| e.to_string())?;
 
@@ -91,6 +111,9 @@ pub fn get_groups() -> Result<Vec<Group>, String> {
                 sort_order: row.get(3)?,
                 default_path: row.get(4)?,
                 github_issues_enabled: row.get::<_, i32>(5).unwrap_or(1) != 0,
+                merge_workflow: row
+                    .get::<_, String>(6)
+                    .unwrap_or_else(|_| "merge".to_string()),
             })
         })
         .map_err(|e| e.to_string())?
@@ -105,13 +128,14 @@ pub fn get_groups() -> Result<Vec<Group>, String> {
 pub fn update_group_settings(
     group_path: String,
     github_issues_enabled: bool,
+    merge_workflow: String,
 ) -> Result<(), String> {
     let path = db_path();
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     conn.execute(
-        "UPDATE groups SET github_issues_enabled = ?1 WHERE path = ?2",
-        rusqlite::params![github_issues_enabled as i32, group_path],
+        "UPDATE groups SET github_issues_enabled = ?1, merge_workflow = ?2 WHERE path = ?3",
+        rusqlite::params![github_issues_enabled as i32, merge_workflow, group_path],
     )
     .map_err(|e| format!("Failed to update group settings: {e}"))?;
 
@@ -645,6 +669,15 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
     let prompt = tool_data
         .as_ref()
         .and_then(|v| v.get("prompt")?.as_str().map(String::from));
+    let pr_url = tool_data
+        .as_ref()
+        .and_then(|v| v.get("pr_url")?.as_str().map(String::from));
+    let pr_number = tool_data
+        .as_ref()
+        .and_then(|v| v.get("pr_number")?.as_u64());
+    let pr_state = tool_data
+        .as_ref()
+        .and_then(|v| v.get("pr_state")?.as_str().map(String::from));
 
     Ok(Session {
         id: row.get(0)?,
@@ -661,6 +694,9 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
         worktree_branch: row.get(11)?,
         claude_session_id,
         prompt,
+        pr_url,
+        pr_number,
+        pr_state,
     })
 }
 
@@ -680,6 +716,42 @@ fn store_prompt(session_id: &str, prompt: &str) -> Result<(), String> {
     let mut data: serde_json::Value =
         serde_json::from_str(&current).unwrap_or(serde_json::json!({}));
     data["prompt"] = serde_json::Value::String(prompt.to_string());
+
+    let updated = serde_json::to_string(&data).map_err(|e| format!("JSON serialize error: {e}"))?;
+    conn.execute(
+        "UPDATE instances SET tool_data = ?1 WHERE id = ?2",
+        rusqlite::params![updated, session_id],
+    )
+    .map_err(|e| format!("Failed to update tool_data for {session_id}: {e}"))?;
+
+    Ok(())
+}
+
+/// Store PR info in the session's tool_data JSON.
+#[tauri::command]
+pub fn store_session_pr_info(
+    session_id: String,
+    pr_url: String,
+    pr_number: u64,
+    pr_state: String,
+) -> Result<(), String> {
+    log::info!("store_session_pr_info: session_id={session_id}, pr_number={pr_number}, pr_state={pr_state}");
+    let path = db_path();
+    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+
+    let current: String = conn
+        .query_row(
+            "SELECT tool_data FROM instances WHERE id = ?1",
+            [&session_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to read tool_data for {session_id}: {e}"))?;
+
+    let mut data: serde_json::Value =
+        serde_json::from_str(&current).unwrap_or(serde_json::json!({}));
+    data["pr_url"] = serde_json::Value::String(pr_url);
+    data["pr_number"] = serde_json::json!(pr_number);
+    data["pr_state"] = serde_json::Value::String(pr_state);
 
     let updated = serde_json::to_string(&data).map_err(|e| format!("JSON serialize error: {e}"))?;
     conn.execute(
