@@ -156,100 +156,57 @@ fn query_sessions_all(conn: &Connection) -> Result<Vec<Session>, String> {
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
-#[tauri::command]
-pub fn create_session(
-    project_path: String,
-    group: String,
-    title: String,
-    tool: Option<String>,
-    worktree_branch: Option<String>,
-    new_branch: bool,
-    start: Option<bool>,
-    prompt: Option<String>,
-) -> Result<String, String> {
-    let tool_name = tool.unwrap_or_else(|| "claude".to_string());
-
-    // Expand tilde in project path
-    let expanded_project_path = expand_tilde(&project_path);
-    let project_path_str = expanded_project_path.to_string_lossy().to_string();
-
-    // If the project_path is a bare repo (has .bare subdir), resolve to an
-    // existing worktree so agent-deck can find the git repo.
-    let mut effective_path = if expanded_project_path.join(".bare").is_dir() {
-        find_worktree_in_bare(&project_path_str)?
+/// Resolve the effective working path for session creation.
+/// For bare repos (with .bare subdir), resolves to an existing worktree path.
+fn resolve_effective_path(project_path: &str) -> Result<String, String> {
+    let expanded = expand_tilde(project_path);
+    let path_str = expanded.to_string_lossy().to_string();
+    if expanded.join(".bare").is_dir() {
+        find_worktree_in_bare(&path_str)
     } else {
-        project_path_str
-    };
-
-    let bare_root = crate::git::find_bare_root(&effective_path);
-
-    // For bare worktree repos, create the worktree ourselves so it lands at
-    // <bare_root>/<branch> instead of agent-deck's default <dir>-<branch>.
-    let bare_worktree_info = if let Some(ref root) = bare_root {
-        if let Some(ref branch) = worktree_branch {
-            let wt_path = root.join(branch);
-            let wt_str = wt_path.to_string_lossy().to_string();
-            let repo_root = effective_path.clone();
-
-            let mut git_args = vec!["worktree", "add", &wt_str];
-            if new_branch {
-                git_args.push("-b");
-            }
-            git_args.push(branch);
-
-            log::info!("git {} (cwd: {})", git_args.join(" "), effective_path);
-            let output = new_command("git")
-                .current_dir(&effective_path)
-                .args(&git_args)
-                .output()
-                .map_err(|e| format!("Failed to create worktree: {e}"))?;
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                log::error!(
-                    "git worktree add failed (exit {}): {}",
-                    output.status,
-                    stderr.trim()
-                );
-                return Err(format!("Failed to create worktree: {}", stderr.trim()));
-            }
-            log::debug!("git worktree add succeeded: {wt_str}");
-
-            effective_path = wt_str.clone();
-            Some((wt_str, repo_root, branch.clone()))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    let mut args = vec![
-        "add".to_string(),
-        effective_path,
-        "-g".to_string(),
-        group,
-        "-t".to_string(),
-        title,
-        "-c".to_string(),
-        tool_name,
-        "-json".to_string(),
-    ];
-
-    // Only let agent-deck handle worktree creation for non-bare repos
-    if bare_worktree_info.is_none() {
-        if let Some(branch) = worktree_branch {
-            args.push("-w".to_string());
-            args.push(branch);
-            if new_branch {
-                args.push("-b".to_string());
-            }
-        }
+        Ok(path_str)
     }
+}
 
+/// For bare worktree repos, create the worktree at <bare_root>/<branch>
+/// instead of agent-deck's default <dir>-<branch> layout.
+/// Returns (worktree_path, repo_root, branch) if created, None otherwise.
+fn create_bare_worktree(
+    effective_path: &str,
+    worktree_branch: Option<&str>,
+    new_branch: bool,
+) -> Result<Option<(String, String, String)>, String> {
+    let Some(bare_root) = crate::git::find_bare_root(effective_path) else {
+        return Ok(None);
+    };
+    let Some(branch) = worktree_branch else {
+        return Ok(None);
+    };
+
+    let wt_path = bare_root.join(branch);
+    let wt_str = wt_path.to_string_lossy().to_string();
+
+    let mut git_args = vec!["worktree", "add", &wt_str];
+    if new_branch {
+        git_args.push("-b");
+    }
+    git_args.push(branch);
+
+    crate::command::run_cmd("git", effective_path, &git_args)
+        .map_err(|e| format!("Failed to create worktree: {e}"))?;
+
+    Ok(Some((
+        wt_str,
+        effective_path.to_string(),
+        branch.to_string(),
+    )))
+}
+
+/// Run `agent-deck add` and parse the session ID from the output.
+fn run_agent_deck_add(args: &[String]) -> Result<String, String> {
     log::info!("agent-deck {}", args.join(" "));
     let output = new_command("agent-deck")
-        .args(&args)
+        .args(args)
         .output()
         .map_err(|e| format!("Failed to run agent-deck: {e}"))?;
 
@@ -265,32 +222,106 @@ pub fn create_session(
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     log::debug!("agent-deck add succeeded: {stdout}");
+    parse_session_id(&stdout)
+}
 
-    // Parse session ID from output
-    let session_id;
-
+/// Parse a session ID from agent-deck output (JSON or fallback text format).
+fn parse_session_id(stdout: &str) -> Result<String, String> {
     // Try JSON output first (normal creation).
     // agent-deck may prefix the JSON with text like "Created worktree at: ...",
     // so find the first '{' and parse from there.
-    let json_str = stdout.find('{').map(|i| &stdout[i..]).unwrap_or(&stdout);
+    let json_str = stdout.find('{').map(|i| &stdout[i..]).unwrap_or(stdout);
     if let Some(id) = serde_json::from_str::<serde_json::Value>(json_str)
         .ok()
         .and_then(|json| json["id"].as_str().map(String::from))
     {
-        session_id = id;
+        return Ok(id);
     }
+
     // Fall back: "Session already exists with same title and path: name (ID)"
-    else if stdout.contains("already exists") {
+    if stdout.contains("already exists") {
         if let (Some(start), Some(end)) = (stdout.rfind('('), stdout.rfind(')')) {
-            session_id = stdout[start + 1..end].to_string();
-        } else {
-            return Err(format!("Could not parse session ID from: {stdout}"));
+            return Ok(stdout[start + 1..end].to_string());
         }
-    } else {
+    }
+
+    Err(format!(
+        "Could not parse session ID from agent-deck output: {stdout}"
+    ))
+}
+
+/// Start an agent-deck session via CLI.
+fn start_agent_deck_session(session_id: &str) -> Result<(), String> {
+    log::info!("agent-deck session start {session_id}");
+    let output = new_command("agent-deck")
+        .args(["session", "start", session_id])
+        .output()
+        .map_err(|e| format!("Failed to start session: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!(
+            "agent-deck session start failed (exit {}): {}",
+            output.status,
+            stderr.trim()
+        );
         return Err(format!(
-            "Could not parse session ID from agent-deck output: {stdout}"
+            "agent-deck session start failed: {}",
+            stderr.trim()
         ));
     }
+
+    log::debug!("agent-deck session start succeeded for {session_id}");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub fn create_session(
+    project_path: String,
+    group: String,
+    title: String,
+    tool: Option<String>,
+    worktree_branch: Option<String>,
+    new_branch: bool,
+    start: Option<bool>,
+    prompt: Option<String>,
+) -> Result<String, String> {
+    let tool_name = tool.unwrap_or_else(|| "claude".to_string());
+    let mut effective_path = resolve_effective_path(&project_path)?;
+
+    // For bare worktree repos, create the worktree ourselves
+    let bare_worktree_info =
+        create_bare_worktree(&effective_path, worktree_branch.as_deref(), new_branch)?;
+    if let Some((ref wt_str, _, _)) = bare_worktree_info {
+        effective_path = wt_str.clone();
+    }
+
+    // Build agent-deck add arguments
+    let mut args = vec![
+        "add".to_string(),
+        effective_path,
+        "-g".to_string(),
+        group,
+        "-t".to_string(),
+        title,
+        "-c".to_string(),
+        tool_name,
+        "-json".to_string(),
+    ];
+
+    // Only let agent-deck handle worktree creation for non-bare repos
+    if bare_worktree_info.is_none() {
+        if let Some(ref branch) = worktree_branch {
+            args.push("-w".to_string());
+            args.push(branch.clone());
+            if new_branch {
+                args.push("-b".to_string());
+            }
+        }
+    }
+
+    let session_id = run_agent_deck_add(&args)?;
 
     // For bare repos where we created the worktree ourselves, update the
     // session's worktree metadata in the DB.
@@ -307,25 +338,7 @@ pub fn create_session(
 
     // Optionally start the session immediately
     if start.unwrap_or(false) {
-        log::info!("agent-deck session start {session_id}");
-        let start_output = new_command("agent-deck")
-            .args(["session", "start", &session_id])
-            .output()
-            .map_err(|e| format!("Failed to start session: {e}"))?;
-
-        if !start_output.status.success() {
-            let stderr = String::from_utf8_lossy(&start_output.stderr);
-            log::error!(
-                "agent-deck session start failed (exit {}): {}",
-                start_output.status,
-                stderr.trim()
-            );
-            return Err(format!(
-                "agent-deck session start failed: {}",
-                stderr.trim()
-            ));
-        }
-        log::debug!("agent-deck session start succeeded for {session_id}");
+        start_agent_deck_session(&session_id)?;
 
         // Send prompt to the tmux session in the background so we don't
         // block the UI while waiting for Claude Code to start up.
@@ -347,27 +360,7 @@ pub fn create_session(
 
 #[tauri::command]
 pub fn restart_session(session_id: String) -> Result<(), String> {
-    log::info!("agent-deck session start {session_id}");
-    let output = new_command("agent-deck")
-        .args(["session", "start", &session_id])
-        .output()
-        .map_err(|e| format!("Failed to run agent-deck: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!(
-            "agent-deck session start failed (exit {}): {}",
-            output.status,
-            stderr.trim()
-        );
-        return Err(format!(
-            "agent-deck session start failed: {}",
-            stderr.trim()
-        ));
-    }
-
-    log::debug!("agent-deck session start succeeded for {session_id}");
-    Ok(())
+    start_agent_deck_session(&session_id)
 }
 
 #[tauri::command]
@@ -818,4 +811,34 @@ fn find_worktree_in_bare(bare_path: &str) -> Result<String, String> {
     }
 
     Err(format!("No worktrees found in bare repo at {bare_path}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_session_id_json() {
+        let output = r#"{"id":"abc-123","title":"test"}"#;
+        assert_eq!(parse_session_id(output).unwrap(), "abc-123");
+    }
+
+    #[test]
+    fn parse_session_id_json_with_prefix() {
+        let output = r#"Created worktree at: /tmp/wt
+{"id":"def-456","title":"test"}"#;
+        assert_eq!(parse_session_id(output).unwrap(), "def-456");
+    }
+
+    #[test]
+    fn parse_session_id_already_exists() {
+        let output = "Session already exists with same title and path: my-session (xyz-789)";
+        assert_eq!(parse_session_id(output).unwrap(), "xyz-789");
+    }
+
+    #[test]
+    fn parse_session_id_unparseable() {
+        let output = "something unexpected";
+        assert!(parse_session_id(output).is_err());
+    }
 }
