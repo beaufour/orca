@@ -2,7 +2,7 @@ import { useState, useImperativeHandle } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session } from "../types";
-import { isMainSession } from "../utils";
+import { isMainSession, validateBranchName } from "../utils";
 import { queryKeys } from "../queryKeys";
 
 export interface AddSessionBarHandle {
@@ -41,6 +41,7 @@ export function AddSessionBar({
   const [tool, setTool] = useState<SessionTool>("claude");
 
   const hasMainSession = sessions.some((s) => isMainSession(s.worktree_branch));
+  const branchError = branchName.trim() ? validateBranchName(branchName.trim()) : null;
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
@@ -90,7 +91,7 @@ export function AddSessionBar({
     e.preventDefault();
     const promptValue = prompt.trim() || null;
     if (mode === "worktree") {
-      if (!branchName.trim()) return;
+      if (!branchName.trim() || branchError) return;
       createMutation.mutate({
         title: deriveTitle(branchName.trim()),
         tool,
@@ -193,16 +194,19 @@ export function AddSessionBar({
           </div>
           <div className="add-session-fields">
             {mode === "worktree" && (
-              <input
-                className="wt-input"
-                type="text"
-                placeholder="branch-name"
-                value={branchName}
-                onChange={(e) => setBranchName(e.target.value)}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoFocus
-              />
+              <>
+                <input
+                  className={`wt-input${branchError ? " wt-input-error" : ""}`}
+                  type="text"
+                  placeholder="branch-name"
+                  value={branchName}
+                  onChange={(e) => setBranchName(e.target.value)}
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoFocus
+                />
+                {branchError && <div className="wt-error wt-error-inline">{branchError}</div>}
+              </>
             )}
             <input
               className="wt-input"
@@ -232,7 +236,7 @@ export function AddSessionBar({
               type="submit"
               disabled={
                 createMutation.isPending ||
-                (mode === "worktree" && !branchName.trim()) ||
+                (mode === "worktree" && (!branchName.trim() || !!branchError)) ||
                 (mode === "plain" && !title.trim() && !prompt.trim())
               }
             >

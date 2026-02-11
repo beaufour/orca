@@ -136,6 +136,21 @@ export function fileDir(path: string): string {
   return i === -1 ? "" : path.slice(0, i + 1);
 }
 
+/** Validate a git branch name (subset of git check-ref-format rules). */
+export function validateBranchName(name: string): string | null {
+  if (!name) return "Branch name is required";
+  if (name.startsWith("-")) return "Cannot start with '-'";
+  if (name.startsWith(".")) return "Cannot start with '.'";
+  if (name.endsWith(".")) return "Cannot end with '.'";
+  if (name.endsWith(".lock")) return "Cannot end with '.lock'";
+  if (name.includes("..")) return "Cannot contain '..'";
+  if (name.includes("@{")) return "Cannot contain '@{'";
+  if (/[\s~^:?*[\]\\]/.test(name)) return "Contains invalid characters";
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(name)) return "Contains control characters";
+  return null;
+}
+
 /** Safe localStorage.getItem — returns null on error (e.g. private browsing). */
 export function storageGet(key: string): string | null {
   try {
