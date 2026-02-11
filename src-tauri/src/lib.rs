@@ -9,8 +9,8 @@ mod tmux;
 
 use crate::command::new_command;
 use std::io::{BufRead, BufReader};
-use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::Manager;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{Emitter, Manager};
 
 #[tauri::command]
 fn read_app_log(app: tauri::AppHandle, tail_lines: Option<usize>) -> Result<String, String> {
@@ -73,19 +73,16 @@ pub fn run() {
                     .build(),
             )?;
 
-            // Native app menu with About dialog
-            let about_metadata = AboutMetadata {
-                website: Some("https://github.com/beaufour/orca".into()),
-                website_label: Some("GitHub".into()),
-                ..Default::default()
-            };
+            // Native app menu
+            let about_item =
+                MenuItem::with_id(handle, "about_orca", "About Orca", true, None::<&str>)?;
 
             let app_submenu = Submenu::with_items(
                 handle,
                 "Orca",
                 true,
                 &[
-                    &PredefinedMenuItem::about(handle, None, Some(about_metadata))?,
+                    &about_item,
                     &PredefinedMenuItem::separator(handle)?,
                     &PredefinedMenuItem::hide(handle, None)?,
                     &PredefinedMenuItem::hide_others(handle, None)?,
@@ -134,8 +131,10 @@ pub fn run() {
 
             Ok(())
         })
-        .on_menu_event(|_app, event| {
-            if event.id() == "help_github" {
+        .on_menu_event(|app, event| {
+            if event.id() == "about_orca" {
+                let _ = app.emit("show-about", ());
+            } else if event.id() == "help_github" {
                 let _ =
                     tauri_plugin_opener::open_url("https://github.com/beaufour/orca", None::<&str>);
             }
