@@ -12,6 +12,7 @@ import { RenameModal } from "./components/RenameModal";
 import { MoveSessionModal } from "./components/MoveSessionModal";
 import { CreateGroupModal } from "./components/CreateGroupModal";
 import { IssueModal } from "./components/IssueModal";
+import { GroupSettingsModal } from "./components/GroupSettingsModal";
 import { getVersion } from "@tauri-apps/api/app";
 import { VersionWarning } from "./components/VersionWarning";
 import type { Group, Session } from "./types";
@@ -49,6 +50,7 @@ function App() {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showLogViewer, setShowLogViewer] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
+  const [settingsGroup, setSettingsGroup] = useState<Group | null>(null);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [versionMismatch, setVersionMismatch] = useState<{
     supported: string;
@@ -134,6 +136,17 @@ function App() {
     }
     return map;
   }, [groups]);
+
+  // Keep selectedGroup in sync with latest groups data
+  // (e.g., after toggling github_issues_enabled in settings)
+  useEffect(() => {
+    if (selectedGroup && groups) {
+      const updated = groups.find((g) => g.path === selectedGroup.path);
+      if (updated && updated.github_issues_enabled !== selectedGroup.github_issues_enabled) {
+        setSelectedGroup(updated);
+      }
+    }
+  }, [groups, selectedGroup]);
 
   // Keep selectedSession in sync with latest query data
   // (e.g., after restart updates tmux_session)
@@ -228,6 +241,7 @@ function App() {
     showShortcutHelp,
     showLogViewer,
     showIssueModal,
+    settingsGroup,
     confirmingRemoveId,
     renamingSession,
     movingSession,
@@ -246,6 +260,7 @@ function App() {
     showShortcutHelp,
     showLogViewer,
     showIssueModal,
+    settingsGroup,
     confirmingRemoveId,
     renamingSession,
     movingSession,
@@ -267,6 +282,7 @@ function App() {
         showShortcutHelp,
         showLogViewer,
         showIssueModal,
+        settingsGroup,
         confirmingRemoveId,
         renamingSession,
         movingSession,
@@ -301,6 +317,7 @@ function App() {
         showShortcutHelp ||
         showLogViewer ||
         showIssueModal ||
+        settingsGroup !== null ||
         confirmingRemoveId !== null ||
         renamingSession !== null ||
         movingSession !== null ||
@@ -340,6 +357,8 @@ function App() {
             setShowLogViewer(false);
           } else if (showIssueModal) {
             setShowIssueModal(false);
+          } else if (settingsGroup !== null) {
+            setSettingsGroup(null);
           } else if (showCreateGroup) {
             setShowCreateGroup(false);
           } else if (movingSession !== null) {
@@ -390,7 +409,7 @@ function App() {
           break;
         case "i":
           e.preventDefault();
-          if (selectedGroup && !needsActionFilter) {
+          if (selectedGroup && !needsActionFilter && selectedGroup.github_issues_enabled) {
             setShowIssueModal(true);
           }
           break;
@@ -495,6 +514,7 @@ function App() {
           setFocusedIndex(0);
         }}
         onCreateGroup={() => setShowCreateGroup(true)}
+        onOpenSettings={(g) => setSettingsGroup(g)}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
         width={effectiveWidth}
@@ -519,7 +539,7 @@ function App() {
                   />
                 </div>
               )}
-              {selectedGroup && !needsActionFilter ? (
+              {selectedGroup && !needsActionFilter && selectedGroup.github_issues_enabled ? (
                 <TodoList
                   group={selectedGroup}
                   sessions={filteredSessions}
@@ -591,6 +611,9 @@ function App() {
           repoPath={selectedGroup.default_path}
           onClose={() => setShowIssueModal(false)}
         />
+      )}
+      {settingsGroup && (
+        <GroupSettingsModal group={settingsGroup} onClose={() => setSettingsGroup(null)} />
       )}
       {showLogViewer && <LogViewer onClose={() => setShowLogViewer(false)} />}
       {versionMismatch && (

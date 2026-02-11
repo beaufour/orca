@@ -47,16 +47,38 @@ pub fn check_agent_deck_version() -> Result<VersionCheck, String> {
     })
 }
 
+/// Ensure the `github_issues_enabled` column exists on the `groups` table.
+/// Uses ALTER TABLE which is a no-op concept here — we check PRAGMA first.
+fn ensure_github_issues_column(conn: &Connection) -> Result<(), String> {
+    let has_column: bool = conn
+        .prepare("PRAGMA table_info(groups)")
+        .map_err(|e| e.to_string())?
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?
+        .any(|name| name.as_deref() == Ok("github_issues_enabled"));
+
+    if !has_column {
+        conn.execute(
+            "ALTER TABLE groups ADD COLUMN github_issues_enabled INTEGER DEFAULT 1",
+            [],
+        )
+        .map_err(|e| format!("Failed to add github_issues_enabled column: {e}"))?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn get_groups() -> Result<Vec<Group>, String> {
     let path = db_path();
     log::debug!("get_groups: opening DB at {}", path.display());
-    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+    let conn = Connection::open(&path)
         .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
+
+    ensure_github_issues_column(&conn)?;
 
     let mut stmt = conn
         .prepare(
-            "SELECT path, name, expanded, sort_order, default_path FROM groups ORDER BY sort_order",
+            "SELECT path, name, expanded, sort_order, default_path, github_issues_enabled FROM groups ORDER BY sort_order",
         )
         .map_err(|e| e.to_string())?;
 
@@ -68,6 +90,7 @@ pub fn get_groups() -> Result<Vec<Group>, String> {
                 expanded: row.get::<_, i32>(2)? != 0,
                 sort_order: row.get(3)?,
                 default_path: row.get(4)?,
+                github_issues_enabled: row.get::<_, i32>(5).unwrap_or(1) != 0,
             })
         })
         .map_err(|e| e.to_string())?
@@ -76,6 +99,23 @@ pub fn get_groups() -> Result<Vec<Group>, String> {
 
     log::debug!("get_groups: found {} groups", groups.len());
     Ok(groups)
+}
+
+#[tauri::command]
+pub fn update_group_settings(
+    group_path: String,
+    github_issues_enabled: bool,
+) -> Result<(), String> {
+    let path = db_path();
+    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+
+    conn.execute(
+        "UPDATE groups SET github_issues_enabled = ?1 WHERE path = ?2",
+        rusqlite::params![github_issues_enabled as i32, group_path],
+    )
+    .map_err(|e| format!("Failed to update group settings: {e}"))?;
+
+    Ok(())
 }
 
 #[tauri::command]

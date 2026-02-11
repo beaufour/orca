@@ -249,8 +249,14 @@ body {
   background: var(--status-error);
 }
 
-.sidebar-term-btn {
+.sidebar-actions {
   margin-left: auto;
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.sidebar-action-btn {
   font-size: 11px;
   font-family: monospace;
   color: var(--text-muted);
@@ -263,17 +269,17 @@ body {
     background 0.15s;
 }
 
-.sidebar-item:hover .sidebar-term-btn,
-.sidebar-item.active .sidebar-term-btn {
+.sidebar-item:hover .sidebar-action-btn,
+.sidebar-item.active .sidebar-action-btn {
   opacity: 1;
 }
 
-.sidebar-term-btn:hover {
+.sidebar-action-btn:hover {
   color: var(--text-primary);
   background: rgba(255, 255, 255, 0.1);
 }
 
-.sidebar-item.active .sidebar-term-btn:hover {
+.sidebar-item.active .sidebar-action-btn:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
@@ -1497,4 +1503,25 @@ body {
   color: var(--text-secondary);
   line-height: 1.5;
   margin-bottom: 16px;
+}
+
+/* Group settings toggle */
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+.settings-toggle-label {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.settings-toggle-description {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  line-height: 1.4;
 }

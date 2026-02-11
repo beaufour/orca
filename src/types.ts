@@ -4,6 +4,7 @@ export interface Group {
   expanded: boolean;
   sort_order: number;
   default_path: string;
+  github_issues_enabled: boolean;
 }
 
 export interface Session {

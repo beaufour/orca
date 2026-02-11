@@ -10,6 +10,7 @@ interface SidebarProps {
   onSelectGroup: (group: Group | null) => void;
   onSelectNeedsAction: () => void;
   onCreateGroup: () => void;
+  onOpenSettings: (group: Group) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
   width: number;
@@ -22,6 +23,7 @@ export function Sidebar({
   onSelectGroup,
   onSelectNeedsAction,
   onCreateGroup,
+  onOpenSettings,
   collapsed,
   onToggleCollapse,
   width,
@@ -116,12 +118,24 @@ export function Sidebar({
               {groupDots[group.path] && (
                 <span className={`attention-dot attention-dot-${groupDots[group.path]}`} />
               )}
-              <span
-                className="sidebar-term-btn"
-                title={`Open iTerm in ${group.default_path}`}
-                onClick={(e) => openTerminal(e, group.default_path)}
-              >
-                &gt;_
+              <span className="sidebar-actions">
+                <span
+                  className="sidebar-action-btn"
+                  title="Group settings"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenSettings(group);
+                  }}
+                >
+                  &#x2699;
+                </span>
+                <span
+                  className="sidebar-action-btn"
+                  title={`Open iTerm in ${group.default_path}`}
+                  onClick={(e) => openTerminal(e, group.default_path)}
+                >
+                  &gt;_
+                </span>
               </span>
             </button>
           ))}

@@ -83,6 +83,7 @@ pub fn run() {
             agentdeck::move_session,
             agentdeck::create_group,
             agentdeck::clear_session_worktree,
+            agentdeck::update_group_settings,
             claude_logs::get_session_summary,
             git::get_default_branch,
             git::list_worktrees,
