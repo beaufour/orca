@@ -78,6 +78,17 @@ export function CreateGroupModal({ onClose }: CreateGroupModalProps) {
         name: name.trim(),
         defaultPath: repoPath,
       });
+      // Auto-start a main session so the user doesn't have to
+      await invoke("create_session", {
+        projectPath: repoPath,
+        group: repoPath,
+        title: "main",
+        tool: "claude",
+        worktreeBranch: null,
+        newBranch: false,
+        start: true,
+        prompt: null,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groups"] });
