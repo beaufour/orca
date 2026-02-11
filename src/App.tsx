@@ -78,11 +78,17 @@ function App() {
     });
   }, []);
 
+  const selectedGroupRef = useRef(selectedGroup);
+  useEffect(() => {
+    selectedGroupRef.current = selectedGroup;
+  });
+
   const { pendingCreations, createSession, dismissPending } = useSessionCreation({
     onCreated: async (_creationId, sessionId) => {
       const { data } = await refetchSessions();
       const newSession = data?.find((s) => s.id === sessionId);
-      if (newSession) {
+      // Only auto-open if the user is still viewing the group where the session was created
+      if (newSession && newSession.group_path === selectedGroupRef.current?.path) {
         setSelectedSession(newSession);
       }
     },
@@ -562,7 +568,9 @@ function App() {
                   confirmingRemoveId={confirmingRemoveId}
                   onConfirmingRemoveChange={setConfirmingRemoveId}
                   focusedIndex={focusedIndex}
-                  refetchSessions={refetchSessions}
+                  pendingCreations={pendingCreations}
+                  onDismissPending={dismissPending}
+                  createSession={createSession}
                 />
               ) : (
                 <SessionList

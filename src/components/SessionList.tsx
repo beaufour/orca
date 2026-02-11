@@ -83,7 +83,12 @@ export function SessionList({
     );
   }
 
-  if (sessions.length === 0) {
+  // Filter pending creations to current group (needed before empty check)
+  const groupPending = pendingCreations
+    ? Array.from(pendingCreations.values()).filter((p) => !groupPath || p.groupPath === groupPath)
+    : [];
+
+  if (sessions.length === 0 && groupPending.length === 0) {
     return <div className="session-list-empty">No sessions found</div>;
   }
 
@@ -92,11 +97,6 @@ export function SessionList({
   );
 
   const showGhost = groupPath && repoPath && !hasMainSession;
-
-  // Filter pending creations to current group
-  const groupPending = pendingCreations
-    ? Array.from(pendingCreations.values()).filter((p) => !groupPath || p.groupPath === groupPath)
-    : [];
 
   return (
     <div className="session-list">

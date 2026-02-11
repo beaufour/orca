@@ -1,12 +1,25 @@
 import { useState, useMemo } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Group, Session, GitHubIssue } from "../types";
+import type { PendingCreation } from "../hooks/useSessionCreation";
 import { extractIssueNumber, issueToSlug } from "../utils";
 import { TodoCard } from "./TodoCard";
 import { SessionCard } from "./SessionCard";
 import { SessionList } from "./SessionList";
+import { PendingSessionCard } from "./PendingSessionCard";
 import { IssueModal } from "./IssueModal";
+
+interface CreateSessionParams {
+  projectPath: string;
+  group: string;
+  title: string;
+  tool?: string;
+  worktreeBranch?: string | null;
+  newBranch?: boolean;
+  start?: boolean;
+  prompt?: string | null;
+}
 
 interface TodoListProps {
   group: Group;
@@ -19,7 +32,9 @@ interface TodoListProps {
   confirmingRemoveId?: string | null;
   onConfirmingRemoveChange?: (sessionId: string | null) => void;
   focusedIndex?: number;
-  refetchSessions: () => Promise<{ data: Session[] | undefined }>;
+  pendingCreations?: Map<string, PendingCreation>;
+  onDismissPending?: (creationId: string) => void;
+  createSession?: (params: CreateSessionParams) => void;
 }
 
 export function TodoList({
@@ -33,7 +48,9 @@ export function TodoList({
   confirmingRemoveId,
   onConfirmingRemoveChange,
   focusedIndex = -1,
-  refetchSessions,
+  pendingCreations,
+  onDismissPending,
+  createSession,
 }: TodoListProps) {
   const [issueModal, setIssueModal] = useState<{
     mode: "create" | "edit";
@@ -105,37 +122,33 @@ export function TodoList({
     };
   }, [issues, sessions]);
 
-  const createSessionMutation = useMutation({
-    mutationFn: async (issue: GitHubIssue) => {
-      const branch = issueToSlug(issue.number, issue.title);
-      const prompt = `Please work on GitHub Issue #${issue.number} (${issue.html_url}). Review the issue and the codebase, then wait for further instructions.`;
+  const handleStartIssue = (issue: GitHubIssue) => {
+    if (!createSession) return;
+    const branch = issueToSlug(issue.number, issue.title);
+    const prompt = `Please work on GitHub Issue #${issue.number} (${issue.html_url}). Review the issue and the codebase, then wait for further instructions.`;
 
-      // Assign the issue to ourselves on GitHub (fire-and-forget)
-      invoke("assign_issue", {
-        repoPath: group.default_path,
-        issueNumber: issue.number,
-      }).catch((err) => console.warn("Failed to assign issue:", err));
+    // Assign the issue to ourselves on GitHub (fire-and-forget)
+    invoke("assign_issue", {
+      repoPath: group.default_path,
+      issueNumber: issue.number,
+    }).catch((err) => console.warn("Failed to assign issue:", err));
 
-      const sessionId = await invoke<string>("create_session", {
-        projectPath: group.default_path,
-        group: group.path,
-        title: issue.title,
-        tool: "claude",
-        worktreeBranch: branch,
-        newBranch: true,
-        start: true,
-        prompt,
-      });
-      return sessionId;
-    },
-    onSuccess: async (sessionId) => {
-      const { data } = await refetchSessions();
-      const newSession = data?.find((s) => s.id === sessionId);
-      if (newSession) {
-        onSelectSession(newSession);
-      }
-    },
-  });
+    createSession({
+      projectPath: group.default_path,
+      group: group.path,
+      title: issue.title,
+      tool: "claude",
+      worktreeBranch: branch,
+      newBranch: true,
+      start: true,
+      prompt,
+    });
+  };
+
+  // Filter pending creations to this group
+  const groupPending = pendingCreations
+    ? Array.from(pendingCreations.values()).filter((p) => p.groupPath === group.path)
+    : [];
 
   // If issues failed to load, fall back to regular SessionList
   if (issuesError) {
@@ -172,16 +185,12 @@ export function TodoList({
 
   return (
     <div className="todo-list">
-      {createSessionMutation.error && (
-        <div className="todo-github-error">{String(createSessionMutation.error)}</div>
-      )}
-
       {/* Sessions */}
-      {allSessions.length > 0 && (
+      {(allSessions.length > 0 || groupPending.length > 0) && (
         <div className="todo-section">
           <div className="todo-section-header">
             <span>Sessions</span>
-            <span className="todo-section-count">{allSessions.length}</span>
+            <span className="todo-section-count">{allSessions.length + groupPending.length}</span>
           </div>
           <div className="session-grid">
             {allSessions.map((item, index) =>
@@ -217,6 +226,13 @@ export function TodoList({
                 />
               ),
             )}
+            {groupPending.map((pending) => (
+              <PendingSessionCard
+                key={pending.creationId}
+                pending={pending}
+                onDismiss={() => onDismissPending?.(pending.creationId)}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -245,7 +261,7 @@ export function TodoList({
               issue={issue}
               repoPath={group.default_path}
               onSelectSession={onSelectSession}
-              onStartIssue={(issue) => createSessionMutation.mutate(issue)}
+              onStartIssue={handleStartIssue}
               onEditIssue={(issue) => setIssueModal({ mode: "edit", issue })}
               liveTmuxSessions={liveTmuxSessions}
             />
