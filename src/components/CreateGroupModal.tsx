@@ -21,6 +21,7 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
   const [name, setName] = useState("");
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
   const [defaultPath, setDefaultPath] = useState("");
+  const [createNewRepo, setCreateNewRepo] = useState(false);
   const queryClient = useQueryClient();
 
   // Clone mode fields
@@ -57,11 +58,30 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
   };
 
   const existingMutation = useMutation({
-    mutationFn: () =>
-      invoke("create_group", {
+    mutationFn: async () => {
+      let repoPath = defaultPath.trim();
+      if (createNewRepo) {
+        repoPath = await invoke<string>("init_bare_repo", {
+          directory: repoPath,
+        });
+      }
+      await invoke("create_group", {
         name: name.trim(),
-        defaultPath: defaultPath.trim(),
-      }),
+        defaultPath: repoPath,
+      });
+      if (createNewRepo) {
+        await invoke("create_session", {
+          projectPath: repoPath,
+          group: name.trim(),
+          title: "main",
+          tool: "claude",
+          worktreeBranch: null,
+          newBranch: false,
+          start: true,
+          prompt: null,
+        });
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groups"] });
       onCreated?.(name.trim());
@@ -174,6 +194,14 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
                 Browse
               </button>
             </div>
+            <label className="settings-toggle" style={{ marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={createNewRepo}
+                onChange={(e) => setCreateNewRepo(e.target.checked)}
+              />
+              <span className="settings-toggle-label">Create new git repo</span>
+            </label>
           </>
         ) : (
           <>
@@ -238,8 +266,10 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
           }}
           onKeyDown={handleKeyDown}
         />
-        {mutation.isPending && mode === "clone" && (
-          <div className="wt-hint">Cloning repository...</div>
+        {mutation.isPending && (mode === "clone" || createNewRepo) && (
+          <div className="wt-hint">
+            {mode === "clone" ? "Cloning repository..." : "Creating repository..."}
+          </div>
         )}
         {mutation.error && <div className="wt-error">{String(mutation.error)}</div>}
         <div className="modal-actions">

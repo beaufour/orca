@@ -542,6 +542,71 @@ fn clone_bare_worktree_inner(
     Ok(project_str.to_string())
 }
 
+#[tauri::command]
+pub fn init_bare_repo(directory: String) -> Result<String, String> {
+    let expanded = expand_home(directory.trim())?;
+    let project_path = Path::new(&expanded);
+
+    // Create directory if it doesn't exist
+    if !project_path.exists() {
+        std::fs::create_dir_all(project_path)
+            .map_err(|e| format!("Failed to create directory: {e}"))?;
+    }
+
+    if project_path.join(".bare").exists() {
+        return Err("Directory already contains a .bare repo".to_string());
+    }
+    if project_path.join(".git").exists() {
+        return Err("Directory already contains a git repo".to_string());
+    }
+
+    let project_str = project_path.to_string_lossy().to_string();
+    let result = init_bare_repo_inner(project_path, &project_str);
+    if result.is_err() {
+        log::warn!("init_bare_repo failed, cleaning up {project_str}");
+        let _ = std::fs::remove_dir_all(project_path.join(".bare"));
+        let _ = std::fs::remove_file(project_path.join(".git"));
+        let _ = std::fs::remove_dir_all(project_path.join("main"));
+    }
+    result
+}
+
+fn init_bare_repo_inner(project_path: &Path, project_str: &str) -> Result<String, String> {
+    // 1. git init --bare .bare
+    let bare_path = project_path.join(".bare");
+    let bare_str = bare_path.to_string_lossy().to_string();
+
+    log::info!("git init --bare {bare_str}");
+    let output = new_command("git")
+        .args(["init", "--bare", &bare_str])
+        .output()
+        .map_err(|e| format!("Failed to run git init: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git init --bare failed: {}", stderr.trim()));
+    }
+
+    // 2. Write .git file pointing to .bare
+    std::fs::write(project_path.join(".git"), "gitdir: ./.bare\n")
+        .map_err(|e| format!("Failed to write .git file: {e}"))?;
+
+    // 3. Create main worktree with --orphan
+    let wt_path = project_path.join("main");
+    let wt_str = wt_path.to_string_lossy().to_string();
+    run_git(
+        project_str,
+        &["worktree", "add", &wt_str, "--orphan", "-b", "main"],
+    )?;
+
+    // 4. Create initial empty commit in the worktree
+    run_git(
+        &wt_str,
+        &["commit", "--allow-empty", "-m", "Initial commit"],
+    )?;
+
+    Ok(project_str.to_string())
+}
+
 fn find_repo_root(path: &str) -> Result<String, String> {
     // Validate this is a git repository by checking rev-parse succeeds.
     // Returns the expanded path since git commands work from any worktree.

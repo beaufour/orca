@@ -98,6 +98,7 @@ pub fn run() {
             git::try_merge_branch,
             git::abort_merge,
             git::clone_bare_worktree_repo,
+            git::init_bare_repo,
             tmux::list_tmux_sessions,
             tmux::paste_to_tmux_pane,
             tmux::scroll_tmux_pane,
