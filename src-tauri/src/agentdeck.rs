@@ -115,41 +115,27 @@ pub fn get_sessions(group_path: Option<String>) -> Result<Vec<Session>, String> 
     let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
 
-    let sessions = match group_path {
-        Some(gp) => query_sessions_filtered(&conn, &gp)?,
-        None => query_sessions_all(&conn)?,
-    };
+    let sessions = query_sessions(&conn, group_path.as_deref())?;
 
     log::debug!("get_sessions: found {} sessions", sessions.len());
     Ok(sessions)
 }
 
-fn query_sessions_filtered(conn: &Connection, group: &str) -> Result<Vec<Session>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, title, project_path, group_path, sort_order, status, tmux_session, \
-             created_at, last_accessed, worktree_path, worktree_repo, worktree_branch, tool_data \
-             FROM instances WHERE group_path = ?1 ORDER BY sort_order",
-        )
-        .map_err(|e| e.to_string())?;
-    let result = stmt
-        .query_map([group], map_session_row)
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-    Ok(result)
-}
-
-fn query_sessions_all(conn: &Connection) -> Result<Vec<Session>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, title, project_path, group_path, sort_order, status, tmux_session, \
-             created_at, last_accessed, worktree_path, worktree_repo, worktree_branch, tool_data \
-             FROM instances ORDER BY group_path, sort_order",
-        )
-        .map_err(|e| e.to_string())?;
-    let result = stmt
-        .query_map([], map_session_row)
+fn query_sessions(conn: &Connection, group_path: Option<&str>) -> Result<Vec<Session>, String> {
+    let columns = "id, title, project_path, group_path, sort_order, status, tmux_session, \
+                    created_at, last_accessed, worktree_path, worktree_repo, worktree_branch, tool_data";
+    let sql = match group_path {
+        Some(_) => {
+            format!("SELECT {columns} FROM instances WHERE group_path = ?1 ORDER BY sort_order")
+        }
+        None => format!("SELECT {columns} FROM instances ORDER BY group_path, sort_order"),
+    };
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = match group_path {
+        Some(gp) => stmt.query_map([gp], map_session_row),
+        None => stmt.query_map([], map_session_row),
+    };
+    let result = rows
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
