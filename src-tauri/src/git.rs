@@ -28,7 +28,7 @@ pub fn parse_worktree_list(output: &str) -> Vec<Worktree> {
     let mut is_bare = false;
 
     for line in output.lines() {
-        if line.starts_with("worktree ") {
+        if let Some(path) = line.strip_prefix("worktree ") {
             if !current_path.is_empty() {
                 worktrees.push(Worktree {
                     path: current_path.clone(),
@@ -37,14 +37,13 @@ pub fn parse_worktree_list(output: &str) -> Vec<Worktree> {
                     is_bare,
                 });
             }
-            current_path = line.strip_prefix("worktree ").unwrap().to_string();
+            current_path = path.to_string();
             current_head = String::new();
             current_branch = String::new();
             is_bare = false;
-        } else if line.starts_with("HEAD ") {
-            current_head = line.strip_prefix("HEAD ").unwrap().to_string();
-        } else if line.starts_with("branch ") {
-            let full_ref = line.strip_prefix("branch ").unwrap();
+        } else if let Some(head) = line.strip_prefix("HEAD ") {
+            current_head = head.to_string();
+        } else if let Some(full_ref) = line.strip_prefix("branch ") {
             current_branch = full_ref
                 .strip_prefix("refs/heads/")
                 .unwrap_or(full_ref)

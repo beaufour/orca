@@ -7,9 +7,9 @@ use crate::models::{AttentionCounts, Group, Session, VersionCheck};
 
 const SUPPORTED_VERSION: &str = "0.11.2";
 
-fn db_path() -> PathBuf {
-    let home = dirs::home_dir().expect("could not find home directory");
-    home.join(".agent-deck/profiles/default/state.db")
+fn db_path() -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    Ok(home.join(".agent-deck/profiles/default/state.db"))
 }
 
 #[tauri::command]
@@ -59,7 +59,7 @@ fn ensure_github_issues_column(conn: &Connection) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_groups() -> Result<Vec<Group>, String> {
-    let path = db_path();
+    let path = db_path()?;
     log::debug!("get_groups: opening DB at {}", path.display());
     let conn = Connection::open(&path)
         .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
@@ -96,7 +96,7 @@ pub fn update_group_settings(
     group_path: String,
     github_issues_enabled: bool,
 ) -> Result<(), String> {
-    let path = db_path();
+    let path = db_path()?;
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     conn.execute(
@@ -110,7 +110,7 @@ pub fn update_group_settings(
 
 #[tauri::command]
 pub fn get_sessions(group_path: Option<String>) -> Result<Vec<Session>, String> {
-    let path = db_path();
+    let path = db_path()?;
     log::debug!("get_sessions: group_path={group_path:?}");
     let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
@@ -389,7 +389,7 @@ pub fn remove_session(session_id: String) -> Result<(), String> {
     // agent-deck remove has a bug where worktree removal failure prevents
     // the DB deletion even though it reports success. Fall back to direct
     // DB deletion if the session still exists.
-    let path = db_path();
+    let path = db_path()?;
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     conn.execute("DELETE FROM instances WHERE id = ?1", [&session_id])
@@ -400,7 +400,7 @@ pub fn remove_session(session_id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_attention_counts() -> Result<AttentionCounts, String> {
-    let path = db_path();
+    let path = db_path()?;
     let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
 
@@ -466,7 +466,7 @@ pub fn get_attention_counts() -> Result<AttentionCounts, String> {
 
 #[tauri::command]
 pub fn get_attention_sessions() -> Result<Vec<Session>, String> {
-    let path = db_path();
+    let path = db_path()?;
     let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
 
@@ -513,7 +513,7 @@ pub fn update_session_worktree(
     worktree_branch: String,
 ) -> Result<(), String> {
     log::info!("update_session_worktree: session_id={session_id}, branch={worktree_branch}");
-    let path = db_path();
+    let path = db_path()?;
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     conn.execute(
@@ -528,7 +528,7 @@ pub fn update_session_worktree(
 #[tauri::command]
 pub fn clear_session_worktree(session_id: String) -> Result<(), String> {
     log::info!("clear_session_worktree: session_id={session_id}");
-    let path = db_path();
+    let path = db_path()?;
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     // Get the worktree_repo so we can reset project_path to it
@@ -552,7 +552,7 @@ pub fn clear_session_worktree(session_id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn create_group(name: String, default_path: String) -> Result<(), String> {
     log::info!("create_group: name={name}, default_path={default_path}");
-    let path = db_path();
+    let path = db_path()?;
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     // Use name as path (agent-deck convention)
@@ -583,7 +583,7 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn move_session(session_id: String, new_group_path: String) -> Result<(), String> {
     log::info!("move_session: session_id={session_id}, new_group_path={new_group_path}");
-    let path = db_path();
+    let path = db_path()?;
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     // Get max sort_order in target group to append at end
@@ -607,7 +607,7 @@ pub fn move_session(session_id: String, new_group_path: String) -> Result<(), St
 #[tauri::command]
 pub fn rename_session(session_id: String, new_title: String) -> Result<(), String> {
     log::info!("rename_session: session_id={session_id}, new_title={new_title}");
-    let path = db_path();
+    let path = db_path()?;
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     conn.execute(
@@ -649,7 +649,7 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
 
 /// Store the prompt in the session's tool_data JSON.
 fn store_prompt(session_id: &str, prompt: &str) -> Result<(), String> {
-    let path = db_path();
+    let path = db_path()?;
     let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
     let current: String = conn
@@ -676,7 +676,7 @@ fn store_prompt(session_id: &str, prompt: &str) -> Result<(), String> {
 
 /// Look up the tmux session name for a given session ID from the agent-deck DB.
 fn get_tmux_session_name(session_id: &str) -> Result<String, String> {
-    let path = db_path();
+    let path = db_path()?;
     let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
 
@@ -800,10 +800,10 @@ fn find_worktree_in_bare(bare_path: &str) -> Result<String, String> {
             found_bare = true;
             continue;
         }
-        if line.starts_with("worktree ") {
+        if let Some(path) = line.strip_prefix("worktree ") {
             if found_bare {
                 // This is the first non-bare worktree
-                return Ok(line.strip_prefix("worktree ").unwrap().to_string());
+                return Ok(path.to_string());
             }
             // Reset bare flag for next entry
             found_bare = false;

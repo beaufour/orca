@@ -24,9 +24,8 @@ pub enum AttentionStatus {
     Unknown,
 }
 
-fn claude_projects_dir() -> PathBuf {
-    let home = dirs::home_dir().expect("could not find home directory");
-    home.join(".claude/projects")
+fn claude_projects_dir() -> Option<PathBuf> {
+    Some(dirs::home_dir()?.join(".claude/projects"))
 }
 
 fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<PathBuf> {
@@ -34,7 +33,7 @@ fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<PathBu
     let expanded = expand_tilde(project_path);
     let expanded_str = expanded.to_string_lossy();
     let encoded = expanded_str.replace('/', "-");
-    let base = claude_projects_dir();
+    let base = claude_projects_dir()?;
 
     log::debug!(
         "find_jsonl_path: searching for session {claude_session_id} in {}",
