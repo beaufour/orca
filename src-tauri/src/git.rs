@@ -405,6 +405,143 @@ pub fn abort_merge(worktree_path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Detect the default branch from a bare repo by checking origin refs.
+fn detect_default_branch(bare_path: &str) -> Result<String, String> {
+    // Try symbolic-ref of origin/HEAD first
+    if let Ok(output) = run_git(bare_path, &["symbolic-ref", "refs/remotes/origin/HEAD"]) {
+        let trimmed = output.trim();
+        if let Some(branch) = trimmed.strip_prefix("refs/remotes/origin/") {
+            return Ok(branch.to_string());
+        }
+    }
+
+    // Fallback: check if remote tracking branches exist for main or master
+    if run_git(
+        bare_path,
+        &["rev-parse", "--verify", "refs/remotes/origin/main"],
+    )
+    .is_ok()
+    {
+        return Ok("main".to_string());
+    }
+    if run_git(
+        bare_path,
+        &["rev-parse", "--verify", "refs/remotes/origin/master"],
+    )
+    .is_ok()
+    {
+        return Ok("master".to_string());
+    }
+
+    Ok("main".to_string())
+}
+
+/// Expand `~/` prefix to the user's home directory.
+fn expand_home(path: &str) -> Result<String, String> {
+    if let Some(rest) = path.strip_prefix("~/") {
+        let home = dirs::home_dir().ok_or("Could not determine home directory")?;
+        Ok(home.join(rest).to_string_lossy().to_string())
+    } else {
+        Ok(path.to_string())
+    }
+}
+
+#[tauri::command]
+pub fn clone_bare_worktree_repo(
+    git_url: String,
+    project_name: String,
+    parent_dir: String,
+) -> Result<String, String> {
+    // Validate inputs
+    if git_url.trim().is_empty() {
+        return Err("Git URL cannot be empty".to_string());
+    }
+    if project_name.trim().is_empty() {
+        return Err("Project name cannot be empty".to_string());
+    }
+    if project_name.contains('/') || project_name.contains('\\') {
+        return Err("Project name cannot contain path separators".to_string());
+    }
+
+    let parent = expand_home(parent_dir.trim())?;
+    let parent_path = Path::new(&parent);
+    if !parent_path.is_dir() {
+        return Err(format!("Parent directory does not exist: {parent}"));
+    }
+
+    let project_path = parent_path.join(project_name.trim());
+    if project_path.exists() {
+        return Err(format!(
+            "Directory already exists: {}",
+            project_path.display()
+        ));
+    }
+
+    // Create project directory
+    std::fs::create_dir_all(&project_path)
+        .map_err(|e| format!("Failed to create project directory: {e}"))?;
+
+    let project_str = project_path.to_string_lossy().to_string();
+
+    // From here on, clean up on failure
+    let result = clone_bare_worktree_inner(&project_path, &project_str, git_url.trim());
+    if result.is_err() {
+        log::warn!("Clone failed, cleaning up {project_str}");
+        let _ = std::fs::remove_dir_all(&project_path);
+    }
+
+    result
+}
+
+fn clone_bare_worktree_inner(
+    project_path: &Path,
+    project_str: &str,
+    git_url: &str,
+) -> Result<String, String> {
+    // git clone --bare $URL .bare
+    let bare_path = project_path.join(".bare");
+    let bare_str = bare_path.to_string_lossy().to_string();
+
+    log::info!("git clone --bare {git_url} {bare_str}");
+    let output = new_command("git")
+        .args(["clone", "--bare", git_url, &bare_str])
+        .output()
+        .map_err(|e| format!("Failed to run git clone: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git clone --bare failed: {}", stderr.trim()));
+    }
+
+    // Write .git file pointing to .bare
+    let git_file = project_path.join(".git");
+    std::fs::write(&git_file, "gitdir: ./.bare\n")
+        .map_err(|e| format!("Failed to write .git file: {e}"))?;
+
+    // Configure fetch refspec
+    run_git(
+        project_str,
+        &[
+            "config",
+            "remote.origin.fetch",
+            "+refs/heads/*:refs/remotes/origin/*",
+        ],
+    )?;
+
+    // Fetch all branches
+    run_git(project_str, &["fetch", "origin"])?;
+
+    // Detect default branch
+    let default_branch = detect_default_branch(project_str)?;
+    log::info!("Detected default branch: {default_branch}");
+
+    // Create worktree for default branch
+    let wt_path = project_path.join(&default_branch);
+    let wt_str = wt_path.to_string_lossy().to_string();
+    run_git(project_str, &["worktree", "add", &wt_str, &default_branch])?;
+
+    Ok(project_str.to_string())
+}
+
 fn find_repo_root(path: &str) -> Result<String, String> {
     // Validate this is a git repository by checking rev-parse succeeds.
     // Returns the expanded path since git commands work from any worktree.

@@ -97,6 +97,7 @@ pub fn run() {
             git::check_worktree_status,
             git::try_merge_branch,
             git::abort_merge,
+            git::clone_bare_worktree_repo,
             tmux::list_tmux_sessions,
             tmux::paste_to_tmux_pane,
             tmux::scroll_tmux_pane,

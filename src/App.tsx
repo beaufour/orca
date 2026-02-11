@@ -51,6 +51,7 @@ function App() {
   const [renamingSession, setRenamingSession] = useState<Session | null>(null);
   const [movingSession, setMovingSession] = useState<Session | null>(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [pendingGroupSelect, setPendingGroupSelect] = useState<string | null>(null);
   const [showLogViewer, setShowLogViewer] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [settingsGroup, setSettingsGroup] = useState<Group | null>(null);
@@ -164,6 +165,18 @@ function App() {
       }
     }
   }, [groups, selectedGroup]);
+
+  // Auto-select a newly created group once it appears in the groups list
+  useEffect(() => {
+    if (pendingGroupSelect && groups) {
+      const newGroup = groups.find((g) => g.name === pendingGroupSelect);
+      if (newGroup) {
+        setSelectedGroup(newGroup);
+        setNeedsActionFilter(false);
+        setPendingGroupSelect(null);
+      }
+    }
+  }, [pendingGroupSelect, groups]);
 
   // Keep selectedSession in sync with latest query data
   // (e.g., after restart updates tmux_session)
@@ -621,7 +634,12 @@ function App() {
           onClose={() => setMovingSession(null)}
         />
       )}
-      {showCreateGroup && <CreateGroupModal onClose={() => setShowCreateGroup(false)} />}
+      {showCreateGroup && (
+        <CreateGroupModal
+          onClose={() => setShowCreateGroup(false)}
+          onCreated={(groupName) => setPendingGroupSelect(groupName)}
+        />
+      )}
       {showIssueModal && selectedGroup && (
         <IssueModal
           mode="create"
