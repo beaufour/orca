@@ -1,6 +1,6 @@
-use crate::command::new_command;
+use crate::command::{expand_tilde, new_command};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Worktree {
@@ -8,16 +8,6 @@ pub struct Worktree {
     pub head: String,
     pub branch: String,
     pub is_bare: bool,
-}
-
-/// Expand ~ in paths to the home directory.
-fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
-    }
-    PathBuf::from(path)
 }
 
 /// Run a git command, returning (stdout, success) without treating non-zero exit as an error.

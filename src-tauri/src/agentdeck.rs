@@ -1,4 +1,4 @@
-use crate::command::new_command;
+use crate::command::{expand_tilde, new_command};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 
@@ -6,16 +6,6 @@ use crate::claude_logs::{self, AttentionStatus};
 use crate::models::{AttentionCounts, Group, Session, VersionCheck};
 
 const SUPPORTED_VERSION: &str = "0.11.2";
-
-/// Expand ~ in paths to the home directory.
-fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
-    }
-    PathBuf::from(path)
-}
 
 fn db_path() -> PathBuf {
     let home = dirs::home_dir().expect("could not find home directory");

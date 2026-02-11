@@ -1,8 +1,8 @@
-use crate::command::new_command;
+use crate::command::{expand_tilde, new_command};
 use crate::git::find_bare_root;
 use crate::models::{GitHubIssue, GitHubLabel};
 use serde::Deserialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Raw shape returned by `gh issue list/view --json ...`
 #[derive(Debug, Deserialize)]
@@ -53,16 +53,6 @@ fn to_github_issue(raw: GhIssue) -> GitHubIssue {
 }
 
 const GH_JSON_FIELDS: &str = "number,title,body,state,labels,assignees,createdAt,updatedAt,url";
-
-/// Expand ~ in paths to the home directory.
-fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
-    }
-    PathBuf::from(path)
-}
 
 /// Extract `owner/repo` from the git remote origin URL.
 fn get_owner_repo(repo_path: &str) -> Result<String, String> {
