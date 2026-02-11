@@ -36,6 +36,7 @@ pub struct Group {
     pub sort_order: i32,
     pub default_path: String,
     pub github_issues_enabled: bool,
+    pub is_git_repo: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

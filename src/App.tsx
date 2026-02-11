@@ -160,7 +160,11 @@ function App() {
   useEffect(() => {
     if (selectedGroup && groups) {
       const updated = groups.find((g) => g.path === selectedGroup.path);
-      if (updated && updated.github_issues_enabled !== selectedGroup.github_issues_enabled) {
+      if (
+        updated &&
+        (updated.github_issues_enabled !== selectedGroup.github_issues_enabled ||
+          updated.is_git_repo !== selectedGroup.is_git_repo)
+      ) {
         setSelectedGroup(updated);
       }
     }
@@ -439,7 +443,12 @@ function App() {
           break;
         case "i":
           e.preventDefault();
-          if (selectedGroup && !needsActionFilter && selectedGroup.github_issues_enabled) {
+          if (
+            selectedGroup &&
+            !needsActionFilter &&
+            selectedGroup.is_git_repo &&
+            selectedGroup.github_issues_enabled
+          ) {
             setShowIssueModal(true);
           }
           break;
@@ -569,7 +578,10 @@ function App() {
                   />
                 </div>
               )}
-              {selectedGroup && !needsActionFilter && selectedGroup.github_issues_enabled ? (
+              {selectedGroup &&
+              !needsActionFilter &&
+              selectedGroup.is_git_repo &&
+              selectedGroup.github_issues_enabled ? (
                 <TodoList
                   group={selectedGroup}
                   sessions={filteredSessions}
@@ -611,6 +623,7 @@ function App() {
                 groupPath={selectedGroup.path}
                 groupName={selectedGroup.name}
                 sessions={sessions ?? []}
+                isGitRepo={selectedGroup.is_git_repo}
                 onSessionCreated={async (sessionId) => {
                   const { data } = await refetchSessions();
                   const newSession = data?.find((s) => s.id === sessionId);

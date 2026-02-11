@@ -13,6 +13,7 @@ interface AddSessionBarProps {
   groupPath: string;
   groupName: string;
   sessions: Session[];
+  isGitRepo: boolean;
   onSessionCreated?: (sessionId: string) => void;
 }
 
@@ -25,6 +26,7 @@ export function AddSessionBar({
   groupPath,
   groupName,
   sessions,
+  isGitRepo,
   onSessionCreated,
 }: AddSessionBarProps) {
   const [showForm, setShowForm] = useState(false);
@@ -35,7 +37,7 @@ export function AddSessionBar({
   const [branchName, setBranchName] = useState("");
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [mode, setMode] = useState<SessionMode>("worktree");
+  const [mode, setMode] = useState<SessionMode>(isGitRepo ? "worktree" : "plain");
   const [tool, setTool] = useState<SessionTool>("claude");
 
   const hasMainSession = sessions.some(
@@ -75,7 +77,7 @@ export function AddSessionBar({
     setBranchName("");
     setTitle("");
     setPrompt("");
-    setMode("worktree");
+    setMode(isGitRepo ? "worktree" : "plain");
     setTool("claude");
     setShowForm(false);
   };
@@ -124,7 +126,7 @@ export function AddSessionBar({
       <div className="add-session-header">
         <span className="add-session-group-name">{groupName}</span>
         <div className="add-session-buttons">
-          {!hasMainSession && (
+          {isGitRepo && !hasMainSession && (
             <button
               className="wt-btn wt-btn-main"
               onClick={handleStartMain}
@@ -158,22 +160,24 @@ export function AddSessionBar({
           }}
         >
           <div className="add-session-toggles">
-            <div className="add-session-mode-toggle">
-              <button
-                type="button"
-                className={`mode-btn ${mode === "worktree" ? "mode-btn-active" : ""}`}
-                onClick={() => setMode("worktree")}
-              >
-                With Worktree
-              </button>
-              <button
-                type="button"
-                className={`mode-btn ${mode === "plain" ? "mode-btn-active" : ""}`}
-                onClick={() => setMode("plain")}
-              >
-                Without Worktree
-              </button>
-            </div>
+            {isGitRepo && (
+              <div className="add-session-mode-toggle">
+                <button
+                  type="button"
+                  className={`mode-btn ${mode === "worktree" ? "mode-btn-active" : ""}`}
+                  onClick={() => setMode("worktree")}
+                >
+                  With Worktree
+                </button>
+                <button
+                  type="button"
+                  className={`mode-btn ${mode === "plain" ? "mode-btn-active" : ""}`}
+                  onClick={() => setMode("plain")}
+                >
+                  Without Worktree
+                </button>
+              </div>
+            )}
             <div className="add-session-mode-toggle">
               <button
                 type="button"

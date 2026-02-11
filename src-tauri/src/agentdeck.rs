@@ -82,7 +82,7 @@ pub fn get_groups() -> Result<Vec<Group>, String> {
         )
         .map_err(|e| e.to_string())?;
 
-    let groups = stmt
+    let rows = stmt
         .query_map([], |row| {
             Ok(Group {
                 path: row.get(0)?,
@@ -91,11 +91,26 @@ pub fn get_groups() -> Result<Vec<Group>, String> {
                 sort_order: row.get(3)?,
                 default_path: row.get(4)?,
                 github_issues_enabled: row.get::<_, i32>(5).unwrap_or(1) != 0,
+                is_git_repo: false, // computed below
             })
         })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+
+    let groups = rows
+        .into_iter()
+        .map(|mut g| {
+            let expanded = expand_tilde(&g.default_path);
+            g.is_git_repo = new_command("git")
+                .current_dir(&expanded)
+                .args(["rev-parse", "--git-common-dir"])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            g
+        })
+        .collect::<Vec<_>>();
 
     log::debug!("get_groups: found {} groups", groups.len());
     Ok(groups)
