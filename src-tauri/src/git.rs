@@ -503,7 +503,7 @@ fn clone_bare_worktree_inner(
     let bare_str = bare_path.to_string_lossy().to_string();
 
     log::info!("git clone --bare {git_url} {bare_str}");
-    let output = Command::new("git")
+    let output = new_command("git")
         .args(["clone", "--bare", git_url, &bare_str])
         .output()
         .map_err(|e| format!("Failed to run git clone: {e}"))?;
