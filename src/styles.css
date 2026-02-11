@@ -1031,6 +1031,55 @@ body {
   text-align: center;
 }
 
+/* About dialog */
+.about-dialog {
+  text-align: center;
+  min-width: 300px;
+  max-width: 360px;
+}
+
+.about-logo {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 12px;
+}
+
+.about-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.about-version {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.about-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.about-link {
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.about-link:hover {
+  text-decoration: underline;
+}
+
+.about-hint {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 /* Group select */
 .group-select-list {
   display: flex;

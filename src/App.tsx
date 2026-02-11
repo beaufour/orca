@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { Sidebar } from "./components/Sidebar";
 import { SessionList } from "./components/SessionList";
 import { TodoList } from "./components/TodoList";
@@ -13,6 +14,7 @@ import { MoveSessionModal } from "./components/MoveSessionModal";
 import { CreateGroupModal } from "./components/CreateGroupModal";
 import { IssueModal } from "./components/IssueModal";
 import { GroupSettingsModal } from "./components/GroupSettingsModal";
+import { AboutDialog } from "./components/AboutDialog";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -56,6 +58,7 @@ function App() {
   const [showLogViewer, setShowLogViewer] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [settingsGroup, setSettingsGroup] = useState<Group | null>(null);
+  const [showAbout, setShowAbout] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [versionMismatch, setVersionMismatch] = useState<{
     supported: string;
@@ -98,6 +101,14 @@ function App() {
       }
     },
   });
+
+  // Listen for "show-about" menu event from native menu
+  useEffect(() => {
+    const unlisten = listen("show-about", () => setShowAbout(true));
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   // Check agent-deck version on mount
   useEffect(() => {
@@ -290,6 +301,7 @@ function App() {
     focusedIndex,
     searchVisible,
     showShortcutHelp,
+    showAbout,
     showLogViewer,
     showIssueModal,
     settingsGroup,
@@ -309,6 +321,7 @@ function App() {
     focusedIndex,
     searchVisible,
     showShortcutHelp,
+    showAbout,
     showLogViewer,
     showIssueModal,
     settingsGroup,
@@ -331,6 +344,7 @@ function App() {
         focusedIndex,
         searchVisible,
         showShortcutHelp,
+        showAbout,
         showLogViewer,
         showIssueModal,
         settingsGroup,
@@ -366,6 +380,7 @@ function App() {
       // Modal guard: only Escape works when a modal is open
       const anyModalOpen =
         showShortcutHelp ||
+        showAbout ||
         showLogViewer ||
         showIssueModal ||
         settingsGroup !== null ||
@@ -404,6 +419,8 @@ function App() {
           e.preventDefault();
           if (showShortcutHelp) {
             setShowShortcutHelp(false);
+          } else if (showAbout) {
+            setShowAbout(false);
           } else if (showLogViewer) {
             setShowLogViewer(false);
           } else if (showIssueModal) {
@@ -654,6 +671,7 @@ function App() {
         )}
       </div>
       {showShortcutHelp && <ShortcutHelp onClose={() => setShowShortcutHelp(false)} />}
+      {showAbout && <AboutDialog onClose={() => setShowAbout(false)} />}
       {renamingSession && (
         <RenameModal session={renamingSession} onClose={() => setRenamingSession(null)} />
       )}

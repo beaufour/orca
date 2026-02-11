@@ -9,7 +9,8 @@ mod tmux;
 
 use crate::command::new_command;
 use std::io::{BufRead, BufReader};
-use tauri::Manager;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{Emitter, Manager};
 
 #[tauri::command]
 fn read_app_log(app: tauri::AppHandle, tail_lines: Option<usize>) -> Result<String, String> {
@@ -60,7 +61,9 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(pty::PtyManager::default())
         .setup(|app| {
-            app.handle().plugin(
+            let handle = app.handle();
+
+            handle.plugin(
                 tauri_plugin_log::Builder::default()
                     .level(if cfg!(debug_assertions) {
                         log::LevelFilter::Info
@@ -69,7 +72,72 @@ pub fn run() {
                     })
                     .build(),
             )?;
+
+            // Native app menu
+            let about_item =
+                MenuItem::with_id(handle, "about_orca", "About Orca", true, None::<&str>)?;
+
+            let app_submenu = Submenu::with_items(
+                handle,
+                "Orca",
+                true,
+                &[
+                    &about_item,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::hide(handle, None)?,
+                    &PredefinedMenuItem::hide_others(handle, None)?,
+                    &PredefinedMenuItem::show_all(handle, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::quit(handle, None)?,
+                ],
+            )?;
+
+            let edit_submenu = Submenu::with_items(
+                handle,
+                "Edit",
+                true,
+                &[
+                    &PredefinedMenuItem::undo(handle, None)?,
+                    &PredefinedMenuItem::redo(handle, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::cut(handle, None)?,
+                    &PredefinedMenuItem::copy(handle, None)?,
+                    &PredefinedMenuItem::paste(handle, None)?,
+                    &PredefinedMenuItem::select_all(handle, None)?,
+                ],
+            )?;
+
+            let window_submenu = Submenu::with_items(
+                handle,
+                "Window",
+                true,
+                &[
+                    &PredefinedMenuItem::minimize(handle, None)?,
+                    &PredefinedMenuItem::maximize(handle, None)?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &PredefinedMenuItem::close_window(handle, None)?,
+                ],
+            )?;
+
+            let help_item =
+                MenuItem::with_id(handle, "help_github", "Orca Help", true, None::<&str>)?;
+            let help_submenu = Submenu::with_items(handle, "Help", true, &[&help_item])?;
+
+            let menu = Menu::with_items(
+                handle,
+                &[&app_submenu, &edit_submenu, &window_submenu, &help_submenu],
+            )?;
+            app.set_menu(menu)?;
+
             Ok(())
+        })
+        .on_menu_event(|app, event| {
+            if event.id() == "about_orca" {
+                let _ = app.emit("show-about", ());
+            } else if event.id() == "help_github" {
+                let _ =
+                    tauri_plugin_opener::open_url("https://github.com/beaufour/orca", None::<&str>);
+            }
         })
         .invoke_handler(tauri::generate_handler![
             agentdeck::check_agent_deck_version,
