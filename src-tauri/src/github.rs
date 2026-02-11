@@ -140,38 +140,51 @@ fn run_gh(repo_path: &str, args: &[&str]) -> Result<String, String> {
     Ok(stdout)
 }
 
-#[tauri::command]
-pub fn list_issues(repo_path: String) -> Result<Vec<GitHubIssue>, String> {
-    log::info!("list_issues: repo_path={repo_path}");
-    let owner_repo = get_owner_repo(&repo_path)?;
-    let output = run_gh(
-        &repo_path,
-        &[
-            "issue",
-            "list",
-            "-R",
-            &owner_repo,
-            "--state",
-            "open",
-            "--limit",
-            "100",
-            "--json",
-            GH_JSON_FIELDS,
-        ],
-    )?;
-
-    let raw: Vec<GhIssue> =
-        serde_json::from_str(&output).map_err(|e| format!("Failed to parse gh output: {e}"))?;
-    Ok(raw.into_iter().map(to_github_issue).collect())
+/// Run a GitHub command on a background thread so it never blocks the IPC handler.
+async fn spawn_gh<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("Task failed: {e}"))?
 }
 
 #[tauri::command]
-pub fn get_issue(repo_path: String, issue_number: u64) -> Result<GitHubIssue, String> {
+pub async fn list_issues(repo_path: String) -> Result<Vec<GitHubIssue>, String> {
+    spawn_gh(move || {
+        log::info!("list_issues: repo_path={repo_path}");
+        let owner_repo = get_owner_repo(&repo_path)?;
+        let output = run_gh(
+            &repo_path,
+            &[
+                "issue",
+                "list",
+                "-R",
+                &owner_repo,
+                "--state",
+                "open",
+                "--limit",
+                "100",
+                "--json",
+                GH_JSON_FIELDS,
+            ],
+        )?;
+
+        let raw: Vec<GhIssue> =
+            serde_json::from_str(&output).map_err(|e| format!("Failed to parse gh output: {e}"))?;
+        Ok(raw.into_iter().map(to_github_issue).collect())
+    })
+    .await
+}
+
+fn get_issue_sync(repo_path: &str, issue_number: u64) -> Result<GitHubIssue, String> {
     log::info!("get_issue: repo_path={repo_path}, issue_number={issue_number}");
-    let owner_repo = get_owner_repo(&repo_path)?;
+    let owner_repo = get_owner_repo(repo_path)?;
     let num_str = issue_number.to_string();
     let output = run_gh(
-        &repo_path,
+        repo_path,
         &[
             "issue",
             "view",
@@ -189,92 +202,106 @@ pub fn get_issue(repo_path: String, issue_number: u64) -> Result<GitHubIssue, St
 }
 
 #[tauri::command]
-pub fn create_issue(
+pub async fn get_issue(repo_path: String, issue_number: u64) -> Result<GitHubIssue, String> {
+    spawn_gh(move || get_issue_sync(&repo_path, issue_number)).await
+}
+
+#[tauri::command]
+pub async fn create_issue(
     repo_path: String,
     title: String,
     body: String,
     labels: Vec<String>,
 ) -> Result<GitHubIssue, String> {
-    log::info!("create_issue: repo_path={repo_path}, title={title}");
-    let owner_repo = get_owner_repo(&repo_path)?;
-    let mut args = vec![
-        "issue",
-        "create",
-        "-R",
-        &owner_repo,
-        "--title",
-        &title,
-        "--body",
-        &body,
-    ];
-    let labels_joined = labels.join(",");
-    if !labels.is_empty() {
-        args.push("--label");
-        args.push(&labels_joined);
-    }
-    let output = run_gh(&repo_path, &args)?;
+    spawn_gh(move || {
+        log::info!("create_issue: repo_path={repo_path}, title={title}");
+        let owner_repo = get_owner_repo(&repo_path)?;
+        let mut args = vec![
+            "issue",
+            "create",
+            "-R",
+            &owner_repo,
+            "--title",
+            &title,
+            "--body",
+            &body,
+        ];
+        let labels_joined = labels.join(",");
+        if !labels.is_empty() {
+            args.push("--label");
+            args.push(&labels_joined);
+        }
+        let output = run_gh(&repo_path, &args)?;
 
-    // gh issue create outputs the URL. We need to extract the issue number and fetch it.
-    let url = output.trim();
-    let number: u64 = url
-        .rsplit('/')
-        .next()
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| format!("Cannot parse issue number from URL: {url}"))?;
+        // gh issue create outputs the URL. We need to extract the issue number and fetch it.
+        let url = output.trim();
+        let number: u64 = url
+            .rsplit('/')
+            .next()
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| format!("Cannot parse issue number from URL: {url}"))?;
 
-    get_issue(repo_path, number)
+        get_issue_sync(&repo_path, number)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn update_issue(
+pub async fn update_issue(
     repo_path: String,
     issue_number: u64,
     title: String,
     body: String,
     labels: Vec<String>,
 ) -> Result<GitHubIssue, String> {
-    log::info!("update_issue: repo_path={repo_path}, issue_number={issue_number}");
-    let owner_repo = get_owner_repo(&repo_path)?;
-    let num_str = issue_number.to_string();
-    let mut args = vec![
-        "issue",
-        "edit",
-        &num_str,
-        "-R",
-        &owner_repo,
-        "--title",
-        &title,
-        "--body",
-        &body,
-    ];
-    // gh issue edit --add-label replaces; to set exact labels we clear then add
-    let labels_joined = labels.join(",");
-    if !labels.is_empty() {
-        args.push("--add-label");
-        args.push(&labels_joined);
-    }
-    run_gh(&repo_path, &args)?;
-
-    get_issue(repo_path, issue_number)
-}
-
-#[tauri::command]
-pub fn assign_issue(repo_path: String, issue_number: u64) -> Result<(), String> {
-    let owner_repo = get_owner_repo(&repo_path)?;
-    let num_str = issue_number.to_string();
-    run_gh(
-        &repo_path,
-        &[
+    spawn_gh(move || {
+        log::info!("update_issue: repo_path={repo_path}, issue_number={issue_number}");
+        let owner_repo = get_owner_repo(&repo_path)?;
+        let num_str = issue_number.to_string();
+        let mut args = vec![
             "issue",
             "edit",
             &num_str,
             "-R",
             &owner_repo,
-            "--add-assignee",
-            "@me",
-        ],
-    )?;
-    Ok(())
+            "--title",
+            &title,
+            "--body",
+            &body,
+        ];
+        // gh issue edit --add-label replaces; to set exact labels we clear then add
+        let labels_joined = labels.join(",");
+        if !labels.is_empty() {
+            args.push("--add-label");
+            args.push(&labels_joined);
+        }
+        run_gh(&repo_path, &args)?;
+
+        get_issue_sync(&repo_path, issue_number)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn assign_issue(repo_path: String, issue_number: u64) -> Result<(), String> {
+    spawn_gh(move || {
+        let owner_repo = get_owner_repo(&repo_path)?;
+        let num_str = issue_number.to_string();
+        run_gh(
+            &repo_path,
+            &[
+                "issue",
+                "edit",
+                &num_str,
+                "-R",
+                &owner_repo,
+                "--add-assignee",
+                "@me",
+            ],
+        )?;
+        Ok(())
+    })
+    .await
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -294,88 +321,97 @@ struct GhPrStatus {
 }
 
 #[tauri::command]
-pub fn create_pr(
+pub async fn create_pr(
     repo_path: String,
     branch: String,
     base_branch: String,
     title: String,
     body: String,
 ) -> Result<PrInfo, String> {
-    log::info!("create_pr: repo_path={repo_path}, branch={branch}, base={base_branch}");
-    let owner_repo = get_owner_repo(&repo_path)?;
-    let output = run_gh(
-        &repo_path,
-        &[
-            "pr",
-            "create",
-            "-R",
-            &owner_repo,
-            "--head",
-            &branch,
-            "--base",
-            &base_branch,
-            "--title",
-            &title,
-            "--body",
-            &body,
-        ],
-    )?;
+    spawn_gh(move || {
+        log::info!("create_pr: repo_path={repo_path}, branch={branch}, base={base_branch}");
+        let owner_repo = get_owner_repo(&repo_path)?;
+        let output = run_gh(
+            &repo_path,
+            &[
+                "pr",
+                "create",
+                "-R",
+                &owner_repo,
+                "--head",
+                &branch,
+                "--base",
+                &base_branch,
+                "--title",
+                &title,
+                "--body",
+                &body,
+            ],
+        )?;
 
-    // gh pr create outputs the PR URL. Extract number and fetch details.
-    let url = output.trim().to_string();
-    let number: u64 = url
-        .rsplit('/')
-        .next()
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| format!("Cannot parse PR number from URL: {url}"))?;
+        // gh pr create outputs the PR URL. Extract number and fetch details.
+        let url = output.trim().to_string();
+        let number: u64 = url
+            .rsplit('/')
+            .next()
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| format!("Cannot parse PR number from URL: {url}"))?;
 
-    Ok(PrInfo {
-        number,
-        url,
-        state: "OPEN".to_string(),
+        Ok(PrInfo {
+            number,
+            url,
+            state: "OPEN".to_string(),
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn check_pr_status(repo_path: String, branch: String) -> Result<PrInfo, String> {
-    log::info!("check_pr_status: repo_path={repo_path}, branch={branch}");
-    let owner_repo = get_owner_repo(&repo_path)?;
-    let output = run_gh(
-        &repo_path,
-        &[
-            "pr",
-            "view",
-            &branch,
-            "-R",
-            &owner_repo,
-            "--json",
-            "number,state,url,mergedAt",
-        ],
-    )?;
+pub async fn check_pr_status(repo_path: String, branch: String) -> Result<PrInfo, String> {
+    spawn_gh(move || {
+        log::info!("check_pr_status: repo_path={repo_path}, branch={branch}");
+        let owner_repo = get_owner_repo(&repo_path)?;
+        let output = run_gh(
+            &repo_path,
+            &[
+                "pr",
+                "view",
+                &branch,
+                "-R",
+                &owner_repo,
+                "--json",
+                "number,state,url,mergedAt",
+            ],
+        )?;
 
-    let raw: GhPrStatus =
-        serde_json::from_str(&output).map_err(|e| format!("Failed to parse gh pr output: {e}"))?;
+        let raw: GhPrStatus = serde_json::from_str(&output)
+            .map_err(|e| format!("Failed to parse gh pr output: {e}"))?;
 
-    let state = if raw.merged_at.is_some() {
-        "MERGED".to_string()
-    } else {
-        raw.state
-    };
+        let state = if raw.merged_at.is_some() {
+            "MERGED".to_string()
+        } else {
+            raw.state
+        };
 
-    Ok(PrInfo {
-        number: raw.number,
-        url: raw.url,
-        state,
+        Ok(PrInfo {
+            number: raw.number,
+            url: raw.url,
+            state,
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn close_issue(repo_path: String, issue_number: u64) -> Result<(), String> {
-    log::info!("close_issue: repo_path={repo_path}, issue_number={issue_number}");
-    let owner_repo = get_owner_repo(&repo_path)?;
-    let num_str = issue_number.to_string();
-    run_gh(&repo_path, &["issue", "close", &num_str, "-R", &owner_repo])?;
-    Ok(())
+pub async fn close_issue(repo_path: String, issue_number: u64) -> Result<(), String> {
+    spawn_gh(move || {
+        log::info!("close_issue: repo_path={repo_path}, issue_number={issue_number}");
+        let owner_repo = get_owner_repo(&repo_path)?;
+        let num_str = issue_number.to_string();
+        run_gh(&repo_path, &["issue", "close", &num_str, "-R", &owner_repo])?;
+        Ok(())
+    })
+    .await
 }
 
 #[cfg(test)]

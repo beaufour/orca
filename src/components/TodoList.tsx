@@ -73,8 +73,16 @@ export function TodoList({
     | { type: "unlinked"; session: Session };
 
   const { allSessions, todo } = useMemo(() => {
-    if (!issues || !sessions) {
-      return { allSessions: [] as SessionItem[], todo: [] };
+    if (!sessions) {
+      return { allSessions: [] as SessionItem[], todo: [] as GitHubIssue[] };
+    }
+
+    // If issues haven't loaded yet, show all sessions as unlinked
+    if (!issues) {
+      return {
+        allSessions: sessions.map((session) => ({ type: "unlinked" as const, session })),
+        todo: [] as GitHubIssue[],
+      };
     }
 
     const issueByNumber = new Map<number, GitHubIssue>();
@@ -173,16 +181,6 @@ export function TodoList({
     );
   }
 
-  if (issuesLoading && !issues) {
-    return (
-      <div className="session-list-empty">
-        <div className="loading-row">
-          <span className="spinner" /> Loading issues...
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="todo-list">
       {/* Sessions */}
@@ -244,7 +242,11 @@ export function TodoList({
         <div className="todo-section-header">
           <span>To Do</span>
           <div className="todo-section-header-right">
-            <span className="todo-section-count">{todo.length}</span>
+            {issuesLoading && !issues ? (
+              <span className="spinner" />
+            ) : (
+              <span className="todo-section-count">{todo.length}</span>
+            )}
             <button
               className="wt-btn wt-btn-add todo-new-issue-btn"
               onClick={() => setIssueModal({ mode: "create" })}
@@ -253,7 +255,7 @@ export function TodoList({
             </button>
           </div>
         </div>
-        {todo.length === 0 && (
+        {!issuesLoading && todo.length === 0 && (
           <div className="todo-empty">No open issues without active sessions</div>
         )}
         <div className="session-grid">
