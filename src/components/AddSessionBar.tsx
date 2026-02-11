@@ -2,6 +2,7 @@ import { useState, useImperativeHandle } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session } from "../types";
+import { isMainSession } from "../utils";
 
 export interface AddSessionBarHandle {
   toggleForm: () => void;
@@ -38,9 +39,7 @@ export function AddSessionBar({
   const [mode, setMode] = useState<SessionMode>("worktree");
   const [tool, setTool] = useState<SessionTool>("claude");
 
-  const hasMainSession = sessions.some(
-    (s) => !s.worktree_branch || s.worktree_branch === "main" || s.worktree_branch === "master",
-  );
+  const hasMainSession = sessions.some((s) => isMainSession(s.worktree_branch));
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["sessions"] });

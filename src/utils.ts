@@ -50,6 +50,11 @@ export function formatTime(epoch: number): string {
   return `${diffDays}d ago`;
 }
 
+/** Check if a session is on the main/master branch (or has no worktree branch). */
+export function isMainSession(worktreeBranch?: string): boolean {
+  return !worktreeBranch || worktreeBranch === "main" || worktreeBranch === "master";
+}
+
 /** Extract leading issue number from a branch name like "42-fix-bug" */
 export function extractIssueNumber(branch: string): number | null {
   const match = branch.match(/^(\d+)-/);

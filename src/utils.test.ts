@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { formatPath, formatTime, fallbackAttention, parseDiff, fileName, fileDir } from "./utils";
+import {
+  formatPath,
+  formatTime,
+  fallbackAttention,
+  parseDiff,
+  fileName,
+  fileDir,
+  isMainSession,
+} from "./utils";
 
 describe("formatPath", () => {
   it("replaces /Users/<user>/ with ~/", () => {
@@ -179,5 +187,27 @@ describe("fileDir", () => {
 
   it("handles deeply nested paths", () => {
     expect(fileDir("a/b/c/d.ts")).toBe("a/b/c/");
+  });
+});
+
+describe("isMainSession", () => {
+  it("returns true for undefined branch", () => {
+    expect(isMainSession(undefined)).toBe(true);
+  });
+
+  it("returns true for empty string branch", () => {
+    expect(isMainSession("")).toBe(true);
+  });
+
+  it("returns true for main branch", () => {
+    expect(isMainSession("main")).toBe(true);
+  });
+
+  it("returns true for master branch", () => {
+    expect(isMainSession("master")).toBe(true);
+  });
+
+  it("returns false for feature branch", () => {
+    expect(isMainSession("feature-123")).toBe(false);
   });
 });

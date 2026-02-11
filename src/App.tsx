@@ -19,6 +19,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { VersionWarning } from "./components/VersionWarning";
 import { UpdateNotification } from "./components/UpdateNotification";
 import type { Group, Session } from "./types";
+import { isMainSession } from "./utils";
 
 const MIN_SIDEBAR_WIDTH = 48;
 const MAX_SIDEBAR_WIDTH = 500;
@@ -194,10 +195,8 @@ function App() {
     }
     // Main session (no worktree, or on main/master branch) always first
     return [...list].sort((a, b) => {
-      const aMain =
-        !a.worktree_branch || a.worktree_branch === "main" || a.worktree_branch === "master";
-      const bMain =
-        !b.worktree_branch || b.worktree_branch === "main" || b.worktree_branch === "master";
+      const aMain = isMainSession(a.worktree_branch);
+      const bMain = isMainSession(b.worktree_branch);
       if (aMain !== bMain) return aMain ? -1 : 1;
       return 0;
     });

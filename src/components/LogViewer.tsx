@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface LogViewerProps {
   onClose: () => void;
@@ -34,13 +35,7 @@ export function LogViewer({ onClose }: LogViewerProps) {
     }
   }, [logText]);
 
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>

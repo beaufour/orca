@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session } from "../types";
 import { parseDiff, fileName, fileDir } from "../utils";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface DiffViewerProps {
   session: Session;
@@ -19,13 +20,7 @@ export function DiffViewer({ session, onClose }: DiffViewerProps) {
       }),
   });
 
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   const files = data ? parseDiff(data) : [];
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
