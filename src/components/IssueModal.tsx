@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { GitHubIssue } from "../types";
 import { queryKeys } from "../queryKeys";
+import { Modal } from "./Modal";
 
 const LABEL_OPTIONS = ["bug", "documentation", "enhancement"] as const;
 
@@ -83,69 +84,67 @@ export function IssueModal({ mode, issue, repoPath, onClose }: IssueModalProps) 
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
-        <h3 className="modal-title">
-          {mode === "create" ? "New Issue" : `Edit Issue #${issue?.number}`}
-        </h3>
-        <label className="modal-label">Title</label>
-        <input
-          className="modal-input"
-          type="text"
-          placeholder="Issue title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.metaKey && !e.shiftKey) handleSubmit();
-            handleKeyDown(e);
-          }}
-          autoFocus
-        />
-        <label className="modal-label">Labels</label>
-        <div className="issue-label-picker">
-          {LABEL_OPTIONS.map((label) => (
-            <button
-              key={label}
-              type="button"
-              className={`issue-label-option ${selectedLabels.has(label) ? "issue-label-option-active" : ""}`}
-              onClick={() => toggleLabel(label)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <label className="modal-label">Description</label>
-        <textarea
-          className="modal-input modal-textarea"
-          placeholder="Issue description (optional)"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          onKeyDown={handleKeyDown}
-          rows={10}
-        />
-        {mutation.error && <div className="wt-error">{String(mutation.error)}</div>}
-        <div className="modal-actions">
+    <Modal onClose={onClose} className="modal-content modal-content-wide">
+      <h3 className="modal-title">
+        {mode === "create" ? "New Issue" : `Edit Issue #${issue?.number}`}
+      </h3>
+      <label className="modal-label">Title</label>
+      <input
+        className="modal-input"
+        type="text"
+        placeholder="Issue title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.metaKey && !e.shiftKey) handleSubmit();
+          handleKeyDown(e);
+        }}
+        autoFocus
+      />
+      <label className="modal-label">Labels</label>
+      <div className="issue-label-picker">
+        {LABEL_OPTIONS.map((label) => (
           <button
-            className="wt-btn wt-btn-add"
-            onClick={handleSubmit}
-            disabled={!title.trim() || mutation.isPending}
+            key={label}
+            type="button"
+            className={`issue-label-option ${selectedLabels.has(label) ? "issue-label-option-active" : ""}`}
+            onClick={() => toggleLabel(label)}
           >
-            {mutation.isPending ? (
-              <>
-                <span className="spinner" /> {mode === "create" ? "Creating..." : "Saving..."}
-              </>
-            ) : mode === "create" ? (
-              "Create"
-            ) : (
-              "Save"
-            )}
+            {label}
           </button>
-          <span className="modal-shortcut-hint">Cmd+Enter</span>
-          <button className="wt-btn wt-btn-cancel" onClick={onClose}>
-            Cancel
-          </button>
-        </div>
+        ))}
       </div>
-    </div>
+      <label className="modal-label">Description</label>
+      <textarea
+        className="modal-input modal-textarea"
+        placeholder="Issue description (optional)"
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        onKeyDown={handleKeyDown}
+        rows={10}
+      />
+      {mutation.error && <div className="wt-error">{String(mutation.error)}</div>}
+      <div className="modal-actions">
+        <button
+          className="wt-btn wt-btn-add"
+          onClick={handleSubmit}
+          disabled={!title.trim() || mutation.isPending}
+        >
+          {mutation.isPending ? (
+            <>
+              <span className="spinner" /> {mode === "create" ? "Creating..." : "Saving..."}
+            </>
+          ) : mode === "create" ? (
+            "Create"
+          ) : (
+            "Save"
+          )}
+        </button>
+        <span className="modal-shortcut-hint">Cmd+Enter</span>
+        <button className="wt-btn wt-btn-cancel" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </Modal>
   );
 }
