@@ -98,7 +98,7 @@ function TodoCardInProgress({
   return (
     <div
       ref={cardRef}
-      className={`session-card attention-${attention}${isFocused ? " focused" : ""}`}
+      className={`session-card attention-${attention}${isFocused ? " session-card-focused" : ""}`}
       onClick={() => onSelectSession?.(session)}
     >
       <div className="session-card-header">
