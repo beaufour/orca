@@ -44,6 +44,54 @@ pub fn new_command(program: &str) -> Command {
     Command::new(program)
 }
 
+/// Run a command in a directory, returning stdout on success or an error on non-zero exit.
+pub fn run_cmd(program: &str, cwd: &str, args: &[&str]) -> Result<String, String> {
+    let expanded = expand_tilde(cwd);
+    let cwd_str = expanded.to_string_lossy();
+    log::info!("{program} {} (cwd: {cwd_str})", args.join(" "));
+
+    let output = new_command(program)
+        .current_dir(cwd_str.as_ref())
+        .args(args)
+        .output()
+        .map_err(|e| format!("Failed to run {program}: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!(
+            "{program} {} failed (exit {}): {}",
+            args.join(" "),
+            output.status,
+            stderr.trim()
+        );
+        return Err(format!(
+            "{program} {} failed: {}",
+            args.join(" "),
+            stderr.trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    log::debug!("{program} {} succeeded", args.join(" "));
+    Ok(stdout)
+}
+
+/// Run a command in a directory, returning (stdout, success) without treating non-zero exit as error.
+pub fn run_cmd_status(program: &str, cwd: &str, args: &[&str]) -> Result<(String, bool), String> {
+    let expanded = expand_tilde(cwd);
+    let cwd_str = expanded.to_string_lossy();
+    log::info!("{program} {} (cwd: {cwd_str})", args.join(" "));
+
+    let output = new_command(program)
+        .current_dir(cwd_str.as_ref())
+        .args(args)
+        .output()
+        .map_err(|e| format!("Failed to run {program}: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok((stdout, output.status.success()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

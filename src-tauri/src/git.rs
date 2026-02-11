@@ -1,4 +1,4 @@
-use crate::command::{expand_tilde, new_command};
+use crate::command::{expand_tilde, new_command, run_cmd, run_cmd_status};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -10,45 +10,12 @@ pub struct Worktree {
     pub is_bare: bool,
 }
 
-/// Run a git command, returning (stdout, success) without treating non-zero exit as an error.
-fn run_git_status(repo_path: &str, args: &[&str]) -> Result<(String, bool), String> {
-    let expanded = expand_tilde(repo_path);
-    let cwd = expanded.to_string_lossy();
-    log::info!("git {} (cwd: {})", args.join(" "), cwd);
-    let output = new_command("git")
-        .current_dir(cwd.as_ref())
-        .args(args)
-        .output()
-        .map_err(|e| format!("Failed to run git: {e}"))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    Ok((stdout, output.status.success()))
+fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
+    run_cmd("git", repo_path, args)
 }
 
-fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
-    let expanded = expand_tilde(repo_path);
-    let cwd = expanded.to_string_lossy();
-    log::info!("git {} (cwd: {})", args.join(" "), cwd);
-    let output = new_command("git")
-        .current_dir(cwd.as_ref())
-        .args(args)
-        .output()
-        .map_err(|e| format!("Failed to run git: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!(
-            "git {} failed (exit {}): {}",
-            args.join(" "),
-            output.status,
-            stderr.trim()
-        );
-        return Err(format!("git {} failed: {}", args.join(" "), stderr.trim()));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    log::debug!("git {} succeeded: {}", args.join(" "), stdout.trim());
-    Ok(stdout)
+fn run_git_status(repo_path: &str, args: &[&str]) -> Result<(String, bool), String> {
+    run_cmd_status("git", repo_path, args)
 }
 
 /// Parse the porcelain output of `git worktree list --porcelain` into Worktree structs.
@@ -409,28 +376,10 @@ fn find_repo_root(path: &str) -> Result<String, String> {
     // Validate this is a git repository by checking rev-parse succeeds.
     // Returns the expanded path since git commands work from any worktree.
     let expanded = expand_tilde(path);
-    let cwd = expanded.to_string_lossy();
-    log::info!("git rev-parse --git-common-dir (cwd: {cwd})");
-    let output = new_command("git")
-        .current_dir(cwd.as_ref())
-        .args(["rev-parse", "--git-common-dir"])
-        .output()
-        .map_err(|e| format!("Failed to run git: {e}"))?;
-
-    if !output.status.success() {
-        log::error!(
-            "git rev-parse --git-common-dir failed (exit {}): not a git repo at {}",
-            output.status,
-            cwd
-        );
-        return Err(format!("Not a git repository: {cwd}"));
-    }
-
-    log::debug!(
-        "git rev-parse --git-common-dir succeeded: {}",
-        String::from_utf8_lossy(&output.stdout).trim()
-    );
-    Ok(cwd.to_string())
+    let cwd = expanded.to_string_lossy().to_string();
+    run_git(&cwd, &["rev-parse", "--git-common-dir"])
+        .map_err(|_| format!("Not a git repository: {cwd}"))?;
+    Ok(cwd)
 }
 
 /// Walk up from `path` looking for a directory containing `.bare/`.

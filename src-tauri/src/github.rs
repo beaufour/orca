@@ -1,4 +1,4 @@
-use crate::command::{expand_tilde, new_command};
+use crate::command::{expand_tilde, run_cmd};
 use crate::git::find_bare_root;
 use crate::models::{GitHubIssue, GitHubLabel};
 use serde::Deserialize;
@@ -56,7 +56,6 @@ const GH_JSON_FIELDS: &str = "number,title,body,state,labels,assignees,createdAt
 
 /// Extract `owner/repo` from the git remote origin URL.
 fn get_owner_repo(repo_path: &str) -> Result<String, String> {
-    // Expand tilde in path
     let expanded = expand_tilde(repo_path);
     let expanded_str = expanded.to_string_lossy();
 
@@ -67,23 +66,12 @@ fn get_owner_repo(repo_path: &str) -> Result<String, String> {
         expanded_str.to_string()
     };
 
-    // Check if the directory exists
     if !Path::new(&cwd).exists() {
         return Err(format!("Repository path does not exist: {cwd}"));
     }
 
-    let output = new_command("git")
-        .current_dir(&cwd)
-        .args(["remote", "get-url", "origin"])
-        .output()
-        .map_err(|e| format!("Failed to run git in {cwd}: {e}"))?;
-
-    if !output.status.success() {
-        return Err("No git remote 'origin' found".to_string());
-    }
-
-    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let result = parse_owner_repo(&url);
+    let url = run_cmd("git", &cwd, &["remote", "get-url", "origin"])?;
+    let result = parse_owner_repo(url.trim());
     if let Ok(ref owner_repo) = result {
         log::debug!("get_owner_repo: resolved {repo_path} -> {owner_repo}");
     }
@@ -108,26 +96,7 @@ fn parse_owner_repo(url: &str) -> Result<String, String> {
 }
 
 fn run_gh(repo_path: &str, args: &[&str]) -> Result<String, String> {
-    // Expand tilde in path
-    let expanded = expand_tilde(repo_path);
-    let cwd = expanded.to_string_lossy().to_string();
-
-    log::info!("gh {} (cwd: {cwd})", args.join(" "));
-    let output = new_command("gh")
-        .current_dir(&cwd)
-        .args(args)
-        .output()
-        .map_err(|e| format!("Failed to run gh: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!("gh {} failed: {}", args.join(" "), stderr.trim());
-        return Err(format!("gh {} failed: {}", args.join(" "), stderr.trim()));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    log::debug!("gh {} succeeded ({} bytes)", args.join(" "), stdout.len());
-    Ok(stdout)
+    run_cmd("gh", repo_path, args)
 }
 
 #[tauri::command]
