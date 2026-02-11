@@ -7,6 +7,7 @@ type GroupMode = "existing" | "clone";
 
 interface CreateGroupModalProps {
   onClose: () => void;
+  onCreated?: (groupName: string) => void;
 }
 
 /** Extract a project name from a git URL (e.g. "https://github.com/foo/bar.git" -> "bar") */
@@ -15,7 +16,7 @@ function projectNameFromUrl(url: string): string {
   return cleaned.split("/").pop() ?? "";
 }
 
-export function CreateGroupModal({ onClose }: CreateGroupModalProps) {
+export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) {
   const [mode, setMode] = useState<GroupMode>("existing");
   const [name, setName] = useState("");
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
@@ -63,6 +64,7 @@ export function CreateGroupModal({ onClose }: CreateGroupModalProps) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groups"] });
+      onCreated?.(name.trim());
       onClose();
     },
   });
@@ -92,6 +94,7 @@ export function CreateGroupModal({ onClose }: CreateGroupModalProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["groups"] });
+      onCreated?.(name.trim());
       onClose();
     },
   });
