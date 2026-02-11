@@ -5,6 +5,7 @@ export interface Group {
   sort_order: number;
   default_path: string;
   github_issues_enabled: boolean;
+  is_git_repo: boolean;
 }
 
 export interface Session {

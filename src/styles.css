@@ -1514,6 +1514,11 @@ body {
   margin-bottom: 4px;
 }
 
+.settings-toggle-disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .settings-toggle-label {
   font-size: 14px;
   color: var(--text-primary);

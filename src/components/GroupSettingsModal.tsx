@@ -37,7 +37,7 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <h3 className="modal-title">Settings: {group.name}</h3>
         <label
-          className="settings-toggle"
+          className={`settings-toggle${!group.is_git_repo ? " settings-toggle-disabled" : ""}`}
           onKeyDown={(e) => {
             if (e.key === "Enter") handleSubmit();
             if (e.key === "Escape") onClose();
@@ -45,15 +45,17 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
         >
           <input
             type="checkbox"
-            checked={githubIssuesEnabled}
+            checked={githubIssuesEnabled && group.is_git_repo}
             onChange={(e) => setGithubIssuesEnabled(e.target.checked)}
+            disabled={!group.is_git_repo}
             autoFocus
           />
           <span className="settings-toggle-label">Enable GitHub Issues</span>
         </label>
         <p className="settings-toggle-description">
-          Show GitHub issues as a todo list for this group. Disable if this group is not backed by a
-          GitHub repository.
+          {group.is_git_repo
+            ? "Show GitHub issues as a todo list for this group."
+            : "GitHub Issues requires a git repository."}
         </p>
         {mutation.error && <div className="wt-error">{String(mutation.error)}</div>}
         <div className="modal-actions">
