@@ -446,6 +446,69 @@ fn expand_home(path: &str) -> Result<String, String> {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushResult {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RebaseResult {
+    pub success: bool,
+    pub conflict_message: Option<String>,
+}
+
+#[tauri::command]
+pub fn push_branch(worktree_path: String, branch: String) -> Result<PushResult, String> {
+    let (output, success) = run_git_status(&worktree_path, &["push", "-u", "origin", &branch])?;
+    Ok(PushResult {
+        success,
+        message: output.trim().to_string(),
+    })
+}
+
+#[tauri::command]
+pub fn force_push_branch(worktree_path: String, branch: String) -> Result<PushResult, String> {
+    let (output, success) = run_git_status(
+        &worktree_path,
+        &["push", "--force-with-lease", "origin", &branch],
+    )?;
+    Ok(PushResult {
+        success,
+        message: output.trim().to_string(),
+    })
+}
+
+#[tauri::command]
+pub fn rebase_branch(worktree_path: String, main_branch: String) -> Result<RebaseResult, String> {
+    // Fetch latest
+    let _ = run_git_status(&worktree_path, &["fetch", "origin", &main_branch]);
+
+    let remote_ref = format!("origin/{main_branch}");
+    log::info!("git rebase {remote_ref} (cwd: {worktree_path})");
+    let output = new_command("git")
+        .current_dir(&worktree_path)
+        .args(["rebase", &remote_ref])
+        .output()
+        .map_err(|e| format!("Failed to run git rebase: {e}"))?;
+
+    if output.status.success() {
+        Ok(RebaseResult {
+            success: true,
+            conflict_message: None,
+        })
+    } else {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let message = format!("{}{}", stdout.trim(), stderr.trim());
+        log::warn!("git rebase conflict/failure: {message}");
+        Ok(RebaseResult {
+            success: false,
+            conflict_message: Some(message),
+        })
+    }
+}
+
 #[tauri::command]
 pub fn clone_bare_worktree_repo(
     git_url: String,
@@ -605,6 +668,43 @@ fn init_bare_repo_inner(project_path: &Path, project_str: &str) -> Result<String
     )?;
 
     Ok(project_str.to_string())
+}
+
+#[tauri::command]
+pub fn abort_rebase(worktree_path: String) -> Result<(), String> {
+    run_git(&worktree_path, &["rebase", "--abort"])?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_main_branch(repo_path: String, main_branch: String) -> Result<PushResult, String> {
+    let effective_repo = find_repo_root(&repo_path)?;
+
+    // Find the main worktree path
+    let worktrees = list_worktrees(repo_path)?;
+    let main_wt = worktrees
+        .iter()
+        .find(|w| w.branch == main_branch)
+        .ok_or(format!("No worktree found for branch '{main_branch}'"))?;
+    let main_path = main_wt.path.clone();
+
+    // Check if main worktree has uncommitted changes
+    let (status_output, _) = run_git_status(&main_path, &["status", "--porcelain"])?;
+    if !status_output.trim().is_empty() {
+        return Ok(PushResult {
+            success: false,
+            message: format!("Uncommitted changes in {main_branch} worktree"),
+        });
+    }
+
+    // Use the effective repo for fetch
+    let _ = run_git_status(&effective_repo, &["fetch", "origin", &main_branch]);
+
+    let (output, success) = run_git_status(&main_path, &["pull", "--ff-only"])?;
+    Ok(PushResult {
+        success,
+        message: output.trim().to_string(),
+    })
 }
 
 fn find_repo_root(path: &str) -> Result<String, String> {

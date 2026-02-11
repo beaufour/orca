@@ -203,6 +203,7 @@ export function TodoList({
                   onSelectSession={onSelectSession}
                   liveTmuxSessions={liveTmuxSessions}
                   isFocused={index === focusedIndex}
+                  mergeWorkflow={group.merge_workflow}
                 />
               ) : (
                 <SessionCard
@@ -223,6 +224,7 @@ export function TodoList({
                     !item.session.tmux_session ||
                     liveTmuxSessions?.has(item.session.tmux_session) !== false
                   }
+                  mergeWorkflow={group.merge_workflow}
                 />
               ),
             )}
@@ -264,6 +266,7 @@ export function TodoList({
               onStartIssue={handleStartIssue}
               onEditIssue={(issue) => setIssueModal({ mode: "edit", issue })}
               liveTmuxSessions={liveTmuxSessions}
+              mergeWorkflow={group.merge_workflow}
             />
           ))}
         </div>

@@ -35,6 +35,7 @@ interface SessionListProps {
   pendingCreations?: Map<string, PendingCreation>;
   onDismissPending?: (creationId: string) => void;
   createSession?: (params: CreateSessionParams) => void;
+  mergeWorkflow?: "merge" | "pr";
 }
 
 export function SessionList({
@@ -57,6 +58,7 @@ export function SessionList({
   pendingCreations,
   onDismissPending,
   createSession,
+  mergeWorkflow,
 }: SessionListProps) {
   if (error) {
     return (
@@ -131,6 +133,7 @@ export function SessionList({
             isDismissed={dismissedIds?.has(session.id)}
             onDismiss={onDismiss ? () => onDismiss(session.id) : undefined}
             onUndismiss={onUndismiss ? () => onUndismiss(session.id) : undefined}
+            mergeWorkflow={mergeWorkflow}
           />
         ))}
         {groupPending.map((pending) => (

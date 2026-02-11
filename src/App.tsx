@@ -191,7 +191,8 @@ function App() {
       if (
         updated &&
         (updated.github_issues_enabled !== selectedGroup.github_issues_enabled ||
-          updated.is_git_repo !== selectedGroup.is_git_repo)
+          updated.is_git_repo !== selectedGroup.is_git_repo ||
+          updated.merge_workflow !== selectedGroup.merge_workflow)
       ) {
         setSelectedGroup(updated);
       }
@@ -652,6 +653,7 @@ function App() {
                   pendingCreations={pendingCreations}
                   onDismissPending={dismissPending}
                   createSession={createSession}
+                  mergeWorkflow={selectedGroup?.merge_workflow}
                 />
               )}
             </main>

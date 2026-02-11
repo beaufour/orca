@@ -6,6 +6,7 @@ export interface Group {
   default_path: string;
   github_issues_enabled: boolean;
   is_git_repo: boolean;
+  merge_workflow: "merge" | "pr";
 }
 
 export interface Session {
@@ -23,6 +24,9 @@ export interface Session {
   worktree_branch: string;
   claude_session_id: string | null;
   prompt: string | null;
+  pr_url: string | null;
+  pr_number: number | null;
+  pr_state: string | null;
 }
 
 export type AttentionStatus = "needs_input" | "error" | "running" | "idle" | "stale" | "unknown";
@@ -53,6 +57,22 @@ export interface WorktreeStatus {
   has_unmerged_branch: boolean;
   has_unpushed_commits: boolean;
   warnings: string[];
+}
+
+export interface PrInfo {
+  number: number;
+  url: string;
+  state: string;
+}
+
+export interface RebaseResult {
+  success: boolean;
+  conflict_message: string | null;
+}
+
+export interface PushResult {
+  success: boolean;
+  message: string;
 }
 
 export interface GitHubIssue {

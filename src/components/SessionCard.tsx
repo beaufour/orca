@@ -4,7 +4,9 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Session, SessionSummary, AttentionStatus } from "../types";
 import { ATTENTION_CONFIG, fallbackAttention, formatPath, formatTime } from "../utils";
 import { useWorktreeActions } from "../hooks/useWorktreeActions";
+import { usePrWorkflowActions } from "../hooks/usePrWorkflowActions";
 import { WorktreeActions } from "./WorktreeActions";
+import { PrWorkflowActions } from "./PrWorkflowActions";
 import { DiffViewer } from "./DiffViewer";
 
 interface SessionCardProps {
@@ -20,6 +22,7 @@ interface SessionCardProps {
   isDismissed?: boolean;
   onDismiss?: () => void;
   onUndismiss?: () => void;
+  mergeWorkflow?: "merge" | "pr";
 }
 
 export function SessionCard({
@@ -35,6 +38,7 @@ export function SessionCard({
   isDismissed,
   onDismiss,
   onUndismiss,
+  mergeWorkflow,
 }: SessionCardProps) {
   const queryClient = useQueryClient();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -48,6 +52,14 @@ export function SessionCard({
     session,
     repoPath,
     onSelectSession,
+  });
+
+  const prActions = usePrWorkflowActions({
+    session,
+    repoPath,
+    onSelectSession,
+    enabled: mergeWorkflow === "pr",
+    defaultBranch: actions.defaultBranch,
   });
 
   // Lift confirmingRemove to parent if prop provided
@@ -114,8 +126,10 @@ export function SessionCard({
     isDismissed && attention === "needs_input"
       ? { label: "Dismissed", className: "status-dismissed" }
       : ATTENTION_CONFIG[attention];
-  const isPending = actions.isPending || addWorktreeMutation.isPending;
-  const mutationError = actions.mutationError ?? addWorktreeMutation.error;
+  const isPending = actions.isPending || prActions.isPending || addWorktreeMutation.isPending;
+  const mutationError =
+    (mergeWorkflow === "pr" ? prActions.mutationError : actions.mutationError) ??
+    addWorktreeMutation.error;
 
   return (
     <div
@@ -214,12 +228,22 @@ export function SessionCard({
       </div>
       {mutationError && <div className="session-wt-error">{String(mutationError)}</div>}
       <div className="session-card-footer">
-        <WorktreeActions
-          actions={actionsWithLiftedState}
-          projectPath={session.project_path}
-          worktreeBranch={session.worktree_branch}
-          onShowDiff={() => setShowDiff(true)}
-        />
+        {mergeWorkflow === "pr" ? (
+          <PrWorkflowActions
+            actions={prActions}
+            projectPath={session.project_path}
+            worktreeBranch={session.worktree_branch}
+            sessionTitle={session.title}
+            onShowDiff={() => setShowDiff(true)}
+          />
+        ) : (
+          <WorktreeActions
+            actions={actionsWithLiftedState}
+            projectPath={session.project_path}
+            worktreeBranch={session.worktree_branch}
+            onShowDiff={() => setShowDiff(true)}
+          />
+        )}
         <span className="session-time">{formatTime(session.last_accessed)}</span>
       </div>
       {showDiff && <DiffViewer session={session} onClose={() => setShowDiff(false)} />}
