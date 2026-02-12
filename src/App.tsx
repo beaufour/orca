@@ -346,7 +346,7 @@ function App() {
       <div className="resize-handle" onMouseDown={handleMouseDown} />
       <div className="main-area">
         {terminalOpen ? (
-          <TerminalView session={effectiveSession} onClose={() => setSelectedSession(null)} />
+          <TerminalView session={effectiveSession!} onClose={() => setSelectedSession(null)} />
         ) : (
           <>
             <main className="main-content">
@@ -408,13 +408,13 @@ function App() {
             </main>
             {effectiveGroup && (
               <AddSessionBar
-                key={selectedGroup.path}
+                key={effectiveGroup.path}
                 ref={addSessionBarRef}
                 repoPath={effectiveGroup.default_path}
                 groupPath={effectiveGroup.path}
                 groupName={effectiveGroup.name}
                 sessions={sessions ?? []}
-                isGitRepo={selectedGroup.is_git_repo}
+                isGitRepo={effectiveGroup.is_git_repo}
                 createSession={createSession}
                 pendingCreations={pendingCreations}
               />

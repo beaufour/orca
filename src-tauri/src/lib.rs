@@ -4,6 +4,7 @@ mod command;
 mod git;
 mod github;
 mod models;
+mod orca_db;
 mod pty;
 mod tmux;
 
@@ -128,6 +129,14 @@ pub fn run() {
                 &[&app_submenu, &edit_submenu, &window_submenu, &help_submenu],
             )?;
             app.set_menu(menu)?;
+
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("Failed to get app data dir: {e}"))?;
+            let orca_db = orca_db::OrcaDb::init(&data_dir)
+                .map_err(|e| format!("Failed to init Orca DB: {e}"))?;
+            app.manage(orca_db);
 
             Ok(())
         })

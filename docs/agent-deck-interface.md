@@ -102,9 +102,11 @@ The `tool_data` column contains a JSON object. Orca extracts:
 
 Other keys in the JSON are ignored.
 
+**Note:** `prompt` was previously stored in `tool_data` but has been moved to Orca's own database (`orca.db`). Similarly, `github_issues_enabled` was previously added as a column on agent-deck's `groups` table but now lives in `orca.db`.
+
 ## DB Queries — Writes
 
-Orca writes directly to agent-deck's DB (not read-only). This is the highest-risk area for breaking changes.
+Orca writes directly to agent-deck's DB for operations that modify agent-deck's own data (worktree metadata, session management, group creation). Orca-specific data (`github_issues_enabled`, `prompt`) is stored in Orca's own database (`~/Library/Application Support/dk.beaufour.orca/orca.db`).
 
 | Function                    | Query                                                                                                    |
 | --------------------------- | -------------------------------------------------------------------------------------------------------- |

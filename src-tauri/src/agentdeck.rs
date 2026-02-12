@@ -1,7 +1,8 @@
 use crate::command::{expand_tilde, new_command};
+use crate::orca_db::OrcaDb;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
-use tauri::Emitter;
+use tauri::{Emitter, State};
 
 use crate::claude_logs::{self, AttentionStatus};
 use crate::models::{AttentionCounts, Group, Session, VersionCheck};
@@ -50,56 +51,16 @@ pub fn check_agent_deck_version() -> Result<VersionCheck, String> {
     })
 }
 
-/// Ensure the `github_issues_enabled` column exists on the `groups` table.
-/// Uses ALTER TABLE which is a no-op concept here — we check PRAGMA first.
-fn ensure_github_issues_column(conn: &Connection) -> Result<(), String> {
-    let has_column: bool = conn
-        .prepare("PRAGMA table_info(groups)")
-        .map_err(|e| e.to_string())?
-        .query_map([], |row| row.get::<_, String>(1))
-        .map_err(|e| e.to_string())?
-        .any(|name| name.as_deref() == Ok("github_issues_enabled"));
-
-    if !has_column {
-        conn.execute(
-            "ALTER TABLE groups ADD COLUMN github_issues_enabled INTEGER DEFAULT 1",
-            [],
-        )
-        .map_err(|e| format!("Failed to add github_issues_enabled column: {e}"))?;
-    }
-    Ok(())
-}
-
-/// Ensure the `merge_workflow` column exists on the `groups` table.
-fn ensure_merge_workflow_column(conn: &Connection) -> Result<(), String> {
-    let has_column: bool = conn
-        .prepare("PRAGMA table_info(groups)")
-        .map_err(|e| e.to_string())?
-        .query_map([], |row| row.get::<_, String>(1))
-        .map_err(|e| e.to_string())?
-        .any(|name| name.as_deref() == Ok("merge_workflow"));
-
-    if !has_column {
-        conn.execute(
-            "ALTER TABLE groups ADD COLUMN merge_workflow TEXT DEFAULT 'merge'",
-            [],
-        )
-        .map_err(|e| format!("Failed to add merge_workflow column: {e}"))?;
-    }
-    Ok(())
-}
-
 #[tauri::command]
-pub fn get_groups() -> Result<Vec<Group>, String> {
+pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
     log::debug!("get_groups");
-    let conn = open_db()?;
+    let conn = open_db_readonly()?;
 
-    ensure_github_issues_column(&conn)?;
-    ensure_merge_workflow_column(&conn)?;
+    let settings = orca_db.get_all_group_settings().unwrap_or_default();
 
     let mut stmt = conn
         .prepare(
-            "SELECT path, name, expanded, sort_order, default_path, github_issues_enabled, merge_workflow FROM groups ORDER BY sort_order",
+            "SELECT path, name, expanded, sort_order, default_path FROM groups ORDER BY sort_order",
         )
         .map_err(|e| e.to_string())?;
 
@@ -111,11 +72,9 @@ pub fn get_groups() -> Result<Vec<Group>, String> {
                 expanded: row.get::<_, i32>(2)? != 0,
                 sort_order: row.get(3)?,
                 default_path: row.get(4)?,
-                github_issues_enabled: row.get::<_, i32>(5).unwrap_or(1) != 0,
-                is_git_repo: false, // computed below
-                merge_workflow: row
-                    .get::<_, String>(6)
-                    .unwrap_or_else(|_| "merge".to_string()),
+                github_issues_enabled: true,         // populated below
+                is_git_repo: false,                  // computed below
+                merge_workflow: "merge".to_string(), // populated below
             })
         })
         .map_err(|e| e.to_string())?
@@ -125,6 +84,10 @@ pub fn get_groups() -> Result<Vec<Group>, String> {
     let groups = rows
         .into_iter()
         .map(|mut g| {
+            if let Some((enabled, workflow)) = settings.get(&g.path) {
+                g.github_issues_enabled = *enabled;
+                g.merge_workflow = workflow.clone();
+            }
             let expanded = expand_tilde(&g.default_path);
             g.is_git_repo = new_command("git")
                 .current_dir(&expanded)
@@ -142,27 +105,30 @@ pub fn get_groups() -> Result<Vec<Group>, String> {
 
 #[tauri::command]
 pub fn update_group_settings(
+    orca_db: State<'_, OrcaDb>,
     group_path: String,
     github_issues_enabled: bool,
     merge_workflow: String,
 ) -> Result<(), String> {
-    let conn = open_db()?;
-
-    conn.execute(
-        "UPDATE groups SET github_issues_enabled = ?1, merge_workflow = ?2 WHERE path = ?3",
-        rusqlite::params![github_issues_enabled as i32, merge_workflow, group_path],
-    )
-    .map_err(|e| format!("Failed to update group settings: {e}"))?;
-
-    Ok(())
+    orca_db.update_group_settings(&group_path, github_issues_enabled, &merge_workflow)
 }
 
 #[tauri::command]
-pub fn get_sessions(group_path: Option<String>) -> Result<Vec<Session>, String> {
+pub fn get_sessions(
+    orca_db: State<'_, OrcaDb>,
+    group_path: Option<String>,
+) -> Result<Vec<Session>, String> {
     log::debug!("get_sessions: group_path={group_path:?}");
     let conn = open_db_readonly()?;
 
-    let sessions = query_sessions(&conn, group_path.as_deref())?;
+    let mut sessions = query_sessions(&conn, group_path.as_deref())?;
+
+    let prompts = orca_db.get_all_prompts().unwrap_or_default();
+    for session in &mut sessions {
+        if let Some(prompt) = prompts.get(&session.id) {
+            session.prompt = Some(prompt.clone());
+        }
+    }
 
     log::debug!("get_sessions: found {} sessions", sessions.len());
     Ok(sessions)
@@ -312,6 +278,7 @@ fn start_agent_deck_session(session_id: &str) -> Result<(), String> {
 #[tauri::command]
 pub fn create_session(
     app: tauri::AppHandle,
+    orca_db: State<'_, OrcaDb>,
     creation_id: String,
     project_path: String,
     group: String,
@@ -322,6 +289,7 @@ pub fn create_session(
     start: Option<bool>,
     prompt: Option<String>,
 ) -> Result<(), String> {
+    let orca_db = orca_db.inner().clone();
     // Spawn the work to a background thread and return immediately
     std::thread::spawn(move || {
         match create_session_impl(
@@ -332,9 +300,17 @@ pub fn create_session(
             worktree_branch,
             new_branch,
             start,
-            prompt,
+            prompt.clone(),
         ) {
             Ok(session_id) => {
+                // Store prompt in Orca's DB
+                if let Some(ref prompt_text) = prompt {
+                    if !prompt_text.trim().is_empty() {
+                        if let Err(e) = orca_db.store_prompt(&session_id, prompt_text) {
+                            log::error!("Failed to store prompt for {session_id}: {e}");
+                        }
+                    }
+                }
                 let _ = app.emit(
                     "session-created",
                     serde_json::json!({
@@ -419,13 +395,6 @@ fn create_session_impl(
         update_session_worktree(session_id.clone(), wt_path, wt_repo, wt_branch)?;
     }
 
-    // Store the prompt in tool_data so we can display it on the session card
-    if let Some(ref prompt_text) = prompt {
-        if !prompt_text.trim().is_empty() {
-            store_prompt(&session_id, prompt_text)?;
-        }
-    }
-
     // Optionally start the session immediately
     if start.unwrap_or(false) {
         start_agent_deck_session(&session_id)?;
@@ -454,7 +423,7 @@ pub fn restart_session(session_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn remove_session(session_id: String) -> Result<(), String> {
+pub fn remove_session(orca_db: State<'_, OrcaDb>, session_id: String) -> Result<(), String> {
     // Try agent-deck remove first
     log::info!("agent-deck remove {session_id}");
     let remove_result = new_command("agent-deck")
@@ -483,6 +452,11 @@ pub fn remove_session(session_id: String) -> Result<(), String> {
 
     conn.execute("DELETE FROM instances WHERE id = ?1", [&session_id])
         .map_err(|e| format!("Failed to delete session: {e}"))?;
+
+    // Clean up Orca's own data for this session
+    if let Err(e) = orca_db.delete_session_data(&session_id) {
+        log::error!("Failed to clean up Orca session data for {session_id}: {e}");
+    }
 
     Ok(())
 }
@@ -552,7 +526,7 @@ pub fn get_attention_counts() -> Result<AttentionCounts, String> {
 }
 
 #[tauri::command]
-pub fn get_attention_sessions() -> Result<Vec<Session>, String> {
+pub fn get_attention_sessions(orca_db: State<'_, OrcaDb>) -> Result<Vec<Session>, String> {
     let conn = open_db_readonly()?;
 
     let mut stmt = conn
@@ -569,6 +543,8 @@ pub fn get_attention_sessions() -> Result<Vec<Session>, String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
+    let prompts = orca_db.get_all_prompts().unwrap_or_default();
+
     // Refine using JSONL analysis — only keep sessions that truly need attention
     let result = candidates
         .into_iter()
@@ -584,6 +560,12 @@ pub fn get_attention_sessions() -> Result<Vec<Session>, String> {
                 attention,
                 AttentionStatus::NeedsInput | AttentionStatus::Error
             )
+        })
+        .map(|mut s| {
+            if let Some(prompt) = prompts.get(&s.id) {
+                s.prompt = Some(prompt.clone());
+            }
+            s
         })
         .collect();
 
@@ -711,9 +693,6 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
     let claude_session_id = tool_data
         .as_ref()
         .and_then(|v| v.get("claude_session_id")?.as_str().map(String::from));
-    let prompt = tool_data
-        .as_ref()
-        .and_then(|v| v.get("prompt")?.as_str().map(String::from));
     let pr_url = tool_data
         .as_ref()
         .and_then(|v| v.get("pr_url")?.as_str().map(String::from));
@@ -738,37 +717,11 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
         worktree_repo: row.get(10)?,
         worktree_branch: row.get(11)?,
         claude_session_id,
-        prompt,
+        prompt: None, // populated by caller from Orca DB
         pr_url,
         pr_number,
         pr_state,
     })
-}
-
-/// Store the prompt in the session's tool_data JSON.
-fn store_prompt(session_id: &str, prompt: &str) -> Result<(), String> {
-    let conn = open_db()?;
-
-    let current: String = conn
-        .query_row(
-            "SELECT tool_data FROM instances WHERE id = ?1",
-            [session_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| format!("Failed to read tool_data for {session_id}: {e}"))?;
-
-    let mut data: serde_json::Value =
-        serde_json::from_str(&current).unwrap_or(serde_json::json!({}));
-    data["prompt"] = serde_json::Value::String(prompt.to_string());
-
-    let updated = serde_json::to_string(&data).map_err(|e| format!("JSON serialize error: {e}"))?;
-    conn.execute(
-        "UPDATE instances SET tool_data = ?1 WHERE id = ?2",
-        rusqlite::params![updated, session_id],
-    )
-    .map_err(|e| format!("Failed to update tool_data for {session_id}: {e}"))?;
-
-    Ok(())
 }
 
 /// Store PR info in the session's tool_data JSON.
