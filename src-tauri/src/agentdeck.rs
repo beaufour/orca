@@ -7,7 +7,7 @@ use tauri::{Emitter, State};
 use crate::claude_logs::{self, AttentionStatus};
 use crate::models::{AttentionCounts, Group, Session, VersionCheck};
 
-const SUPPORTED_VERSION: &str = "0.11.2";
+const SUPPORTED_VERSION: &str = "0.13.0";
 
 fn db_path() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
@@ -39,7 +39,7 @@ pub fn check_agent_deck_version() -> Result<VersionCheck, String> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    // Parse "Agent Deck v0.11.2" → "0.11.2"
+    // Parse "Agent Deck v0.13.0" → "0.13.0"
     let installed = stdout
         .strip_prefix("Agent Deck v")
         .unwrap_or(&stdout)
