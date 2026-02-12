@@ -44,14 +44,26 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
 
-  // Only use escape to close when no textarea is active
+  const guardedClose = useCallback(() => {
+    if (comments.length > 0) {
+      if (
+        !window.confirm(
+          `You have ${comments.length} unsent comment${comments.length !== 1 ? "s" : ""}. Discard and close?`,
+        )
+      ) {
+        return;
+      }
+    }
+    onClose();
+  }, [comments.length, onClose]);
+
   useEscapeKey(() => {
     if (editingCommentId !== null) {
       setEditingCommentId(null);
     } else if (activeCommentInput) {
       cancelComment();
     } else {
-      onClose();
+      guardedClose();
     }
   });
 
@@ -204,7 +216,7 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
   };
 
   return (
-    <Modal onClose={onClose} className="diff-modal-content">
+    <Modal onClose={guardedClose} className="diff-modal-content">
       <div className="diff-header">
         <div className="diff-header-title">
           <span>Diff: {session.worktree_branch}</span>
@@ -232,7 +244,7 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
               </button>
             </>
           )}
-          <button className="wt-btn" onClick={onClose}>
+          <button className="wt-btn" onClick={guardedClose}>
             Close
           </button>
         </div>
