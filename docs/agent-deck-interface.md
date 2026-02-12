@@ -235,6 +235,7 @@ When upgrading agent-deck, verify:
 7. **Conflict message** — still matches `"Session already exists with same title and path: <name> (<id>)"`?
 8. **`session start`** — still accepts `agent-deck session start <id>`?
 9. **`remove`** — still accepts `agent-deck remove <id>`?
+10. **Update `SUPPORTED_VERSION`** in `src-tauri/src/agentdeck.rs` and the version at the top of this doc.
 
 ## Source Files
 
