@@ -17,7 +17,7 @@
     "rustfmt:check": "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run lint && npm run format:check && npm run rustfmt:check && npm run clippy && npm run test",
+    "check": "npx tsc --noEmit && npm run lint && npm run format:check && npm run rustfmt:check && npm run clippy && npm run test",
     "fix": "npm run lint:fix && npm run format && npm run rustfmt"
   },
   "devDependencies": {
