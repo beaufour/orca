@@ -41,10 +41,14 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
     endLine: number;
   } | null>(null);
   const [commentText, setCommentText] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
 
   // Only use escape to close when no textarea is active
   useEscapeKey(() => {
-    if (activeCommentInput) {
+    if (editingCommentId !== null) {
+      setEditingCommentId(null);
+    } else if (activeCommentInput) {
       cancelComment();
     } else {
       onClose();
@@ -129,6 +133,25 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
 
   const deleteComment = (commentId: number) => {
     setComments((prev) => prev.filter((c) => c.id !== commentId));
+    if (editingCommentId === commentId) setEditingCommentId(null);
+  };
+
+  const startEditing = (comment: DiffComment) => {
+    setEditingCommentId(comment.id);
+    setEditText(comment.text);
+  };
+
+  const saveEdit = () => {
+    if (editingCommentId === null) return;
+    const trimmed = editText.trim();
+    if (!trimmed) {
+      deleteComment(editingCommentId);
+    } else {
+      setComments((prev) =>
+        prev.map((c) => (c.id === editingCommentId ? { ...c, text: trimmed } : c)),
+      );
+    }
+    setEditingCommentId(null);
   };
 
   const clearAllComments = () => {
@@ -276,14 +299,68 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
                         </div>
                         {lineComments.map((c) => (
                           <div key={c.id} className="diff-comment-display">
-                            <div className="diff-comment-text">{c.text}</div>
-                            <button
-                              className="diff-comment-delete"
-                              onClick={() => deleteComment(c.id)}
-                              title="Delete comment"
-                            >
-                              x
-                            </button>
+                            {editingCommentId === c.id ? (
+                              <div className="diff-comment-edit-row">
+                                <textarea
+                                  className="diff-comment-textarea"
+                                  value={editText}
+                                  onChange={(e) => setEditText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Escape") {
+                                      e.stopPropagation();
+                                      setEditingCommentId(null);
+                                    } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                      e.preventDefault();
+                                      saveEdit();
+                                    }
+                                  }}
+                                  autoFocus
+                                  rows={3}
+                                />
+                                <div className="diff-comment-input-actions">
+                                  <button
+                                    className="wt-btn wt-btn-add"
+                                    onClick={saveEdit}
+                                    disabled={!editText.trim()}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    className="wt-btn"
+                                    onClick={() => setEditingCommentId(null)}
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    className="wt-btn wt-btn-danger"
+                                    onClick={() => deleteComment(c.id)}
+                                  >
+                                    Delete
+                                  </button>
+                                  <span className="diff-comment-shortcut-hint">
+                                    {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl"}+Enter
+                                    to save
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div
+                                  className="diff-comment-text"
+                                  onClick={() => startEditing(c)}
+                                  title="Click to edit"
+                                >
+                                  {c.text}
+                                </div>
+                                <button
+                                  className="diff-comment-delete"
+                                  onClick={() => deleteComment(c.id)}
+                                  title="Delete comment"
+                                >
+                                  x
+                                </button>
+                              </>
+                            )}
                           </div>
                         ))}
                         {showInput && (
