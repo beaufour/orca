@@ -368,7 +368,10 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
           <DiffViewer
             session={session}
             tmuxSession={session.tmux_session ?? null}
-            onClose={() => setShowDiff(false)}
+            onClose={() => {
+              setShowDiff(false);
+              terminalRef.current?.focus();
+            }}
           />
         )}
       </div>
@@ -412,7 +415,10 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         <DiffViewer
           session={session}
           tmuxSession={session.tmux_session ?? null}
-          onClose={() => setShowDiff(false)}
+          onClose={() => {
+            setShowDiff(false);
+            terminalRef.current?.focus();
+          }}
         />
       )}
     </div>
