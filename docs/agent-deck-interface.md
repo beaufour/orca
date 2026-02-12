@@ -3,7 +3,7 @@
 Documents the agent-deck interfaces Orca depends on. Use this to identify breaking changes when upgrading.
 
 **Repository:** https://github.com/asheshgoplani/agent-deck
-**Current version: v0.11.2**
+**Current version: v0.11.2** (latest: v0.13.0 — safe to upgrade, no breaking changes)
 
 ## DB Path
 
@@ -15,7 +15,7 @@ Resolved via `dirs::home_dir().join(".agent-deck/profiles/default/state.db")`.
 
 ## DB Schema
 
-Dumped from v0.11.2:
+Dumped from v0.11.2 (unchanged through v0.13.0):
 
 ```sql
 CREATE TABLE metadata (
@@ -145,7 +145,7 @@ Flags Orca uses:
 2. Conflict: matches `"Session already exists with same title and path: <name> (<id>)"`
 3. Failure: non-zero exit code, stderr returned as error
 
-Flags Orca does NOT use: `-mcp`, `-parent`, `-location`, `-wrapper`, `-quiet`
+Flags Orca does NOT use: `-mcp`, `-parent`, `-location`, `-wrapper`, `-quiet`, `--quick`/`-Q` (v0.13.0), `--resume-session` (v0.13.0)
 
 ### `agent-deck session start`
 
@@ -181,6 +181,46 @@ Orca filters on these `instances.status` values:
 | `error`   | Error state      |
 
 Orca specifically filters for `waiting` and `error` in attention queries.
+
+## Conductors (v0.12.0+)
+
+Conductors are meta-agent orchestrators — agent-deck sessions that supervise and coordinate other sessions. They appear as regular sessions in the DB but live in a special "conductor" group pinned to `sort_order = -1`.
+
+Orca doesn't use the conductor system directly, but conductor sessions and their group will appear in DB queries. The pinned `sort_order = -1` means the conductor group sorts before all user groups.
+
+Key details:
+
+- Config lives in `~/.agent-deck/conductor/<name>/meta.json`
+- CLI: `agent-deck conductor` subcommand (setup, teardown, list, etc.)
+- Heartbeat system checks managed sessions periodically (default: 15 min)
+- Optional Telegram bot integration for notifications
+
+## Upgrade Log
+
+### v0.11.2 → v0.13.0 (analyzed 2025-02-11)
+
+**DB schema:** Unchanged. No columns added, removed, or renamed.
+
+**DB behavior (v0.11.3):** `SaveInstances()` now deletes rows not in the provided list, preventing deleted sessions from reappearing on reload. This improves the `remove` bug Orca works around, but keeping the direct-delete fallback is still prudent.
+
+**New CLI flags on `add`:**
+
+- `--quick` / `-Q` — auto-generate adjective-noun session name
+- `--resume-session <id>` — resume an existing Claude session (Claude-only)
+
+**New features (no Orca impact):**
+
+- Conductor system (v0.12.0) — meta-agent orchestration
+- OpenCode model/agent options (v0.12.1)
+- `allow_dangerous_mode` Claude config (v0.11.4) — `--allow-dangerously-skip-permissions`
+- `[tmux]` config section for option overrides (v0.12.1)
+- Atomic tmux send-keys to prevent Enter key drops (v0.12.2)
+- Spinner movement tracking for stuck spinner detection (v0.12.3)
+- Quick session creation with Shift+N in TUI (v0.13.0)
+
+**Status detection changes (v0.12.3):** Busy detection window reduced from 25→10 lines. "esc to interrupt" pattern removed. New 3s grace period prevents false waiting-state flashes between tool calls. No impact on Orca (reads status from DB, not own pattern matching).
+
+**Verdict:** Safe to upgrade with zero Orca code changes.
 
 ## Breaking Change Checklist
 
