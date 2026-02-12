@@ -175,10 +175,7 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
     if (!tmuxSession || comments.length === 0) return;
     const prompt = formatCommentsAsPrompt(comments);
     try {
-      await invoke("paste_to_tmux_pane", { tmuxSession, text: prompt });
-      // Brief pause so the TUI processes the pasted text before submitting
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      await invoke("send_key_to_tmux", { tmuxSession, key: "Enter" });
+      await invoke("paste_to_tmux_pane", { tmuxSession, text: prompt, submit: true });
       onClose();
     } catch (err) {
       console.error("Failed to send comments to tmux:", err);

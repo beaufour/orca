@@ -175,7 +175,6 @@ pub fn run() {
             git::update_main_branch,
             tmux::list_tmux_sessions,
             tmux::paste_to_tmux_pane,
-            tmux::send_key_to_tmux,
             tmux::scroll_tmux_pane,
             github::list_issues,
             github::get_issue,

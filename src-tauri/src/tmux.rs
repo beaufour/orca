@@ -6,12 +6,19 @@ use tauri::command;
 /// Loads text into a temporary tmux buffer, then pastes it with `-p`
 /// (bracketed paste). The application in the pane receives the text
 /// wrapped in bracketed paste markers and inserts it literally.
-/// Used for Shift+Enter (paste a newline without submitting).
+///
+/// When `submit` is true, sends Enter after a brief pause to submit
+/// the pasted text (e.g. to a Claude Code prompt).
 #[command]
-pub fn paste_to_tmux_pane(tmux_session: String, text: String) -> Result<(), String> {
+pub fn paste_to_tmux_pane(
+    tmux_session: String,
+    text: String,
+    submit: Option<bool>,
+) -> Result<(), String> {
     log::info!(
-        "paste_to_tmux_pane: tmux_session={tmux_session}, text_len={}",
-        text.len()
+        "paste_to_tmux_pane: tmux_session={tmux_session}, text_len={}, submit={:?}",
+        text.len(),
+        submit
     );
     let status = new_command("tmux")
         .args(["set-buffer", "-b", "_orca", "--", &text])
@@ -40,21 +47,19 @@ pub fn paste_to_tmux_pane(tmux_session: String, text: String) -> Result<(), Stri
         return Err(format!("tmux paste-buffer failed: {}", stderr.trim()));
     }
 
-    Ok(())
-}
+    if submit.unwrap_or(false) {
+        // Brief pause so the TUI processes the pasted text before submitting
+        std::thread::sleep(std::time::Duration::from_millis(200));
 
-/// Send a named key (e.g. "Enter") to a tmux session.
-#[command]
-pub fn send_key_to_tmux(tmux_session: String, key: String) -> Result<(), String> {
-    log::info!("send_key_to_tmux: tmux_session={tmux_session}, key={key}");
-    let output = new_command("tmux")
-        .args(["send-keys", "-t", &tmux_session, &key])
-        .output()
-        .map_err(|e| format!("Failed to send key via tmux: {e}"))?;
+        let enter_output = new_command("tmux")
+            .args(["send-keys", "-t", &tmux_session, "Enter"])
+            .output()
+            .map_err(|e| format!("Failed to send Enter via tmux: {e}"))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("tmux send-keys failed: {}", stderr.trim()));
+        if !enter_output.status.success() {
+            let stderr = String::from_utf8_lossy(&enter_output.stderr);
+            return Err(format!("tmux send-keys (Enter) failed: {}", stderr.trim()));
+        }
     }
 
     Ok(())
