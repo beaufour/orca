@@ -43,6 +43,23 @@ pub fn paste_to_tmux_pane(tmux_session: String, text: String) -> Result<(), Stri
     Ok(())
 }
 
+/// Send a named key (e.g. "Enter") to a tmux session.
+#[command]
+pub fn send_key_to_tmux(tmux_session: String, key: String) -> Result<(), String> {
+    log::info!("send_key_to_tmux: tmux_session={tmux_session}, key={key}");
+    let output = new_command("tmux")
+        .args(["send-keys", "-t", &tmux_session, &key])
+        .output()
+        .map_err(|e| format!("Failed to send key via tmux: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tmux send-keys failed: {}", stderr.trim()));
+    }
+
+    Ok(())
+}
+
 /// Scroll a tmux pane up or down by entering copy mode.
 ///
 /// Uses `-e` flag so copy mode auto-exits when scrolled back to the bottom.
