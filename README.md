@@ -12,6 +12,10 @@ A desktop app for managing parallel <a href="https://claude.ai/claude-code">Clau
 
 Orca allows you to have many parallel Claude Code sessions running at the same time, while giving you a view into what each one is doing, which ones need your attention, and one-click access to handy utils like a diff view and terminals. It is built on top of [agent-deck](https://github.com/nichochar/agent-deck).
 
+<p align="center">
+  <img src="docs/imgs/app.png" alt="Orca screenshot" width="800">
+</p>
+
 ## Status
 
 This app is very much in development mode and is crafted for my workflow, but I'd wager it should work for most people.
