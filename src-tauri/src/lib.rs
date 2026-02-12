@@ -188,6 +188,7 @@ pub fn run() {
             pty::write_pty,
             pty::resize_pty,
             pty::close_pty,
+            command::check_prerequisites,
             read_app_log,
             open_in_terminal,
         ])

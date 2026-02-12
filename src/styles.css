@@ -1595,6 +1595,71 @@ body {
   margin-bottom: 16px;
 }
 
+/* Prerequisite check */
+.prereq-title {
+  color: #f59e0b;
+}
+
+.prereq-section {
+  margin-bottom: 12px;
+}
+
+.prereq-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.prereq-label-required {
+  color: var(--status-needs-input);
+}
+
+.prereq-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 4px 0;
+}
+
+.prereq-item {
+  font-size: 14px;
+  padding: 4px 0;
+  color: var(--text-secondary);
+}
+
+.prereq-item code {
+  background: var(--bg-card);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.prereq-item-required code {
+  border-left: 3px solid var(--status-needs-input);
+}
+
+.prereq-item-optional code {
+  border-left: 3px solid #f59e0b;
+}
+
+.prereq-actions {
+  align-items: center;
+}
+
+.prereq-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-right: auto;
+}
+
+.prereq-checkbox-label input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
 /* Group settings toggle */
 .settings-toggle {
   display: flex;
