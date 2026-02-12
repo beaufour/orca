@@ -126,6 +126,10 @@ export function useWorktreeActions({
     onSuccess: (result) => {
       setMergeResult(result);
       setMergeState(result.success ? "success" : "conflict");
+      // Clear cached worktree status so the remove dialog doesn't show stale "not merged" data
+      queryClient.removeQueries({
+        queryKey: queryKeys.worktreeStatus(session.worktree_path ?? ""),
+      });
     },
     onError: () => {
       setMergeState("idle");
