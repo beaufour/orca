@@ -4,6 +4,7 @@ mod command;
 mod git;
 mod github;
 mod models;
+mod orca_db;
 mod pty;
 mod tmux;
 
@@ -69,6 +70,15 @@ pub fn run() {
                     })
                     .build(),
             )?;
+
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("Failed to get app data dir: {e}"))?;
+            let orca_db = orca_db::OrcaDb::init(&data_dir)
+                .map_err(|e| format!("Failed to init Orca DB: {e}"))?;
+            app.manage(orca_db);
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
