@@ -1277,12 +1277,56 @@ body {
   background: rgba(74, 158, 255, 0.06);
 }
 
+.diff-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diff-comment-count {
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(74, 158, 255, 0.15);
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.diff-file-comment-badge {
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(74, 158, 255, 0.15);
+  color: var(--accent);
+  padding: 1px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
 .diff-line {
-  padding: 0 20px;
+  display: flex;
   font-size: 12px;
   font-family: "SF Mono", "Menlo", monospace;
-  white-space: pre;
   line-height: 1.5;
+  cursor: pointer;
+}
+
+.diff-line:hover {
+  filter: brightness(1.15);
+}
+
+.diff-line-gutter {
+  width: 24px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.5;
+  user-select: none;
+}
+
+.diff-line-content {
+  flex: 1;
+  white-space: pre;
+  padding-right: 20px;
 }
 
 .diff-line-addition {
@@ -1297,6 +1341,90 @@ body {
 
 .diff-line-context {
   color: var(--text-secondary);
+}
+
+.diff-line-selected {
+  outline: 1px solid rgba(74, 158, 255, 0.5);
+  background: rgba(74, 158, 255, 0.12) !important;
+}
+
+.diff-line-commented {
+  border-left: 2px solid var(--accent);
+}
+
+/* Inline comment input */
+.diff-comment-input-row {
+  padding: 8px 20px 8px 24px;
+  background: var(--bg-card);
+  border-left: 3px solid var(--accent);
+}
+
+.diff-comment-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  outline: none;
+  resize: vertical;
+  min-height: 60px;
+  line-height: 1.4;
+}
+
+.diff-comment-textarea:focus {
+  border-color: var(--accent);
+}
+
+.diff-comment-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.diff-comment-shortcut-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* Saved comment display */
+.diff-comment-display {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 20px 6px 24px;
+  background: rgba(74, 158, 255, 0.05);
+  border-left: 3px solid var(--accent);
+}
+
+.diff-comment-text {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.diff-comment-delete {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-family: monospace;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.diff-comment-delete:hover {
+  color: var(--status-needs-input);
+  background: rgba(239, 68, 68, 0.15);
 }
 
 /* Merge button and states */

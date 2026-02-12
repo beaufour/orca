@@ -364,7 +364,13 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         <div className="terminal-no-tmux">
           No tmux session found. Click Restart to create a new one.
         </div>
-        {showDiff && <DiffViewer session={session} onClose={() => setShowDiff(false)} />}
+        {showDiff && (
+          <DiffViewer
+            session={session}
+            tmuxSession={session.tmux_session ?? null}
+            onClose={() => setShowDiff(false)}
+          />
+        )}
       </div>
     );
   }
@@ -402,7 +408,13 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         className={`xterm-container ${terminalReady ? "" : "xterm-container-loading"} ${isDragOver ? "xterm-container-dragover" : ""}`}
         ref={containerRef}
       />
-      {showDiff && <DiffViewer session={session} onClose={() => setShowDiff(false)} />}
+      {showDiff && (
+        <DiffViewer
+          session={session}
+          tmuxSession={session.tmux_session ?? null}
+          onClose={() => setShowDiff(false)}
+        />
+      )}
     </div>
   );
 }
