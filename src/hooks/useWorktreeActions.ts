@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import {
   useQuery,
   useMutation,
@@ -8,10 +8,17 @@ import {
 } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { Session, WorktreeStatus, MergeResult } from "../types";
+import type { Session, WorktreeStatus, MergeResult, RebaseResult } from "../types";
 import { queryKeys } from "../queryKeys";
 
-export type MergeState = "idle" | "confirming" | "merging" | "success" | "conflict";
+export type MergeState =
+  | "idle"
+  | "confirming"
+  | "rebasing"
+  | "rebase_conflict"
+  | "merging"
+  | "success"
+  | "conflict";
 
 /** The return type of useWorktreeActions, with setters widened for prop compatibility */
 export interface WorktreeActionsResult {
@@ -29,11 +36,15 @@ export interface WorktreeActionsResult {
   hasWarnings: boolean;
   hasMergeWarnings: boolean;
   removeMutation: UseMutationResult<void, Error, void>;
+  rebaseMutation: UseMutationResult<RebaseResult, Error, void>;
   mergeMutation: UseMutationResult<MergeResult, Error, void>;
   mergeCleanupMutation: UseMutationResult<void, Error, "remove_all" | "remove_worktree" | "keep">;
   conflictSessionMutation: UseMutationResult<string, Error, void>;
+  abortRebaseMutation: UseMutationResult<void, Error, void>;
   abortMergeMutation: UseMutationResult<void, Error, void>;
   isRemoving: boolean;
+  startRebase: () => void;
+  startMerge: () => void;
   isPending: boolean;
   mutationError: Error | null;
 }
@@ -57,6 +68,7 @@ export function useWorktreeActions({
   const [mergeResult, setMergeResult] = useState<MergeResult | null>(null);
   const [removingSessionId, setRemovingSessionId] = useState<string | null>(null);
   const [removalError, setRemovalError] = useState<Error | null>(null);
+  const mergeAfterRebase = useRef(false);
 
   const isWorktree = !!session.worktree_branch;
   const isRemoving = removingSessionId === session.id;
@@ -139,6 +151,31 @@ export function useWorktreeActions({
     session.worktree_branch !== "master" &&
     session.worktree_branch !== defaultBranch;
 
+  const rebaseMutation = useMutation({
+    mutationFn: () =>
+      invoke<RebaseResult>("rebase_branch", {
+        worktreePath: session.worktree_path,
+        mainBranch: defaultBranch ?? "main",
+      }),
+    onSuccess: (result) => {
+      if (result.success) {
+        if (mergeAfterRebase.current) {
+          mergeAfterRebase.current = false;
+          setMergeState("merging");
+          mergeMutation.mutate();
+        } else {
+          setMergeState("idle");
+        }
+      } else {
+        setMergeState("rebase_conflict");
+      }
+    },
+    onError: () => {
+      mergeAfterRebase.current = false;
+      setMergeState("idle");
+    },
+  });
+
   const mergeMutation = useMutation({
     mutationFn: () =>
       invoke<MergeResult>("try_merge_branch", {
@@ -197,15 +234,23 @@ export function useWorktreeActions({
 
   const conflictSessionMutation = useMutation({
     mutationFn: async () => {
-      const mainPath = mergeResult?.main_worktree_path;
-      if (!mainPath) throw new Error("No main worktree path");
-      const prompt = `There are merge conflicts from merging '${session.worktree_branch}' into ${defaultBranch ?? "main"}. Please resolve all conflicts, then commit the merge.`;
+      const isRebaseConflict = mergeState === "rebase_conflict";
+      const targetPath = isRebaseConflict ? session.worktree_path : mergeResult?.main_worktree_path;
+      if (!targetPath) throw new Error("No worktree path for conflict resolution");
+
+      const prompt = isRebaseConflict
+        ? `There are rebase conflicts from rebasing onto ${defaultBranch ?? "main"}. Please resolve all conflicts and continue the rebase with \`git rebase --continue\`.`
+        : `There are merge conflicts from merging '${session.worktree_branch}' into ${defaultBranch ?? "main"}. Please resolve all conflicts, then commit the merge.`;
+      const title = isRebaseConflict
+        ? `rebase-${session.worktree_branch}`
+        : `merge-${session.worktree_branch}`;
+
       const creationId = crypto.randomUUID();
       await invoke("create_session", {
         creationId,
-        projectPath: mainPath,
+        projectPath: targetPath,
         group: session.group_path,
-        title: `merge-${session.worktree_branch}`,
+        title,
         tool: "claude",
         worktreeBranch: null,
         newBranch: false,
@@ -244,6 +289,16 @@ export function useWorktreeActions({
     },
   });
 
+  const abortRebaseMutation = useMutation({
+    mutationFn: (): Promise<void> =>
+      invoke<void>("abort_rebase", {
+        worktreePath: session.worktree_path,
+      }),
+    onSuccess: () => {
+      setMergeState("idle");
+    },
+  });
+
   const abortMergeMutation = useMutation({
     mutationFn: (): Promise<void> => {
       const mainPath = mergeResult?.main_worktree_path;
@@ -259,17 +314,33 @@ export function useWorktreeActions({
   const isPending =
     isRemoving ||
     removeMutation.isPending ||
+    rebaseMutation.isPending ||
     mergeMutation.isPending ||
     mergeCleanupMutation.isPending ||
     conflictSessionMutation.isPending ||
+    abortRebaseMutation.isPending ||
     abortMergeMutation.isPending;
   const mutationError =
     removalError ??
     removeMutation.error ??
+    rebaseMutation.error ??
     mergeMutation.error ??
     mergeCleanupMutation.error ??
     conflictSessionMutation.error ??
+    abortRebaseMutation.error ??
     abortMergeMutation.error;
+
+  const startRebase = () => {
+    mergeAfterRebase.current = false;
+    setMergeState("rebasing");
+    rebaseMutation.mutate();
+  };
+
+  const startMerge = () => {
+    mergeAfterRebase.current = true;
+    setMergeState("rebasing");
+    rebaseMutation.mutate();
+  };
 
   return {
     isWorktree,
@@ -286,11 +357,15 @@ export function useWorktreeActions({
     hasWarnings,
     hasMergeWarnings,
     removeMutation,
+    rebaseMutation,
     mergeMutation,
     mergeCleanupMutation,
     conflictSessionMutation,
+    abortRebaseMutation,
     abortMergeMutation,
     isRemoving,
+    startRebase,
+    startMerge,
     isPending,
     mutationError,
   };
