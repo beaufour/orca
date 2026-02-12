@@ -271,6 +271,29 @@ function App() {
     setConfirmingRemoveId(null);
   }, []);
 
+  // Wrap session selection to also update keyboard focus index
+  const handleSelectSession = useCallback(
+    (session: Session) => {
+      setSelectedSession(session);
+      const idx = filteredSessions?.findIndex((s) => s.id === session.id) ?? -1;
+      if (idx >= 0) {
+        updateFocusedIndex(idx);
+      }
+    },
+    [filteredSessions, updateFocusedIndex],
+  );
+
+  // When closing the terminal, focus the session that was just open
+  const handleCloseTerminal = useCallback(() => {
+    if (selectedSession && filteredSessions) {
+      const idx = filteredSessions.findIndex((s) => s.id === selectedSession.id);
+      if (idx >= 0) {
+        updateFocusedIndex(idx);
+      }
+    }
+    setSelectedSession(null);
+  }, [selectedSession, filteredSessions, updateFocusedIndex]);
+
   // Derive clamped focused index from session count
   const clampedFocusedIndex = useMemo(() => {
     if (!filteredSessions) return focusedIndex;
@@ -373,7 +396,7 @@ function App() {
       <div className="resize-handle" onMouseDown={handleMouseDown} />
       <div className="main-area">
         {terminalOpen ? (
-          <TerminalView session={effectiveSession!} onClose={() => setSelectedSession(null)} />
+          <TerminalView session={effectiveSession!} onClose={handleCloseTerminal} />
         ) : (
           <>
             <main className="main-content">
@@ -396,7 +419,7 @@ function App() {
                 <TodoList
                   group={effectiveGroup}
                   sessions={filteredSessions}
-                  onSelectSession={setSelectedSession}
+                  onSelectSession={handleSelectSession}
                   liveTmuxSessions={liveTmuxSet}
                   sessionsLoading={sessionsLoading}
                   sessionsError={sessionsError}
@@ -412,7 +435,7 @@ function App() {
                 <SessionList
                   sessions={filteredSessions}
                   groupNames={needsActionFilter || !effectiveGroup ? groupNames : undefined}
-                  onSelectSession={setSelectedSession}
+                  onSelectSession={handleSelectSession}
                   selectedSessionId={null}
                   focusedIndex={clampedFocusedIndex}
                   isLoading={sessionsLoading}
