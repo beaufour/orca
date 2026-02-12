@@ -204,7 +204,13 @@ function TodoCardInProgress({
         )}
         <span className="session-time">{formatTime(session.last_accessed)}</span>
       </div>
-      {showDiff && <DiffViewer session={session} onClose={() => setShowDiff(false)} />}
+      {showDiff && (
+        <DiffViewer
+          session={session}
+          tmuxSession={session.tmux_session || null}
+          onClose={() => setShowDiff(false)}
+        />
+      )}
     </div>
   );
 }
