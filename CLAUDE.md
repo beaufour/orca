@@ -16,29 +16,24 @@ GUI for managing parallel Claude Code sessions across repos and git worktrees. B
 - `src-tauri/src/` - Rust backend (Tauri commands)
 - `docs/` - Design documents and TODOs
 
+## Before Anything Else
+
+**ALWAYS run `npm install` first** before any other command (`npm run check`, `npx tsc`, etc). Without `node_modules/`, all JS/TS tooling will fail. Do this at the start of every session.
+
 ## Development
 
 ```bash
-npm install                    # Install JS dependencies
+npm install                    # REQUIRED FIRST STEP - install JS dependencies
 npx tauri dev                  # Run in development mode (builds Rust + starts Vite)
 cargo build --manifest-path src-tauri/Cargo.toml  # Build Rust only
-npx tsc --noEmit               # TypeScript type check only
 ```
 
-## Linting
+## Linting & Checks
 
-**Prerequisites:** Run `npm install` first — all JS/TS checks (ESLint, Prettier, tsc) require node_modules to be installed.
-
-A pre-commit hook runs all checks automatically. To set it up after cloning:
+Run all checks before committing:
 
 ```bash
-git config core.hooksPath .githooks
-```
-
-To run all checks manually:
-
-```bash
-npm run check                  # ESLint + Prettier + rustfmt + Clippy
+npm run check                  # ESLint + Prettier + rustfmt + Clippy + tests
 ```
 
 To autofix:
@@ -47,7 +42,11 @@ To autofix:
 npm run fix                    # ESLint --fix + Prettier --write + rustfmt
 ```
 
-Always run `npm run check` before committing. The pre-commit hook will block commits that fail linting or formatting.
+A pre-commit hook runs all checks automatically. To set it up after cloning:
+
+```bash
+git config core.hooksPath .githooks
+```
 
 ## Architecture
 
