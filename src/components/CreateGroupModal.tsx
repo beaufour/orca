@@ -73,6 +73,7 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
       });
       if (createNewRepo) {
         await invoke("create_session", {
+          creationId: crypto.randomUUID(),
           projectPath: repoPath,
           group: name.trim(),
           title: "main",
@@ -104,6 +105,7 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
       });
       // Auto-start a main session so the user doesn't have to
       await invoke("create_session", {
+        creationId: crypto.randomUUID(),
         projectPath: repoPath,
         group: name.trim(),
         title: "main",

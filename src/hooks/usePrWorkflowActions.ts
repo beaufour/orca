@@ -7,6 +7,7 @@ import {
   type UseMutationResult,
 } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { Session, WorktreeStatus, PrInfo, RebaseResult, PushResult } from "../types";
 
 export type PrState =
@@ -294,7 +295,9 @@ export function usePrWorkflowActions({
   const conflictSessionMutation = useMutation({
     mutationFn: async () => {
       const prompt = `There are rebase conflicts from rebasing onto ${defaultBranch ?? "main"}. Please resolve all conflicts and continue the rebase with \`git rebase --continue\`.`;
-      const sessionId = await invoke<string>("create_session", {
+      const creationId = crypto.randomUUID();
+      await invoke("create_session", {
+        creationId,
         projectPath: session.worktree_path,
         group: session.group_path,
         title: `rebase-${session.worktree_branch}`,
@@ -303,6 +306,22 @@ export function usePrWorkflowActions({
         newBranch: false,
         start: true,
         prompt,
+      });
+      // Wait for session-created event to get the session ID
+      const sessionId = await new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Session creation timed out")), 60_000);
+        listen<{ creation_id: string; session_id: string }>("session-created", (event) => {
+          if (event.payload.creation_id === creationId) {
+            clearTimeout(timeout);
+            resolve(event.payload.session_id);
+          }
+        });
+        listen<{ creation_id: string; error: string }>("session-creation-failed", (event) => {
+          if (event.payload.creation_id === creationId) {
+            clearTimeout(timeout);
+            reject(new Error(event.payload.error));
+          }
+        });
       });
       return sessionId;
     },

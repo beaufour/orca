@@ -7,6 +7,7 @@ import {
   type UseMutationResult,
 } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { Session, WorktreeStatus, MergeResult } from "../types";
 import { queryKeys } from "../queryKeys";
 
@@ -168,7 +169,9 @@ export function useWorktreeActions({
       const mainPath = mergeResult?.main_worktree_path;
       if (!mainPath) throw new Error("No main worktree path");
       const prompt = `There are merge conflicts from merging '${session.worktree_branch}' into ${defaultBranch ?? "main"}. Please resolve all conflicts, then commit the merge.`;
-      const sessionId = await invoke<string>("create_session", {
+      const creationId = crypto.randomUUID();
+      await invoke("create_session", {
+        creationId,
         projectPath: mainPath,
         group: session.group_path,
         title: `merge-${session.worktree_branch}`,
@@ -177,6 +180,22 @@ export function useWorktreeActions({
         newBranch: false,
         start: true,
         prompt,
+      });
+      // Wait for session-created event to get the session ID
+      const sessionId = await new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Session creation timed out")), 60_000);
+        listen<{ creation_id: string; session_id: string }>("session-created", (event) => {
+          if (event.payload.creation_id === creationId) {
+            clearTimeout(timeout);
+            resolve(event.payload.session_id);
+          }
+        });
+        listen<{ creation_id: string; error: string }>("session-creation-failed", (event) => {
+          if (event.payload.creation_id === creationId) {
+            clearTimeout(timeout);
+            reject(new Error(event.payload.error));
+          }
+        });
       });
       return sessionId;
     },
