@@ -43,22 +43,20 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
   const [commentText, setCommentText] = useState("");
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
+  const [confirmingClose, setConfirmingClose] = useState(false);
 
   const guardedClose = useCallback(() => {
     if (comments.length > 0) {
-      if (
-        !window.confirm(
-          `You have ${comments.length} unsent comment${comments.length !== 1 ? "s" : ""}. Discard and close?`,
-        )
-      ) {
-        return;
-      }
+      setConfirmingClose(true);
+    } else {
+      onClose();
     }
-    onClose();
   }, [comments.length, onClose]);
 
   useEscapeKey(() => {
-    if (editingCommentId !== null) {
+    if (confirmingClose) {
+      setConfirmingClose(false);
+    } else if (editingCommentId !== null) {
       setEditingCommentId(null);
     } else if (activeCommentInput) {
       cancelComment();
@@ -232,21 +230,37 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
           )}
         </div>
         <div className="diff-header-actions">
-          {comments.length > 0 && (
+          {confirmingClose ? (
             <>
-              {tmuxSession && (
-                <button className="wt-btn wt-btn-add" onClick={sendComments}>
-                  Send {comments.length} comment{comments.length !== 1 ? "s" : ""} to Claude
-                </button>
+              <span className="diff-close-confirm-text">
+                Discard {comments.length} unsent comment{comments.length !== 1 ? "s" : ""}?
+              </span>
+              <button className="wt-btn wt-btn-danger" onClick={onClose}>
+                Discard
+              </button>
+              <button className="wt-btn" onClick={() => setConfirmingClose(false)}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              {comments.length > 0 && (
+                <>
+                  {tmuxSession && (
+                    <button className="wt-btn wt-btn-add" onClick={sendComments}>
+                      Send {comments.length} comment{comments.length !== 1 ? "s" : ""} to Claude
+                    </button>
+                  )}
+                  <button className="wt-btn wt-btn-danger" onClick={clearAllComments}>
+                    Clear All
+                  </button>
+                </>
               )}
-              <button className="wt-btn wt-btn-danger" onClick={clearAllComments}>
-                Clear All
+              <button className="wt-btn" onClick={guardedClose}>
+                Close
               </button>
             </>
           )}
-          <button className="wt-btn" onClick={guardedClose}>
-            Close
-          </button>
         </div>
       </div>
       <div className="diff-layout">

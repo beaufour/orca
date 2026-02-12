@@ -1302,6 +1302,11 @@ body {
   flex-shrink: 0;
 }
 
+.diff-close-confirm-text {
+  font-size: 13px;
+  color: var(--status-error);
+}
+
 .diff-line {
   display: flex;
   font-size: 12px;
