@@ -50,6 +50,11 @@ export function formatTime(epoch: number): string {
   return `${diffDays}d ago`;
 }
 
+/** Check if a session is on the main/master branch (or has no worktree branch). */
+export function isMainSession(worktreeBranch?: string): boolean {
+  return !worktreeBranch || worktreeBranch === "main" || worktreeBranch === "master";
+}
+
 /** Extract leading issue number from a branch name like "42-fix-bug" */
 export function extractIssueNumber(branch: string): number | null {
   const match = branch.match(/^(\d+)-/);
@@ -129,4 +134,37 @@ export function fileName(path: string): string {
 export function fileDir(path: string): string {
   const i = path.lastIndexOf("/");
   return i === -1 ? "" : path.slice(0, i + 1);
+}
+
+/** Validate a git branch name (subset of git check-ref-format rules). */
+export function validateBranchName(name: string): string | null {
+  if (!name) return "Branch name is required";
+  if (name.startsWith("-")) return "Cannot start with '-'";
+  if (name.startsWith(".")) return "Cannot start with '.'";
+  if (name.endsWith(".")) return "Cannot end with '.'";
+  if (name.endsWith(".lock")) return "Cannot end with '.lock'";
+  if (name.includes("..")) return "Cannot contain '..'";
+  if (name.includes("@{")) return "Cannot contain '@{'";
+  if (/[\s~^:?*[\]\\]/.test(name)) return "Contains invalid characters";
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(name)) return "Contains control characters";
+  return null;
+}
+
+/** Safe localStorage.getItem — returns null on error (e.g. private browsing). */
+export function storageGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** Safe localStorage.setItem — silently ignores errors (e.g. quota exceeded). */
+export function storageSet(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore — storage may be full or unavailable
+  }
 }

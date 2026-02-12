@@ -1,4 +1,4 @@
-use crate::command::new_command;
+use crate::command::{expand_tilde, new_command};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use tauri::Emitter;
@@ -8,19 +8,21 @@ use crate::models::{AttentionCounts, Group, Session, VersionCheck};
 
 const SUPPORTED_VERSION: &str = "0.11.2";
 
-/// Expand ~ in paths to the home directory.
-fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
-    }
-    PathBuf::from(path)
+fn db_path() -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    Ok(home.join(".agent-deck/profiles/default/state.db"))
 }
 
-fn db_path() -> PathBuf {
-    let home = dirs::home_dir().expect("could not find home directory");
-    home.join(".agent-deck/profiles/default/state.db")
+fn open_db() -> Result<Connection, String> {
+    let path = db_path()?;
+    Connection::open(&path)
+        .map_err(|e| format!("Failed to open agent-deck DB at {}: {e}", path.display()))
+}
+
+fn open_db_readonly() -> Result<Connection, String> {
+    let path = db_path()?;
+    Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| format!("Failed to open agent-deck DB at {}: {e}", path.display()))
 }
 
 #[tauri::command]
@@ -89,10 +91,8 @@ fn ensure_merge_workflow_column(conn: &Connection) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_groups() -> Result<Vec<Group>, String> {
-    let path = db_path();
-    log::debug!("get_groups: opening DB at {}", path.display());
-    let conn = Connection::open(&path)
-        .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
+    log::debug!("get_groups");
+    let conn = open_db()?;
 
     ensure_github_issues_column(&conn)?;
     ensure_merge_workflow_column(&conn)?;
@@ -146,8 +146,7 @@ pub fn update_group_settings(
     github_issues_enabled: bool,
     merge_workflow: String,
 ) -> Result<(), String> {
-    let path = db_path();
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     conn.execute(
         "UPDATE groups SET github_issues_enabled = ?1, merge_workflow = ?2 WHERE path = ?3",
@@ -160,50 +159,153 @@ pub fn update_group_settings(
 
 #[tauri::command]
 pub fn get_sessions(group_path: Option<String>) -> Result<Vec<Session>, String> {
-    let path = db_path();
     log::debug!("get_sessions: group_path={group_path:?}");
-    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
+    let conn = open_db_readonly()?;
 
-    let sessions = match group_path {
-        Some(gp) => query_sessions_filtered(&conn, &gp)?,
-        None => query_sessions_all(&conn)?,
-    };
+    let sessions = query_sessions(&conn, group_path.as_deref())?;
 
     log::debug!("get_sessions: found {} sessions", sessions.len());
     Ok(sessions)
 }
 
-fn query_sessions_filtered(conn: &Connection, group: &str) -> Result<Vec<Session>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, title, project_path, group_path, sort_order, status, tmux_session, \
-             created_at, last_accessed, worktree_path, worktree_repo, worktree_branch, tool_data \
-             FROM instances WHERE group_path = ?1 ORDER BY sort_order",
-        )
-        .map_err(|e| e.to_string())?;
-    let result = stmt
-        .query_map([group], map_session_row)
+fn query_sessions(conn: &Connection, group_path: Option<&str>) -> Result<Vec<Session>, String> {
+    let columns = "id, title, project_path, group_path, sort_order, status, tmux_session, \
+                    created_at, last_accessed, worktree_path, worktree_repo, worktree_branch, tool_data";
+    let sql = match group_path {
+        Some(_) => {
+            format!("SELECT {columns} FROM instances WHERE group_path = ?1 ORDER BY sort_order")
+        }
+        None => format!("SELECT {columns} FROM instances ORDER BY group_path, sort_order"),
+    };
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = match group_path {
+        Some(gp) => stmt.query_map([gp], map_session_row),
+        None => stmt.query_map([], map_session_row),
+    };
+    let result = rows
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     Ok(result)
 }
 
-fn query_sessions_all(conn: &Connection) -> Result<Vec<Session>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, title, project_path, group_path, sort_order, status, tmux_session, \
-             created_at, last_accessed, worktree_path, worktree_repo, worktree_branch, tool_data \
-             FROM instances ORDER BY group_path, sort_order",
-        )
-        .map_err(|e| e.to_string())?;
-    let result = stmt
-        .query_map([], map_session_row)
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-    Ok(result)
+/// Resolve the effective working path for session creation.
+/// For bare repos (with .bare subdir), resolves to an existing worktree path.
+fn resolve_effective_path(project_path: &str) -> Result<String, String> {
+    let expanded = expand_tilde(project_path);
+    let path_str = expanded.to_string_lossy().to_string();
+    if expanded.join(".bare").is_dir() {
+        find_worktree_in_bare(&path_str)
+    } else {
+        Ok(path_str)
+    }
+}
+
+/// For bare worktree repos, create the worktree at <bare_root>/<branch>
+/// instead of agent-deck's default <dir>-<branch> layout.
+/// Returns (worktree_path, repo_root, branch) if created, None otherwise.
+fn create_bare_worktree(
+    effective_path: &str,
+    worktree_branch: Option<&str>,
+    new_branch: bool,
+) -> Result<Option<(String, String, String)>, String> {
+    let Some(bare_root) = crate::git::find_bare_root(effective_path) else {
+        return Ok(None);
+    };
+    let Some(branch) = worktree_branch else {
+        return Ok(None);
+    };
+
+    let wt_path = bare_root.join(branch);
+    let wt_str = wt_path.to_string_lossy().to_string();
+
+    let mut git_args = vec!["worktree", "add", &wt_str];
+    if new_branch {
+        git_args.push("-b");
+    }
+    git_args.push(branch);
+
+    crate::command::run_cmd("git", effective_path, &git_args)
+        .map_err(|e| format!("Failed to create worktree: {e}"))?;
+
+    Ok(Some((
+        wt_str,
+        effective_path.to_string(),
+        branch.to_string(),
+    )))
+}
+
+/// Run `agent-deck add` and parse the session ID from the output.
+fn run_agent_deck_add(args: &[String]) -> Result<String, String> {
+    log::info!("agent-deck {}", args.join(" "));
+    let output = new_command("agent-deck")
+        .args(args)
+        .output()
+        .map_err(|e| format!("Failed to run agent-deck: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!(
+            "agent-deck add failed (exit {}): {}",
+            output.status,
+            stderr.trim()
+        );
+        return Err(format!("agent-deck add failed: {}", stderr.trim()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    log::debug!("agent-deck add succeeded: {stdout}");
+    parse_session_id(&stdout)
+}
+
+/// Parse a session ID from agent-deck output (JSON or fallback text format).
+fn parse_session_id(stdout: &str) -> Result<String, String> {
+    // Try JSON output first (normal creation).
+    // agent-deck may prefix the JSON with text like "Created worktree at: ...",
+    // so find the first '{' and parse from there.
+    let json_str = stdout.find('{').map(|i| &stdout[i..]).unwrap_or(stdout);
+    if let Some(id) = serde_json::from_str::<serde_json::Value>(json_str)
+        .ok()
+        .and_then(|json| json["id"].as_str().map(String::from))
+    {
+        return Ok(id);
+    }
+
+    // Fall back: "Session already exists with same title and path: name (ID)"
+    if stdout.contains("already exists") {
+        if let (Some(start), Some(end)) = (stdout.rfind('('), stdout.rfind(')')) {
+            return Ok(stdout[start + 1..end].to_string());
+        }
+    }
+
+    Err(format!(
+        "Could not parse session ID from agent-deck output: {stdout}"
+    ))
+}
+
+/// Start an agent-deck session via CLI.
+fn start_agent_deck_session(session_id: &str) -> Result<(), String> {
+    log::info!("agent-deck session start {session_id}");
+    let output = new_command("agent-deck")
+        .args(["session", "start", session_id])
+        .output()
+        .map_err(|e| format!("Failed to start session: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!(
+            "agent-deck session start failed (exit {}): {}",
+            output.status,
+            stderr.trim()
+        );
+        return Err(format!(
+            "agent-deck session start failed: {}",
+            stderr.trim()
+        ));
+    }
+
+    log::debug!("agent-deck session start succeeded for {session_id}");
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -267,70 +369,25 @@ fn create_session_impl(
     prompt: Option<String>,
 ) -> Result<String, String> {
     let tool_name = tool.unwrap_or_else(|| "claude".to_string());
-
-    // Expand tilde in project path
-    let expanded_project_path = expand_tilde(&project_path);
-    let project_path_str = expanded_project_path.to_string_lossy().to_string();
-
-    // If the project_path is a bare repo (has .bare subdir), resolve to an
-    // existing worktree so agent-deck can find the git repo.
-    let mut effective_path = if expanded_project_path.join(".bare").is_dir() {
-        find_worktree_in_bare(&project_path_str)?
-    } else {
-        project_path_str
-    };
-
-    let bare_root = crate::git::find_bare_root(&effective_path);
+    let mut effective_path = resolve_effective_path(&project_path)?;
 
     // For bare repos with no worktree branch (i.e. a "main session"), resolve
     // to the default branch worktree so the session points at main, not
     // whatever worktree happened to be passed in.
-    if bare_root.is_some() && worktree_branch.is_none() {
+    if worktree_branch.is_none() && crate::git::find_bare_root(&effective_path).is_some() {
         if let Ok(default_wt) = find_default_branch_worktree(&effective_path) {
             effective_path = default_wt;
         }
     }
 
-    // For bare worktree repos, create the worktree ourselves so it lands at
-    // <bare_root>/<branch> instead of agent-deck's default <dir>-<branch>.
-    let bare_worktree_info = if let Some(ref root) = bare_root {
-        if let Some(ref branch) = worktree_branch {
-            let wt_path = root.join(branch);
-            let wt_str = wt_path.to_string_lossy().to_string();
-            let repo_root = effective_path.clone();
+    // For bare worktree repos, create the worktree ourselves
+    let bare_worktree_info =
+        create_bare_worktree(&effective_path, worktree_branch.as_deref(), new_branch)?;
+    if let Some((ref wt_str, _, _)) = bare_worktree_info {
+        effective_path = wt_str.clone();
+    }
 
-            let mut git_args = vec!["worktree", "add", &wt_str];
-            if new_branch {
-                git_args.push("-b");
-            }
-            git_args.push(branch);
-
-            log::info!("git {} (cwd: {})", git_args.join(" "), effective_path);
-            let output = new_command("git")
-                .current_dir(&effective_path)
-                .args(&git_args)
-                .output()
-                .map_err(|e| format!("Failed to create worktree: {e}"))?;
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                log::error!(
-                    "git worktree add failed (exit {}): {}",
-                    output.status,
-                    stderr.trim()
-                );
-                return Err(format!("Failed to create worktree: {}", stderr.trim()));
-            }
-            log::debug!("git worktree add succeeded: {wt_str}");
-
-            effective_path = wt_str.clone();
-            Some((wt_str, repo_root, branch.clone()))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
+    // Build agent-deck add arguments
     let mut args = vec![
         "add".to_string(),
         effective_path,
@@ -354,50 +411,7 @@ fn create_session_impl(
         }
     }
 
-    log::info!("agent-deck {}", args.join(" "));
-    let output = new_command("agent-deck")
-        .args(&args)
-        .output()
-        .map_err(|e| format!("Failed to run agent-deck: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!(
-            "agent-deck add failed (exit {}): {}",
-            output.status,
-            stderr.trim()
-        );
-        return Err(format!("agent-deck add failed: {}", stderr.trim()));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    log::debug!("agent-deck add succeeded: {stdout}");
-
-    // Parse session ID from output
-    let session_id;
-
-    // Try JSON output first (normal creation).
-    // agent-deck may prefix the JSON with text like "Created worktree at: ...",
-    // so find the first '{' and parse from there.
-    let json_str = stdout.find('{').map(|i| &stdout[i..]).unwrap_or(&stdout);
-    if let Some(id) = serde_json::from_str::<serde_json::Value>(json_str)
-        .ok()
-        .and_then(|json| json["id"].as_str().map(String::from))
-    {
-        session_id = id;
-    }
-    // Fall back: "Session already exists with same title and path: name (ID)"
-    else if stdout.contains("already exists") {
-        if let (Some(start), Some(end)) = (stdout.rfind('('), stdout.rfind(')')) {
-            session_id = stdout[start + 1..end].to_string();
-        } else {
-            return Err(format!("Could not parse session ID from: {stdout}"));
-        }
-    } else {
-        return Err(format!(
-            "Could not parse session ID from agent-deck output: {stdout}"
-        ));
-    }
+    let session_id = run_agent_deck_add(&args)?;
 
     // For bare repos where we created the worktree ourselves, update the
     // session's worktree metadata in the DB.
@@ -414,25 +428,7 @@ fn create_session_impl(
 
     // Optionally start the session immediately
     if start.unwrap_or(false) {
-        log::info!("agent-deck session start {session_id}");
-        let start_output = new_command("agent-deck")
-            .args(["session", "start", &session_id])
-            .output()
-            .map_err(|e| format!("Failed to start session: {e}"))?;
-
-        if !start_output.status.success() {
-            let stderr = String::from_utf8_lossy(&start_output.stderr);
-            log::error!(
-                "agent-deck session start failed (exit {}): {}",
-                start_output.status,
-                stderr.trim()
-            );
-            return Err(format!(
-                "agent-deck session start failed: {}",
-                stderr.trim()
-            ));
-        }
-        log::debug!("agent-deck session start succeeded for {session_id}");
+        start_agent_deck_session(&session_id)?;
 
         // Send prompt to the tmux session in the background so we don't
         // block the UI while waiting for Claude Code to start up.
@@ -454,27 +450,7 @@ fn create_session_impl(
 
 #[tauri::command]
 pub fn restart_session(session_id: String) -> Result<(), String> {
-    log::info!("agent-deck session start {session_id}");
-    let output = new_command("agent-deck")
-        .args(["session", "start", &session_id])
-        .output()
-        .map_err(|e| format!("Failed to run agent-deck: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!(
-            "agent-deck session start failed (exit {}): {}",
-            output.status,
-            stderr.trim()
-        );
-        return Err(format!(
-            "agent-deck session start failed: {}",
-            stderr.trim()
-        ));
-    }
-
-    log::debug!("agent-deck session start succeeded for {session_id}");
-    Ok(())
+    start_agent_deck_session(&session_id)
 }
 
 #[tauri::command]
@@ -503,8 +479,7 @@ pub fn remove_session(session_id: String) -> Result<(), String> {
     // agent-deck remove has a bug where worktree removal failure prevents
     // the DB deletion even though it reports success. Fall back to direct
     // DB deletion if the session still exists.
-    let path = db_path();
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     conn.execute("DELETE FROM instances WHERE id = ?1", [&session_id])
         .map_err(|e| format!("Failed to delete session: {e}"))?;
@@ -514,9 +489,7 @@ pub fn remove_session(session_id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_attention_counts() -> Result<AttentionCounts, String> {
-    let path = db_path();
-    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
+    let conn = open_db_readonly()?;
 
     // Fetch candidate sessions and refine with JSONL analysis
     let mut stmt = conn
@@ -580,9 +553,7 @@ pub fn get_attention_counts() -> Result<AttentionCounts, String> {
 
 #[tauri::command]
 pub fn get_attention_sessions() -> Result<Vec<Session>, String> {
-    let path = db_path();
-    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| format!("Failed to open agent-deck DB at {}: {}", path.display(), e))?;
+    let conn = open_db_readonly()?;
 
     let mut stmt = conn
         .prepare(
@@ -627,8 +598,7 @@ pub fn update_session_worktree(
     worktree_branch: String,
 ) -> Result<(), String> {
     log::info!("update_session_worktree: session_id={session_id}, branch={worktree_branch}");
-    let path = db_path();
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     conn.execute(
         "UPDATE instances SET worktree_path = ?1, worktree_repo = ?2, worktree_branch = ?3, project_path = ?1 WHERE id = ?4",
@@ -642,8 +612,7 @@ pub fn update_session_worktree(
 #[tauri::command]
 pub fn clear_session_worktree(session_id: String) -> Result<(), String> {
     log::info!("clear_session_worktree: session_id={session_id}");
-    let path = db_path();
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     // Get the worktree_repo so we can reset project_path to it
     let repo: String = conn
@@ -666,11 +635,7 @@ pub fn clear_session_worktree(session_id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn create_group(name: String, default_path: String) -> Result<(), String> {
     log::info!("create_group: name={name}, default_path={default_path}");
-    let path = db_path();
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
-
-    // Use name as path (agent-deck convention)
-    let group_path = name.clone();
+    let conn = open_db()?;
 
     // Expand tilde in default_path before storing
     let expanded_default_path = expand_tilde(&default_path);
@@ -693,9 +658,10 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
         )
         .unwrap_or(-1);
 
+    // Use name as both path and name (agent-deck convention)
     conn.execute(
         "INSERT INTO groups (path, name, expanded, sort_order, default_path) VALUES (?1, ?2, 1, ?3, ?4)",
-        rusqlite::params![group_path, name, max_sort + 1, default_path_str],
+        rusqlite::params![name, name, max_sort + 1, default_path_str],
     )
     .map_err(|e| format!("Failed to create group: {e}"))?;
 
@@ -705,8 +671,7 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn move_session(session_id: String, new_group_path: String) -> Result<(), String> {
     log::info!("move_session: session_id={session_id}, new_group_path={new_group_path}");
-    let path = db_path();
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     // Get max sort_order in target group to append at end
     let max_sort: i32 = conn
@@ -729,8 +694,7 @@ pub fn move_session(session_id: String, new_group_path: String) -> Result<(), St
 #[tauri::command]
 pub fn rename_session(session_id: String, new_title: String) -> Result<(), String> {
     log::info!("rename_session: session_id={session_id}, new_title={new_title}");
-    let path = db_path();
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     conn.execute(
         "UPDATE instances SET title = ?1 WHERE id = ?2",
@@ -783,8 +747,7 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
 
 /// Store the prompt in the session's tool_data JSON.
 fn store_prompt(session_id: &str, prompt: &str) -> Result<(), String> {
-    let path = db_path();
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     let current: String = conn
         .query_row(
@@ -817,8 +780,7 @@ pub fn store_session_pr_info(
     pr_state: String,
 ) -> Result<(), String> {
     log::info!("store_session_pr_info: session_id={session_id}, pr_number={pr_number}, pr_state={pr_state}");
-    let path = db_path();
-    let conn = Connection::open(&path).map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db()?;
 
     let current: String = conn
         .query_row(
@@ -846,9 +808,7 @@ pub fn store_session_pr_info(
 
 /// Look up the tmux session name for a given session ID from the agent-deck DB.
 fn get_tmux_session_name(session_id: &str) -> Result<String, String> {
-    let path = db_path();
-    let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|e| format!("Failed to open agent-deck DB: {e}"))?;
+    let conn = open_db_readonly()?;
 
     conn.query_row(
         "SELECT tmux_session FROM instances WHERE id = ?1",
@@ -970,10 +930,10 @@ fn find_worktree_in_bare(bare_path: &str) -> Result<String, String> {
             found_bare = true;
             continue;
         }
-        if line.starts_with("worktree ") {
+        if let Some(path) = line.strip_prefix("worktree ") {
             if found_bare {
                 // This is the first non-bare worktree
-                return Ok(line.strip_prefix("worktree ").unwrap().to_string());
+                return Ok(path.to_string());
             }
             // Reset bare flag for next entry
             found_bare = false;
@@ -1029,4 +989,34 @@ fn find_default_branch_worktree(any_worktree: &str) -> Result<String, String> {
     Err(format!(
         "No worktree found for default branch '{default_branch}'"
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_session_id_json() {
+        let output = r#"{"id":"abc-123","title":"test"}"#;
+        assert_eq!(parse_session_id(output).unwrap(), "abc-123");
+    }
+
+    #[test]
+    fn parse_session_id_json_with_prefix() {
+        let output = r#"Created worktree at: /tmp/wt
+{"id":"def-456","title":"test"}"#;
+        assert_eq!(parse_session_id(output).unwrap(), "def-456");
+    }
+
+    #[test]
+    fn parse_session_id_already_exists() {
+        let output = "Session already exists with same title and path: my-session (xyz-789)";
+        assert_eq!(parse_session_id(output).unwrap(), "xyz-789");
+    }
+
+    #[test]
+    fn parse_session_id_unparseable() {
+        let output = "something unexpected";
+        assert!(parse_session_id(output).is_err());
+    }
 }

@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { GitHubIssue, Session, SessionSummary, AttentionStatus } from "../types";
 import { ATTENTION_CONFIG, fallbackAttention, formatTime } from "../utils";
+import { queryKeys } from "../queryKeys";
 import { useWorktreeActions } from "../hooks/useWorktreeActions";
 import { usePrWorkflowActions } from "../hooks/usePrWorkflowActions";
 import { WorktreeActions } from "./WorktreeActions";
@@ -75,7 +76,7 @@ function TodoCardInProgress({
   }, [isFocused]);
 
   const { data: summary } = useQuery<SessionSummary>({
-    queryKey: ["summary", session.id],
+    queryKey: queryKeys.summary(session.id),
     queryFn: () =>
       invoke("get_session_summary", {
         projectPath: session.project_path,
@@ -191,7 +192,7 @@ export function TodoCard({
   const closeMutation = useMutation({
     mutationFn: () => invoke("close_issue", { repoPath, issueNumber: issue.number }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["issues", repoPath] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues(repoPath) });
       setConfirmClose(false);
     },
   });

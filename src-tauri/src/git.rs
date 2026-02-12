@@ -1,6 +1,6 @@
-use crate::command::new_command;
+use crate::command::{expand_tilde, new_command, run_cmd, run_cmd_status};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Worktree {
@@ -10,55 +10,12 @@ pub struct Worktree {
     pub is_bare: bool,
 }
 
-/// Expand ~ in paths to the home directory.
-fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
-    }
-    PathBuf::from(path)
-}
-
-/// Run a git command, returning (stdout, success) without treating non-zero exit as an error.
-fn run_git_status(repo_path: &str, args: &[&str]) -> Result<(String, bool), String> {
-    let expanded = expand_tilde(repo_path);
-    let cwd = expanded.to_string_lossy();
-    log::info!("git {} (cwd: {})", args.join(" "), cwd);
-    let output = new_command("git")
-        .current_dir(cwd.as_ref())
-        .args(args)
-        .output()
-        .map_err(|e| format!("Failed to run git: {e}"))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    Ok((stdout, output.status.success()))
-}
-
 fn run_git(repo_path: &str, args: &[&str]) -> Result<String, String> {
-    let expanded = expand_tilde(repo_path);
-    let cwd = expanded.to_string_lossy();
-    log::info!("git {} (cwd: {})", args.join(" "), cwd);
-    let output = new_command("git")
-        .current_dir(cwd.as_ref())
-        .args(args)
-        .output()
-        .map_err(|e| format!("Failed to run git: {e}"))?;
+    run_cmd("git", repo_path, args)
+}
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!(
-            "git {} failed (exit {}): {}",
-            args.join(" "),
-            output.status,
-            stderr.trim()
-        );
-        return Err(format!("git {} failed: {}", args.join(" "), stderr.trim()));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    log::debug!("git {} succeeded: {}", args.join(" "), stdout.trim());
-    Ok(stdout)
+fn run_git_status(repo_path: &str, args: &[&str]) -> Result<(String, bool), String> {
+    run_cmd_status("git", repo_path, args)
 }
 
 /// Parse the porcelain output of `git worktree list --porcelain` into Worktree structs.
@@ -71,7 +28,7 @@ pub fn parse_worktree_list(output: &str) -> Vec<Worktree> {
     let mut is_bare = false;
 
     for line in output.lines() {
-        if line.starts_with("worktree ") {
+        if let Some(path) = line.strip_prefix("worktree ") {
             if !current_path.is_empty() {
                 worktrees.push(Worktree {
                     path: current_path.clone(),
@@ -80,14 +37,13 @@ pub fn parse_worktree_list(output: &str) -> Vec<Worktree> {
                     is_bare,
                 });
             }
-            current_path = line.strip_prefix("worktree ").unwrap().to_string();
+            current_path = path.to_string();
             current_head = String::new();
             current_branch = String::new();
             is_bare = false;
-        } else if line.starts_with("HEAD ") {
-            current_head = line.strip_prefix("HEAD ").unwrap().to_string();
-        } else if line.starts_with("branch ") {
-            let full_ref = line.strip_prefix("branch ").unwrap();
+        } else if let Some(head) = line.strip_prefix("HEAD ") {
+            current_head = head.to_string();
+        } else if let Some(full_ref) = line.strip_prefix("branch ") {
             current_branch = full_ref
                 .strip_prefix("refs/heads/")
                 .unwrap_or(full_ref)
@@ -164,10 +120,12 @@ pub fn remove_worktree(repo_path: String, worktree_path: String) -> Result<(), S
         &["worktree", "remove", &worktree_path, "--force"],
     )?;
 
-    // Clean up the branch
+    // Clean up the branch (best-effort — worktree is already removed)
     if let Some(branch_name) = branch {
         if branch_name != "main" && branch_name != "master" {
-            let _ = run_git(&effective_repo, &["branch", "-D", &branch_name]);
+            if let Err(e) = run_git(&effective_repo, &["branch", "-D", &branch_name]) {
+                log::warn!("Failed to delete branch '{branch_name}' after worktree removal: {e}");
+            }
         }
     }
 
@@ -184,7 +142,7 @@ pub fn merge_worktree(
     let target = main_branch.unwrap_or_else(|| "main".to_string());
 
     // Find the main worktree path
-    let worktrees = list_worktrees(repo_path.clone())?;
+    let worktrees = list_worktrees(repo_path)?;
     let main_wt = worktrees
         .iter()
         .find(|w| w.branch == target)
@@ -193,10 +151,14 @@ pub fn merge_worktree(
     // Merge the branch into main from the main worktree
     run_git(&main_wt.path, &["merge", &branch])?;
 
-    // Find and remove the branch worktree
+    // Clean up the branch worktree (best-effort — merge already succeeded)
     if let Some(branch_wt) = worktrees.iter().find(|w| w.branch == branch) {
-        let _ = run_git(&effective_repo, &["worktree", "remove", &branch_wt.path]);
-        let _ = run_git(&effective_repo, &["branch", "-d", &branch]);
+        if let Err(e) = run_git(&effective_repo, &["worktree", "remove", &branch_wt.path]) {
+            log::warn!("Failed to remove worktree '{}': {e}", branch_wt.path);
+        }
+        if let Err(e) = run_git(&effective_repo, &["branch", "-d", &branch]) {
+            log::warn!("Failed to delete branch '{branch}': {e}");
+        }
     }
 
     Ok(())
@@ -206,8 +168,10 @@ pub fn merge_worktree(
 pub fn rebase_worktree(worktree_path: String, main_branch: Option<String>) -> Result<(), String> {
     let target = main_branch.unwrap_or_else(|| "main".to_string());
 
-    // Fetch latest and rebase
-    let _ = run_git(&worktree_path, &["fetch", "origin", &target]);
+    // Fetch latest (best-effort — may be offline) then rebase
+    if let Err(e) = run_git(&worktree_path, &["fetch", "origin", &target]) {
+        log::warn!("Failed to fetch origin/{target}, rebasing against local: {e}");
+    }
     run_git(&worktree_path, &["rebase", &target])?;
 
     Ok(())
@@ -369,8 +333,10 @@ pub fn try_merge_branch(
         ));
     }
 
-    // Best-effort pull on main (ignore failure — may be offline or no remote)
-    let _ = run_git_status(&main_path, &["pull", "--ff-only"]);
+    // Best-effort pull on main (may be offline or have no remote)
+    if let Err(e) = run_git(&main_path, &["pull", "--ff-only"]) {
+        log::warn!("Failed to pull --ff-only on '{target}', merging against local: {e}");
+    }
 
     // Try merge — need both stdout and stderr for conflict info
     log::info!("git merge {branch} --no-edit (cwd: {main_path})");
@@ -711,28 +677,10 @@ fn find_repo_root(path: &str) -> Result<String, String> {
     // Validate this is a git repository by checking rev-parse succeeds.
     // Returns the expanded path since git commands work from any worktree.
     let expanded = expand_tilde(path);
-    let cwd = expanded.to_string_lossy();
-    log::info!("git rev-parse --git-common-dir (cwd: {cwd})");
-    let output = new_command("git")
-        .current_dir(cwd.as_ref())
-        .args(["rev-parse", "--git-common-dir"])
-        .output()
-        .map_err(|e| format!("Failed to run git: {e}"))?;
-
-    if !output.status.success() {
-        log::error!(
-            "git rev-parse --git-common-dir failed (exit {}): not a git repo at {}",
-            output.status,
-            cwd
-        );
-        return Err(format!("Not a git repository: {cwd}"));
-    }
-
-    log::debug!(
-        "git rev-parse --git-common-dir succeeded: {}",
-        String::from_utf8_lossy(&output.stdout).trim()
-    );
-    Ok(cwd.to_string())
+    let cwd = expanded.to_string_lossy().to_string();
+    run_git(&cwd, &["rev-parse", "--git-common-dir"])
+        .map_err(|_| format!("Not a git repository: {cwd}"))?;
+    Ok(cwd)
 }
 
 /// Walk up from `path` looking for a directory containing `.bare/`.

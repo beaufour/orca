@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import { queryKeys } from "../queryKeys";
 
 interface CreateSessionParams {
   projectPath: string;
@@ -23,7 +24,7 @@ export function MainSessionGhost({ repoPath, groupPath, createSession }: MainSes
   const [clicked, setClicked] = useState(false);
 
   const { data: defaultBranch } = useQuery<string>({
-    queryKey: ["defaultBranch", repoPath],
+    queryKey: queryKeys.defaultBranch(repoPath),
     queryFn: () => invoke("get_default_branch", { repoPath }),
     staleTime: 5 * 60 * 1000,
   });

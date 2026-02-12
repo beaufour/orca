@@ -801,10 +801,18 @@ body {
   width: 100%;
 }
 
+.wt-input-error {
+  border-color: var(--status-error);
+}
+
 .wt-error {
   font-size: 12px;
   color: var(--status-error);
   padding: 6px 0;
+}
+
+.wt-error-inline {
+  padding: 2px 0;
 }
 
 /* Search bar */

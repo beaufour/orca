@@ -1,6 +1,7 @@
 import { useState, useImperativeHandle } from "react";
 import type { Session } from "../types";
 import type { PendingCreation } from "../hooks/useSessionCreation";
+import { isMainSession, validateBranchName } from "../utils";
 
 export interface AddSessionBarHandle {
   toggleForm: () => void;
@@ -51,9 +52,8 @@ export function AddSessionBar({
   const [mode, setMode] = useState<SessionMode>(isGitRepo ? "worktree" : "plain");
   const [tool, setTool] = useState<SessionTool>("claude");
 
-  const hasMainSession = sessions.some(
-    (s) => !s.worktree_branch || s.worktree_branch === "main" || s.worktree_branch === "master",
-  );
+  const hasMainSession = sessions.some((s) => isMainSession(s.worktree_branch));
+  const branchError = branchName.trim() ? validateBranchName(branchName.trim()) : null;
 
   const hasPending = Array.from(pendingCreations.values()).some(
     (p) => p.groupPath === groupPath && !p.error,
@@ -78,7 +78,7 @@ export function AddSessionBar({
     e.preventDefault();
     const promptValue = prompt.trim() || null;
     if (mode === "worktree") {
-      if (!branchName.trim()) return;
+      if (!branchName.trim() || branchError) return;
       createSession({
         projectPath: repoPath,
         group: groupPath,
@@ -192,16 +192,19 @@ export function AddSessionBar({
           </div>
           <div className="add-session-fields">
             {mode === "worktree" && (
-              <input
-                className="wt-input"
-                type="text"
-                placeholder="branch-name"
-                value={branchName}
-                onChange={(e) => setBranchName(e.target.value)}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoFocus
-              />
+              <>
+                <input
+                  className={`wt-input${branchError ? " wt-input-error" : ""}`}
+                  type="text"
+                  placeholder="branch-name"
+                  value={branchName}
+                  onChange={(e) => setBranchName(e.target.value)}
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoFocus
+                />
+                {branchError && <div className="wt-error wt-error-inline">{branchError}</div>}
+              </>
             )}
             <input
               className="wt-input"
@@ -230,7 +233,7 @@ export function AddSessionBar({
               className="wt-btn wt-btn-confirm"
               type="submit"
               disabled={
-                (mode === "worktree" && !branchName.trim()) ||
+                (mode === "worktree" && (!branchName.trim() || !!branchError)) ||
                 (mode === "plain" && !title.trim() && !prompt.trim())
               }
             >

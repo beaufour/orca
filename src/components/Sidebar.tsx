@@ -2,6 +2,7 @@ import { useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Group, Session } from "../types";
+import { queryKeys } from "../queryKeys";
 import logoSrc from "../assets/logo.png";
 
 interface SidebarProps {
@@ -35,7 +36,7 @@ export function Sidebar({
     error,
     refetch,
   } = useQuery<Group[]>({
-    queryKey: ["groups"],
+    queryKey: queryKeys.groups,
     queryFn: () => invoke("get_groups"),
     refetchInterval: 10_000,
   });
@@ -46,7 +47,7 @@ export function Sidebar({
   }, []);
 
   const { data: attentionSessions } = useQuery<Session[]>({
-    queryKey: ["attention_sessions"],
+    queryKey: queryKeys.attentionSessions,
     queryFn: () => invoke("get_attention_sessions"),
     refetchInterval: 5_000,
   });

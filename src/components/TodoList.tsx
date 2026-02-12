@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Group, Session, GitHubIssue } from "../types";
 import type { PendingCreation } from "../hooks/useSessionCreation";
 import { extractIssueNumber, issueToSlug } from "../utils";
+import { queryKeys } from "../queryKeys";
 import { TodoCard } from "./TodoCard";
 import { SessionCard } from "./SessionCard";
 import { SessionList } from "./SessionList";
@@ -62,7 +63,7 @@ export function TodoList({
     error: issuesError,
     isLoading: issuesLoading,
   } = useQuery<GitHubIssue[]>({
-    queryKey: ["issues", group.default_path],
+    queryKey: queryKeys.issues(group.default_path),
     queryFn: () => invoke("list_issues", { repoPath: group.default_path }),
     refetchInterval: 30_000,
   });

@@ -1,3 +1,5 @@
+import { Modal } from "./Modal";
+
 interface ShortcutHelpProps {
   onClose: () => void;
 }
@@ -25,19 +27,17 @@ const SHORTCUTS = [
 
 export function ShortcutHelp({ onClose }: ShortcutHelpProps) {
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <h3 className="modal-title">Keyboard Shortcuts</h3>
-        <div className="shortcut-list">
-          {SHORTCUTS.map(({ key, desc }) => (
-            <div key={key} className="shortcut-row">
-              <kbd className="shortcut-key">{key}</kbd>
-              <span className="shortcut-desc">{desc}</span>
-            </div>
-          ))}
-        </div>
-        <div className="shortcut-hint">Press Esc or ? to close</div>
+    <Modal onClose={onClose}>
+      <h3 className="modal-title">Keyboard Shortcuts</h3>
+      <div className="shortcut-list">
+        {SHORTCUTS.map(({ key, desc }) => (
+          <div key={key} className="shortcut-row">
+            <kbd className="shortcut-key">{key}</kbd>
+            <span className="shortcut-desc">{desc}</span>
+          </div>
+        ))}
       </div>
-    </div>
+      <div className="shortcut-hint">Press Esc or ? to close</div>
+    </Modal>
   );
 }

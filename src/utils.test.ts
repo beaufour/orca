@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { formatPath, formatTime, fallbackAttention, parseDiff, fileName, fileDir } from "./utils";
+import {
+  formatPath,
+  formatTime,
+  fallbackAttention,
+  parseDiff,
+  fileName,
+  fileDir,
+  isMainSession,
+  validateBranchName,
+} from "./utils";
 
 describe("formatPath", () => {
   it("replaces /Users/<user>/ with ~/", () => {
@@ -179,5 +188,75 @@ describe("fileDir", () => {
 
   it("handles deeply nested paths", () => {
     expect(fileDir("a/b/c/d.ts")).toBe("a/b/c/");
+  });
+});
+
+describe("isMainSession", () => {
+  it("returns true for undefined branch", () => {
+    expect(isMainSession(undefined)).toBe(true);
+  });
+
+  it("returns true for empty string branch", () => {
+    expect(isMainSession("")).toBe(true);
+  });
+
+  it("returns true for main branch", () => {
+    expect(isMainSession("main")).toBe(true);
+  });
+
+  it("returns true for master branch", () => {
+    expect(isMainSession("master")).toBe(true);
+  });
+
+  it("returns false for feature branch", () => {
+    expect(isMainSession("feature-123")).toBe(false);
+  });
+});
+
+describe("validateBranchName", () => {
+  it("accepts valid branch names", () => {
+    expect(validateBranchName("feature-123")).toBeNull();
+    expect(validateBranchName("fix/auth-bug")).toBeNull();
+    expect(validateBranchName("v1.2.3")).toBeNull();
+    expect(validateBranchName("my-branch")).toBeNull();
+  });
+
+  it("rejects empty names", () => {
+    expect(validateBranchName("")).toBe("Branch name is required");
+  });
+
+  it("rejects names starting with dash", () => {
+    expect(validateBranchName("-branch")).toBe("Cannot start with '-'");
+  });
+
+  it("rejects names starting with dot", () => {
+    expect(validateBranchName(".hidden")).toBe("Cannot start with '.'");
+  });
+
+  it("rejects names ending with dot", () => {
+    expect(validateBranchName("branch.")).toBe("Cannot end with '.'");
+  });
+
+  it("rejects names ending with .lock", () => {
+    expect(validateBranchName("branch.lock")).toBe("Cannot end with '.lock'");
+  });
+
+  it("rejects double dots", () => {
+    expect(validateBranchName("a..b")).toBe("Cannot contain '..'");
+  });
+
+  it("rejects @{ sequence", () => {
+    expect(validateBranchName("a@{b")).toBe("Cannot contain '@{'");
+  });
+
+  it("rejects spaces and special characters", () => {
+    expect(validateBranchName("my branch")).toBe("Contains invalid characters");
+    expect(validateBranchName("a~b")).toBe("Contains invalid characters");
+    expect(validateBranchName("a^b")).toBe("Contains invalid characters");
+    expect(validateBranchName("a:b")).toBe("Contains invalid characters");
+    expect(validateBranchName("a?b")).toBe("Contains invalid characters");
+    expect(validateBranchName("a*b")).toBe("Contains invalid characters");
+    expect(validateBranchName("a[b")).toBe("Contains invalid characters");
+    expect(validateBranchName("a\\b")).toBe("Contains invalid characters");
   });
 });

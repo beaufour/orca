@@ -1,5 +1,6 @@
 import type { Session } from "../types";
 import type { PendingCreation } from "../hooks/useSessionCreation";
+import { isMainSession } from "../utils";
 import { SessionCard } from "./SessionCard";
 import { MainSessionGhost } from "./MainSessionGhost";
 import { PendingSessionCard } from "./PendingSessionCard";
@@ -94,9 +95,7 @@ export function SessionList({
     return <div className="session-list-empty">No sessions found</div>;
   }
 
-  const hasMainSession = sessions.some(
-    (s) => !s.worktree_branch || s.worktree_branch === "main" || s.worktree_branch === "master",
-  );
+  const hasMainSession = sessions.some((s) => isMainSession(s.worktree_branch));
 
   const showGhost = groupPath && repoPath && !hasMainSession;
 
