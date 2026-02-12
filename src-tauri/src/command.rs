@@ -1,5 +1,37 @@
+use serde::Serialize;
 use std::path::PathBuf;
 use std::process::Command;
+
+#[derive(Serialize)]
+pub struct PrerequisiteStatus {
+    pub name: String,
+    pub found: bool,
+    pub required: bool,
+}
+
+/// Check whether external binaries that Orca depends on are available.
+#[tauri::command]
+pub fn check_prerequisites() -> Vec<PrerequisiteStatus> {
+    let checks: &[(&str, &[&str], bool)] = &[
+        ("claude", &["--version"], true),
+        ("agent-deck", &["version"], true),
+        ("tmux", &["-V"], true),
+        ("git", &["--version"], false),
+        ("gh", &["--version"], false),
+    ];
+
+    checks
+        .iter()
+        .map(|(name, args, required)| {
+            let found = Command::new(name).args(*args).output().is_ok();
+            PrerequisiteStatus {
+                name: name.to_string(),
+                found,
+                required: *required,
+            }
+        })
+        .collect()
+}
 
 /// Expand ~ in paths to the home directory.
 pub fn expand_tilde(path: &str) -> PathBuf {

@@ -19,6 +19,11 @@ import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { VersionWarning } from "./components/VersionWarning";
+import {
+  PrerequisiteCheck,
+  DISMISS_KEY as PREREQ_DISMISS_KEY,
+  type PrerequisiteStatus,
+} from "./components/PrerequisiteCheck";
 import { UpdateNotification } from "./components/UpdateNotification";
 import { useSessionCreation } from "./hooks/useSessionCreation";
 import type { Group, Session } from "./types";
@@ -62,6 +67,7 @@ function App() {
     installed: string;
   } | null>(null);
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
+  const [missingPrereqs, setMissingPrereqs] = useState<PrerequisiteStatus[] | null>(null);
 
   const handleDismiss = useCallback((sessionId: string) => {
     setDismissedIds((prev) => {
@@ -122,6 +128,27 @@ function App() {
       })
       .catch((err) => {
         console.warn("Failed to check agent-deck version:", err);
+      });
+  }, []);
+
+  // Check prerequisites on mount
+  useEffect(() => {
+    invoke<PrerequisiteStatus[]>("check_prerequisites")
+      .then((results) => {
+        const missing = results.filter((r) => !r.found);
+        if (missing.length > 0) {
+          const key = missing
+            .map((m) => m.name)
+            .sort()
+            .join(",");
+          const dismissed = storageGet(PREREQ_DISMISS_KEY);
+          if (dismissed !== key) {
+            setMissingPrereqs(missing);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to check prerequisites:", err);
       });
   }, []);
 
@@ -451,6 +478,9 @@ function App() {
         <GroupSettingsModal group={settingsGroup} onClose={() => setSettingsGroup(null)} />
       )}
       {showLogViewer && <LogViewer onClose={() => setShowLogViewer(false)} />}
+      {missingPrereqs && (
+        <PrerequisiteCheck missing={missingPrereqs} onClose={() => setMissingPrereqs(null)} />
+      )}
       {versionMismatch && (
         <VersionWarning
           supported={versionMismatch.supported}
