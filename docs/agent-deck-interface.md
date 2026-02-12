@@ -2,6 +2,7 @@
 
 Documents the agent-deck interfaces Orca depends on. Use this to identify breaking changes when upgrading.
 
+**Repository:** https://github.com/asheshgoplani/agent-deck
 **Current version: v0.11.2**
 
 ## DB Path
