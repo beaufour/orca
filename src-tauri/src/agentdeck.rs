@@ -967,6 +967,20 @@ fn find_default_branch_worktree(any_worktree: &str) -> Result<String, String> {
     ))
 }
 
+#[tauri::command]
+pub fn get_dismissed_ids(orca_db: State<'_, OrcaDb>) -> Result<Vec<String>, String> {
+    orca_db.get_dismissed_ids()
+}
+
+#[tauri::command]
+pub fn set_dismissed(
+    orca_db: State<'_, OrcaDb>,
+    session_id: String,
+    dismissed: bool,
+) -> Result<(), String> {
+    orca_db.set_dismissed(&session_id, dismissed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

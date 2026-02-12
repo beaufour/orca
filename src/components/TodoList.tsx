@@ -36,6 +36,9 @@ interface TodoListProps {
   pendingCreations?: Map<string, PendingCreation>;
   onDismissPending?: (creationId: string) => void;
   createSession?: (params: CreateSessionParams) => void;
+  dismissedIds?: Set<string>;
+  onDismiss?: (sessionId: string) => void;
+  onUndismiss?: (sessionId: string) => void;
 }
 
 export function TodoList({
@@ -52,6 +55,9 @@ export function TodoList({
   pendingCreations,
   onDismissPending,
   createSession,
+  dismissedIds,
+  onDismiss,
+  onUndismiss,
 }: TodoListProps) {
   const [issueModal, setIssueModal] = useState<{
     mode: "create" | "edit";
@@ -203,6 +209,9 @@ export function TodoList({
                   liveTmuxSessions={liveTmuxSessions}
                   isFocused={index === focusedIndex}
                   mergeWorkflow={group.merge_workflow}
+                  isDismissed={dismissedIds?.has(item.session.id)}
+                  onDismiss={onDismiss ? () => onDismiss(item.session.id) : undefined}
+                  onUndismiss={onUndismiss ? () => onUndismiss(item.session.id) : undefined}
                 />
               ) : (
                 <SessionCard
@@ -223,6 +232,9 @@ export function TodoList({
                     !item.session.tmux_session ||
                     liveTmuxSessions?.has(item.session.tmux_session) !== false
                   }
+                  isDismissed={dismissedIds?.has(item.session.id)}
+                  onDismiss={onDismiss ? () => onDismiss(item.session.id) : undefined}
+                  onUndismiss={onUndismiss ? () => onUndismiss(item.session.id) : undefined}
                   mergeWorkflow={group.merge_workflow}
                 />
               ),

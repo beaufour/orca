@@ -21,6 +21,9 @@ interface TodoCardProps {
   liveTmuxSessions?: Set<string>;
   isFocused?: boolean;
   mergeWorkflow?: "merge" | "pr";
+  isDismissed?: boolean;
+  onDismiss?: () => void;
+  onUndismiss?: () => void;
 }
 
 function labelStyle(color: string): React.CSSProperties {
@@ -57,6 +60,9 @@ function TodoCardInProgress({
   liveTmuxSessions,
   isFocused,
   mergeWorkflow,
+  isDismissed,
+  onDismiss,
+  onUndismiss,
 }: {
   issue: GitHubIssue;
   session: Session;
@@ -65,6 +71,9 @@ function TodoCardInProgress({
   liveTmuxSessions?: Set<string>;
   isFocused?: boolean;
   mergeWorkflow?: "merge" | "pr";
+  isDismissed?: boolean;
+  onDismiss?: () => void;
+  onUndismiss?: () => void;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [showDiff, setShowDiff] = useState(false);
@@ -107,13 +116,25 @@ function TodoCardInProgress({
   });
 
   const attention: AttentionStatus = summary?.attention ?? fallbackAttention(session.status);
-  const statusInfo = ATTENTION_CONFIG[attention];
   const tmuxAlive = !session.tmux_session || liveTmuxSessions?.has(session.tmux_session) !== false;
+
+  // Auto-undismiss when session is no longer needs_input
+  useEffect(() => {
+    if (isDismissed && attention !== "needs_input") {
+      onUndismiss?.();
+    }
+  }, [isDismissed, attention, onUndismiss]);
+
+  const effectiveAttention = attention === "needs_input" && isDismissed ? "stale" : attention;
+  const statusInfo =
+    isDismissed && attention === "needs_input"
+      ? { label: "Dismissed", className: "status-dismissed" }
+      : ATTENTION_CONFIG[attention];
 
   return (
     <div
       ref={cardRef}
-      className={`session-card attention-${attention}${isFocused ? " session-card-focused" : ""}`}
+      className={`session-card attention-${effectiveAttention}${isFocused ? " session-card-focused" : ""}`}
       onClick={() => onSelectSession?.(session)}
     >
       <div className="session-card-header">
@@ -136,7 +157,20 @@ function TodoCardInProgress({
               tmux dead
             </span>
           )}
-          <span className={`status-badge ${statusInfo.className}`}>{statusInfo.label}</span>
+          <span
+            className={`status-badge ${statusInfo.className}${attention === "needs_input" && onDismiss ? " status-badge-clickable" : ""}`}
+            onClick={
+              attention === "needs_input" && onDismiss
+                ? (e) => {
+                    e.stopPropagation();
+                    onDismiss();
+                  }
+                : undefined
+            }
+            title={attention === "needs_input" && !isDismissed ? "Click to dismiss" : undefined}
+          >
+            {statusInfo.label}
+          </span>
         </div>
       </div>
       <IssueLabels labels={issue.labels} />
@@ -185,6 +219,9 @@ export function TodoCard({
   liveTmuxSessions,
   isFocused,
   mergeWorkflow,
+  isDismissed,
+  onDismiss,
+  onUndismiss,
 }: TodoCardProps) {
   const queryClient = useQueryClient();
   const [confirmClose, setConfirmClose] = useState(false);
@@ -207,6 +244,9 @@ export function TodoCard({
         liveTmuxSessions={liveTmuxSessions}
         isFocused={isFocused}
         mergeWorkflow={mergeWorkflow}
+        isDismissed={isDismissed}
+        onDismiss={onDismiss}
+        onUndismiss={onUndismiss}
       />
     );
   }
