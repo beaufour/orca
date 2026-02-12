@@ -152,6 +152,55 @@ impl OrcaDb {
         Ok(())
     }
 
+    /// Ensure the dismissed column exists (for DBs created before it was added).
+    fn ensure_dismissed_column(conn: &Connection) -> Result<(), String> {
+        let has_column: bool = conn
+            .prepare("PRAGMA table_info(session_data)")
+            .map_err(|e| e.to_string())?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?
+            .any(|name| name.as_deref() == Ok("dismissed"));
+
+        if !has_column {
+            conn.execute(
+                "ALTER TABLE session_data ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0",
+                [],
+            )
+            .map_err(|e| format!("Failed to add dismissed column: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// Get all dismissed session IDs.
+    pub fn get_dismissed_ids(&self) -> Result<Vec<String>, String> {
+        let conn = self.open()?;
+        Self::ensure_dismissed_column(&conn)?;
+        let mut stmt = conn
+            .prepare("SELECT session_id FROM session_data WHERE dismissed = 1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut ids = Vec::new();
+        for row in rows {
+            ids.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(ids)
+    }
+
+    /// Set or clear the dismissed flag for a session (upsert).
+    pub fn set_dismissed(&self, session_id: &str, dismissed: bool) -> Result<(), String> {
+        let conn = self.open()?;
+        Self::ensure_dismissed_column(&conn)?;
+        conn.execute(
+            "INSERT INTO session_data (session_id, dismissed) VALUES (?1, ?2) \
+             ON CONFLICT(session_id) DO UPDATE SET dismissed = ?2",
+            rusqlite::params![session_id, dismissed as i32],
+        )
+        .map_err(|e| format!("Failed to set dismissed: {e}"))?;
+        Ok(())
+    }
+
     /// One-time migration: copy github_issues_enabled and prompt data from
     /// agent-deck's DB into Orca's own DB.
     fn run_migration_v1(&self, conn: &Connection) -> Result<(), String> {

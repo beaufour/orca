@@ -164,6 +164,8 @@ pub fn run() {
             agentdeck::clear_session_worktree,
             agentdeck::update_group_settings,
             agentdeck::store_session_pr_info,
+            agentdeck::get_dismissed_ids,
+            agentdeck::set_dismissed,
             claude_logs::get_session_summary,
             git::get_default_branch,
             git::list_worktrees,

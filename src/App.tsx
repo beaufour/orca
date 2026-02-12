@@ -62,6 +62,23 @@ function App() {
   const [settingsGroup, setSettingsGroup] = useState<Group | null>(null);
   const [showAbout, setShowAbout] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const dismissedLoaded = useRef(false);
+
+  // Load dismissed IDs from DB on startup
+  useEffect(() => {
+    invoke<string[]>("get_dismissed_ids")
+      .then((ids) => {
+        if (ids.length > 0) {
+          setDismissedIds(new Set(ids));
+        }
+        dismissedLoaded.current = true;
+      })
+      .catch((err) => {
+        console.warn("Failed to load dismissed IDs:", err);
+        dismissedLoaded.current = true;
+      });
+  }, []);
+
   const [versionMismatch, setVersionMismatch] = useState<{
     supported: string;
     installed: string;
@@ -74,8 +91,10 @@ function App() {
       const next = new Set(prev);
       if (next.has(sessionId)) {
         next.delete(sessionId);
+        invoke("set_dismissed", { sessionId, dismissed: false }).catch(console.warn);
       } else {
         next.add(sessionId);
+        invoke("set_dismissed", { sessionId, dismissed: true }).catch(console.warn);
       }
       return next;
     });
@@ -86,6 +105,7 @@ function App() {
       if (!prev.has(sessionId)) return prev;
       const next = new Set(prev);
       next.delete(sessionId);
+      invoke("set_dismissed", { sessionId, dismissed: false }).catch(console.warn);
       return next;
     });
   }, []);
@@ -271,16 +291,20 @@ function App() {
     setConfirmingRemoveId(null);
   }, []);
 
-  // Wrap session selection to also update keyboard focus index
+  // Wrap session selection to also update keyboard focus index and clear dismiss
   const handleSelectSession = useCallback(
     (session: Session) => {
       setSelectedSession(session);
+      // Clear dismiss when user opens a session
+      if (dismissedIds.has(session.id)) {
+        handleUndismiss(session.id);
+      }
       const idx = filteredSessions?.findIndex((s) => s.id === session.id) ?? -1;
       if (idx >= 0) {
         updateFocusedIndex(idx);
       }
     },
-    [filteredSessions, updateFocusedIndex],
+    [filteredSessions, updateFocusedIndex, dismissedIds, handleUndismiss],
   );
 
   // When closing the terminal, focus the session that was just open
@@ -430,6 +454,9 @@ function App() {
                   pendingCreations={pendingCreations}
                   onDismissPending={dismissPending}
                   createSession={createSession}
+                  dismissedIds={dismissedIds}
+                  onDismiss={handleDismiss}
+                  onUndismiss={handleUndismiss}
                 />
               ) : (
                 <SessionList
