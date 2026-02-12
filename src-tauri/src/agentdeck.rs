@@ -148,10 +148,11 @@ fn query_sessions(conn: &Connection, group_path: Option<&str>) -> Result<Vec<Ses
         Some(gp) => stmt.query_map([gp], map_session_row),
         None => stmt.query_map([], map_session_row),
     };
-    let result = rows
+    let mut result = rows
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+    fix_last_accessed(&mut result);
     Ok(result)
 }
 
@@ -537,11 +538,12 @@ pub fn get_attention_sessions(orca_db: State<'_, OrcaDb>) -> Result<Vec<Session>
         )
         .map_err(|e| e.to_string())?;
 
-    let candidates = stmt
+    let mut candidates = stmt
         .query_map([], map_session_row)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+    fix_last_accessed(&mut candidates);
 
     let prompts = orca_db.get_all_prompts().unwrap_or_default();
 
@@ -722,6 +724,27 @@ fn map_session_row(row: &rusqlite::Row) -> rusqlite::Result<Session> {
         pr_number,
         pr_state,
     })
+}
+
+/// Fix up `last_accessed` for sessions where agent-deck stores a bogus value
+/// (e.g. Go's zero time). Falls back to the JSONL log file's modification time.
+fn fix_last_accessed(sessions: &mut [Session]) {
+    for session in sessions.iter_mut() {
+        if session.last_accessed <= 0 {
+            if let Some(ref csid) = session.claude_session_id {
+                if let Some(jsonl_path) = claude_logs::find_jsonl_path(&session.project_path, csid)
+                {
+                    if let Ok(meta) = std::fs::metadata(&jsonl_path) {
+                        if let Ok(modified) = meta.modified() {
+                            if let Ok(dur) = modified.duration_since(std::time::UNIX_EPOCH) {
+                                session.last_accessed = dur.as_secs() as i64;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Store PR info in the session's tool_data JSON.

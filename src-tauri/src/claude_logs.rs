@@ -28,7 +28,7 @@ fn claude_projects_dir() -> Option<PathBuf> {
     Some(dirs::home_dir()?.join(".claude/projects"))
 }
 
-fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<PathBuf> {
+pub fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<PathBuf> {
     // Expand tilde before encoding path
     let expanded = expand_tilde(project_path);
     let expanded_str = expanded.to_string_lossy();
