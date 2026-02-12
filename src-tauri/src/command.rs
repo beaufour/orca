@@ -13,6 +13,7 @@ pub struct PrerequisiteStatus {
 #[tauri::command]
 pub fn check_prerequisites() -> Vec<PrerequisiteStatus> {
     let checks: &[(&str, &[&str], bool)] = &[
+        ("claude", &["--version"], true),
         ("agent-deck", &["version"], true),
         ("tmux", &["-V"], true),
         ("git", &["--version"], false),
