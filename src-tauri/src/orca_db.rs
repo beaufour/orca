@@ -2,6 +2,15 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// Settings for a group, stored in Orca's own DB.
+#[derive(Debug, Clone)]
+pub struct GroupSettings {
+    pub github_issues_enabled: bool,
+    pub merge_workflow: String,
+    pub worktree_command: Option<String>,
+    pub component_depth: u32,
+}
+
 /// Orca's own SQLite database for data that shouldn't be stored in agent-deck's DB.
 #[derive(Clone)]
 pub struct OrcaDb {
@@ -47,27 +56,36 @@ impl OrcaDb {
     }
 
     /// Bulk read all group settings for merging into get_groups().
-    pub fn get_all_group_settings(&self) -> Result<HashMap<String, (bool, String)>, String> {
+    pub fn get_all_group_settings(&self) -> Result<HashMap<String, GroupSettings>, String> {
         let conn = self.open()?;
         Self::ensure_merge_workflow_column(&conn)?;
+        Self::ensure_worktree_columns(&conn)?;
         let mut stmt = conn
-            .prepare("SELECT group_path, github_issues_enabled, merge_workflow FROM group_settings")
+            .prepare(
+                "SELECT group_path, github_issues_enabled, merge_workflow, \
+                 worktree_command, component_depth FROM group_settings",
+            )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    row.get::<_, i32>(1)? != 0,
-                    row.get::<_, String>(2)
-                        .unwrap_or_else(|_| "merge".to_string()),
+                    GroupSettings {
+                        github_issues_enabled: row.get::<_, i32>(1)? != 0,
+                        merge_workflow: row
+                            .get::<_, String>(2)
+                            .unwrap_or_else(|_| "merge".to_string()),
+                        worktree_command: row.get::<_, Option<String>>(3)?,
+                        component_depth: row.get::<_, u32>(4).unwrap_or(2),
+                    },
                 ))
             })
             .map_err(|e| e.to_string())?;
 
         let mut map = HashMap::new();
         for row in rows {
-            let (path, enabled, workflow) = row.map_err(|e| e.to_string())?;
-            map.insert(path, (enabled, workflow));
+            let (path, settings) = row.map_err(|e| e.to_string())?;
+            map.insert(path, settings);
         }
         Ok(map)
     }
@@ -78,16 +96,52 @@ impl OrcaDb {
         group_path: &str,
         github_issues_enabled: bool,
         merge_workflow: &str,
+        worktree_command: Option<&str>,
+        component_depth: u32,
     ) -> Result<(), String> {
         let conn = self.open()?;
         Self::ensure_merge_workflow_column(&conn)?;
+        Self::ensure_worktree_columns(&conn)?;
         conn.execute(
-            "INSERT INTO group_settings (group_path, github_issues_enabled, merge_workflow) VALUES (?1, ?2, ?3) \
-             ON CONFLICT(group_path) DO UPDATE SET github_issues_enabled = ?2, merge_workflow = ?3",
-            rusqlite::params![group_path, github_issues_enabled as i32, merge_workflow],
+            "INSERT INTO group_settings (group_path, github_issues_enabled, merge_workflow, \
+             worktree_command, component_depth) VALUES (?1, ?2, ?3, ?4, ?5) \
+             ON CONFLICT(group_path) DO UPDATE SET github_issues_enabled = ?2, \
+             merge_workflow = ?3, worktree_command = ?4, component_depth = ?5",
+            rusqlite::params![
+                group_path,
+                github_issues_enabled as i32,
+                merge_workflow,
+                worktree_command,
+                component_depth
+            ],
         )
         .map_err(|e| format!("Failed to update group settings: {e}"))?;
         Ok(())
+    }
+
+    /// Get the worktree command and component depth for a group.
+    pub fn get_group_worktree_command(
+        &self,
+        group_path: &str,
+    ) -> Result<Option<(String, u32)>, String> {
+        let conn = self.open()?;
+        Self::ensure_worktree_columns(&conn)?;
+        let result = conn.query_row(
+            "SELECT worktree_command, component_depth FROM group_settings WHERE group_path = ?1",
+            [group_path],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, u32>(1).unwrap_or(2),
+                ))
+            },
+        );
+        match result {
+            Ok((Some(cmd), depth)) if !cmd.is_empty() => Ok(Some((cmd, depth))),
+            Ok(_) => Ok(None),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Failed to get worktree command: {e}")),
+        }
     }
 
     /// Ensure merge_workflow column exists (for DBs created before it was added).
@@ -105,6 +159,33 @@ impl OrcaDb {
                 [],
             )
             .map_err(|e| format!("Failed to add merge_workflow column: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// Ensure worktree_command and component_depth columns exist.
+    fn ensure_worktree_columns(conn: &Connection) -> Result<(), String> {
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(group_settings)")
+            .map_err(|e| e.to_string())?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+
+        if !columns.iter().any(|c| c == "worktree_command") {
+            conn.execute(
+                "ALTER TABLE group_settings ADD COLUMN worktree_command TEXT",
+                [],
+            )
+            .map_err(|e| format!("Failed to add worktree_command column: {e}"))?;
+        }
+        if !columns.iter().any(|c| c == "component_depth") {
+            conn.execute(
+                "ALTER TABLE group_settings ADD COLUMN component_depth INTEGER NOT NULL DEFAULT 2",
+                [],
+            )
+            .map_err(|e| format!("Failed to add component_depth column: {e}"))?;
         }
         Ok(())
     }

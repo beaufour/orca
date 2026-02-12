@@ -38,6 +38,8 @@ pub struct Group {
     pub github_issues_enabled: bool,
     pub is_git_repo: bool,
     pub merge_workflow: String,
+    pub worktree_command: Option<String>,
+    pub component_depth: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

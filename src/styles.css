@@ -1865,6 +1865,129 @@ body {
   color: var(--text-primary);
 }
 
+/* Settings section (worktree script) */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.settings-section .wt-input {
+  margin-top: 4px;
+}
+
+.settings-section code {
+  background: var(--bg-secondary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.settings-depth-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.settings-depth-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.settings-depth-input {
+  width: 60px;
+  text-align: center;
+}
+
+/* Component picker */
+.component-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.component-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.component-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+}
+
+.component-chip-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.component-chip-remove:hover {
+  color: var(--text-primary);
+}
+
+.component-input-wrapper {
+  position: relative;
+}
+
+.component-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  z-index: 10;
+}
+
+.component-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  text-align: left;
+  cursor: pointer;
+}
+
+.component-dropdown-item:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.component-dropdown-more {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* PR button */
 .wt-btn-pr {
   color: #a78bfa;

@@ -20,6 +20,7 @@ interface CreateSessionParams {
   newBranch?: boolean;
   start?: boolean;
   prompt?: string | null;
+  components?: string[];
 }
 
 interface UseSessionCreationOptions {
@@ -90,6 +91,7 @@ export function useSessionCreation({ onCreated }: UseSessionCreationOptions = {}
       newBranch: params.newBranch ?? false,
       start: params.start ?? false,
       prompt: params.prompt ?? null,
+      components: params.components ?? null,
     }).catch((err) => {
       // Handle invoke-level errors (e.g. command not found)
       setPendingCreations((prev) => {

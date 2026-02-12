@@ -75,6 +75,8 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
                 github_issues_enabled: true,         // populated below
                 is_git_repo: false,                  // computed below
                 merge_workflow: "merge".to_string(), // populated below
+                worktree_command: None,              // populated below
+                component_depth: 2,                  // populated below
             })
         })
         .map_err(|e| e.to_string())?
@@ -84,9 +86,11 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
     let groups = rows
         .into_iter()
         .map(|mut g| {
-            if let Some((enabled, workflow)) = settings.get(&g.path) {
-                g.github_issues_enabled = *enabled;
-                g.merge_workflow = workflow.clone();
+            if let Some(s) = settings.get(&g.path) {
+                g.github_issues_enabled = s.github_issues_enabled;
+                g.merge_workflow = s.merge_workflow.clone();
+                g.worktree_command = s.worktree_command.clone();
+                g.component_depth = s.component_depth;
             }
             let expanded = expand_tilde(&g.default_path);
             g.is_git_repo = new_command("git")
@@ -109,8 +113,16 @@ pub fn update_group_settings(
     group_path: String,
     github_issues_enabled: bool,
     merge_workflow: String,
+    worktree_command: Option<String>,
+    component_depth: u32,
 ) -> Result<(), String> {
-    orca_db.update_group_settings(&group_path, github_issues_enabled, &merge_workflow)
+    orca_db.update_group_settings(
+        &group_path,
+        github_issues_enabled,
+        &merge_workflow,
+        worktree_command.as_deref(),
+        component_depth,
+    )
 }
 
 #[tauri::command]
@@ -202,6 +214,98 @@ fn create_bare_worktree(
     )))
 }
 
+/// Run a custom worktree script, substituting {branch} and {component} placeholders.
+/// Returns (worktree_path, repo_root, branch).
+fn create_scripted_worktree(
+    command_template: &str,
+    branch: &str,
+    components: Option<&[String]>,
+    cwd: &str,
+) -> Result<(String, String, String), String> {
+    // Substitute {branch}
+    let mut command = command_template.replace("{branch}", branch);
+
+    // Handle {component} placeholder: find the flag token before it and
+    // repeat it for each component
+    if command.contains("{component}") {
+        let components = components.unwrap_or(&[]);
+        if components.is_empty() {
+            return Err("Command template uses {component} but no components were selected".into());
+        }
+
+        // Find the flag token immediately before {component}
+        // e.g. "-c {component}" → flag is "-c"
+        if let Some(pos) = command.find("{component}") {
+            let before = &command[..pos];
+            // Find the last whitespace-delimited token before {component}
+            let trimmed = before.trim_end();
+            if let Some(last_space) = trimmed.rfind(char::is_whitespace) {
+                let flag = &trimmed[last_space + 1..];
+                let flag_start = last_space + 1;
+                // Build replacement: "flag comp1 flag comp2 ..."
+                let replacement = components
+                    .iter()
+                    .map(|c| format!("{flag} {c}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                // Replace from flag_start through end of {component}
+                let after = &command[pos + "{component}".len()..];
+                command = format!("{}{replacement}{after}", &command[..flag_start]);
+            } else {
+                // No flag before {component}, just join components with spaces
+                let replacement = components.join(" ");
+                command = command.replace("{component}", &replacement);
+            }
+        }
+    }
+
+    let expanded_cwd = expand_tilde(cwd);
+    let cwd_str = expanded_cwd.to_string_lossy().to_string();
+
+    log::info!("Running scripted worktree command: {command} (cwd: {cwd_str})");
+    let output = new_command("sh")
+        .args(["-c", &command])
+        .current_dir(&cwd_str)
+        .output()
+        .map_err(|e| format!("Failed to run worktree command: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "Worktree command failed:\n{}\n{}",
+            stdout.trim(),
+            stderr.trim()
+        ));
+    }
+
+    let cmd_stdout = String::from_utf8_lossy(&output.stdout);
+    log::debug!("Worktree command output: {}", cmd_stdout.trim());
+
+    // Find the worktree matching the branch from git worktree list
+    let wt_output = new_command("git")
+        .current_dir(&cwd_str)
+        .args(["worktree", "list", "--porcelain"])
+        .output()
+        .map_err(|e| format!("Failed to list worktrees: {e}"))?;
+
+    if !wt_output.status.success() {
+        return Err("Failed to list worktrees after script execution".into());
+    }
+
+    let wt_stdout = String::from_utf8_lossy(&wt_output.stdout);
+    let worktrees = crate::git::parse_worktree_list(&wt_stdout);
+
+    let matching = worktrees
+        .iter()
+        .find(|w| w.branch == branch)
+        .ok_or_else(|| {
+            format!("Worktree command succeeded but no worktree found for branch '{branch}'")
+        })?;
+
+    Ok((matching.path.clone(), cwd_str, branch.to_string()))
+}
+
 /// Run `agent-deck add` and parse the session ID from the output.
 fn run_agent_deck_add(args: &[String]) -> Result<String, String> {
     log::info!("agent-deck {}", args.join(" "));
@@ -289,6 +393,7 @@ pub fn create_session(
     new_branch: bool,
     start: Option<bool>,
     prompt: Option<String>,
+    components: Option<Vec<String>>,
 ) -> Result<(), String> {
     let orca_db = orca_db.inner().clone();
     // Spawn the work to a background thread and return immediately
@@ -302,6 +407,8 @@ pub fn create_session(
             new_branch,
             start,
             prompt.clone(),
+            components,
+            &orca_db,
         ) {
             Ok(session_id) => {
                 // Store prompt in Orca's DB
@@ -344,6 +451,8 @@ fn create_session_impl(
     new_branch: bool,
     start: Option<bool>,
     prompt: Option<String>,
+    components: Option<Vec<String>>,
+    orca_db: &OrcaDb,
 ) -> Result<String, String> {
     let tool_name = tool.unwrap_or_else(|| "claude".to_string());
     let mut effective_path = resolve_effective_path(&project_path)?;
@@ -357,9 +466,23 @@ fn create_session_impl(
         }
     }
 
-    // For bare worktree repos, create the worktree ourselves
-    let bare_worktree_info =
-        create_bare_worktree(&effective_path, worktree_branch.as_deref(), new_branch)?;
+    // Check if the group has a custom worktree script configured
+    let worktree_cmd_config = orca_db.get_group_worktree_command(&group).unwrap_or(None);
+
+    // If a custom worktree command is configured and we have a branch, use it
+    let bare_worktree_info = if let (Some((cmd_template, _)), Some(ref branch)) =
+        (&worktree_cmd_config, &worktree_branch)
+    {
+        Some(create_scripted_worktree(
+            cmd_template,
+            branch,
+            components.as_deref(),
+            &effective_path,
+        )?)
+    } else {
+        // For bare worktree repos, create the worktree ourselves
+        create_bare_worktree(&effective_path, worktree_branch.as_deref(), new_branch)?
+    };
     if let Some((ref wt_str, _, _)) = bare_worktree_info {
         effective_path = wt_str.clone();
     }

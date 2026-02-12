@@ -184,6 +184,7 @@ pub fn run() {
             git::rebase_branch,
             git::abort_rebase,
             git::update_main_branch,
+            git::list_components,
             tmux::list_tmux_sessions,
             tmux::paste_to_tmux_pane,
             tmux::scroll_tmux_pane,

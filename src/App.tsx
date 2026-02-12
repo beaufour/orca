@@ -492,6 +492,8 @@ function App() {
                 groupName={effectiveGroup.name}
                 sessions={sessions ?? []}
                 isGitRepo={effectiveGroup.is_git_repo}
+                worktreeCommand={effectiveGroup.worktree_command}
+                componentDepth={effectiveGroup.component_depth}
                 createSession={createSession}
                 pendingCreations={pendingCreations}
               />

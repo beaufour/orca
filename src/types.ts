@@ -7,6 +7,8 @@ export interface Group {
   github_issues_enabled: boolean;
   is_git_repo: boolean;
   merge_workflow: "merge" | "pr";
+  worktree_command: string | null;
+  component_depth: number;
 }
 
 export interface Session {

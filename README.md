@@ -25,7 +25,7 @@ This app is very much in development mode and is crafted for my workflow, but I'
 - **Attention indicators** — Color-coded status for each session: needs input (red), error (orange), running (blue), idle (green), stale (gray)
 - **"Needs Action" view** — A single view of every session waiting for you across all repos
 - **Integrated terminal** — Full xterm.js terminal embedded right in the app
-- **Worktree management** — Create, diff, rebase, and merge git worktrees from session cards
+- **Worktree management** — Create, diff, rebase, and merge git worktrees from session cards. Supports custom worktree scripts for monorepos with sparse checkouts
 - **Keyboard-driven** — Navigate sessions (`j`/`k`), switch groups (`0`-`9`), search (`/`), and more. Press `?` for the full list
 - **Session organization** — Group sessions by repo/project, move between groups, rename, and filter
 

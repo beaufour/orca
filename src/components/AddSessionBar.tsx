@@ -1,4 +1,6 @@
-import { useState, useImperativeHandle } from "react";
+import { useState, useImperativeHandle, useRef, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import type { Session } from "../types";
 import type { PendingCreation } from "../hooks/useSessionCreation";
 import { isMainSession, validateBranchName } from "../utils";
@@ -16,6 +18,7 @@ interface CreateSessionParams {
   newBranch?: boolean;
   start?: boolean;
   prompt?: string | null;
+  components?: string[];
 }
 
 interface AddSessionBarProps {
@@ -25,12 +28,118 @@ interface AddSessionBarProps {
   groupName: string;
   sessions: Session[];
   isGitRepo: boolean;
+  worktreeCommand: string | null;
+  componentDepth: number;
   createSession: (params: CreateSessionParams) => void;
   pendingCreations: Map<string, PendingCreation>;
 }
 
 type SessionMode = "worktree" | "plain";
 type SessionTool = "claude" | "shell";
+
+function ComponentPicker({
+  repoPath,
+  depth,
+  selected,
+  onSelect,
+  onRemove,
+}: {
+  repoPath: string;
+  depth: number;
+  selected: string[];
+  onSelect: (component: string) => void;
+  onRemove: (component: string) => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const { data: allComponents = [], isLoading } = useQuery({
+    queryKey: ["components", repoPath, depth],
+    queryFn: () => invoke<string[]>("list_components", { repoPath, depth }),
+    staleTime: 60_000,
+  });
+
+  const filtered = allComponents.filter(
+    (c) => c.toLowerCase().includes(filter.toLowerCase()) && !selected.includes(c),
+  );
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node) &&
+        inputRef.current &&
+        !inputRef.current.contains(e.target as Node)
+      ) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="component-picker">
+      {selected.length > 0 && (
+        <div className="component-chips">
+          {selected.map((c) => (
+            <span key={c} className="component-chip">
+              {c}
+              <button
+                type="button"
+                className="component-chip-remove"
+                onClick={() => onRemove(c)}
+                aria-label={`Remove ${c}`}
+              >
+                x
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="component-input-wrapper">
+        <input
+          ref={inputRef}
+          className="wt-input"
+          type="text"
+          placeholder={isLoading ? "Loading components..." : "Type to filter components..."}
+          value={filter}
+          onChange={(e) => {
+            setFilter(e.target.value);
+            setShowDropdown(true);
+          }}
+          onFocus={() => setShowDropdown(true)}
+          disabled={isLoading}
+          spellCheck={false}
+          autoCapitalize="off"
+        />
+        {showDropdown && filtered.length > 0 && (
+          <div ref={dropdownRef} className="component-dropdown">
+            {filtered.slice(0, 50).map((c) => (
+              <button
+                key={c}
+                type="button"
+                className="component-dropdown-item"
+                onClick={() => {
+                  onSelect(c);
+                  setFilter("");
+                  inputRef.current?.focus();
+                }}
+              >
+                {c}
+              </button>
+            ))}
+            {filtered.length > 50 && (
+              <div className="component-dropdown-more">{filtered.length - 50} more...</div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function AddSessionBar({
   ref,
@@ -39,6 +148,8 @@ export function AddSessionBar({
   groupName,
   sessions,
   isGitRepo,
+  worktreeCommand,
+  componentDepth,
   createSession,
   pendingCreations,
 }: AddSessionBarProps) {
@@ -51,9 +162,11 @@ export function AddSessionBar({
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<SessionMode>(isGitRepo ? "worktree" : "plain");
   const [tool, setTool] = useState<SessionTool>("claude");
+  const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
 
   const hasMainSession = sessions.some((s) => isMainSession(s.worktree_branch));
   const branchError = branchName.trim() ? validateBranchName(branchName.trim()) : null;
+  const needsComponent = mode === "worktree" && !!worktreeCommand?.includes("{component}");
 
   const hasPending = Array.from(pendingCreations.values()).some(
     (p) => p.groupPath === groupPath && !p.error,
@@ -65,6 +178,7 @@ export function AddSessionBar({
     setPrompt("");
     setMode(isGitRepo ? "worktree" : "plain");
     setTool("claude");
+    setSelectedComponents([]);
     setShowForm(false);
   };
 
@@ -79,6 +193,7 @@ export function AddSessionBar({
     const promptValue = prompt.trim() || null;
     if (mode === "worktree") {
       if (!branchName.trim() || branchError) return;
+      if (needsComponent && selectedComponents.length === 0) return;
       createSession({
         projectPath: repoPath,
         group: groupPath,
@@ -88,6 +203,7 @@ export function AddSessionBar({
         newBranch: true,
         start: true,
         prompt: promptValue,
+        components: needsComponent ? selectedComponents : undefined,
       });
     } else {
       createSession({
@@ -206,6 +322,15 @@ export function AddSessionBar({
                 {branchError && <div className="wt-error wt-error-inline">{branchError}</div>}
               </>
             )}
+            {needsComponent && showForm && (
+              <ComponentPicker
+                repoPath={repoPath}
+                depth={componentDepth}
+                selected={selectedComponents}
+                onSelect={(c) => setSelectedComponents((prev) => [...prev, c])}
+                onRemove={(c) => setSelectedComponents((prev) => prev.filter((x) => x !== c))}
+              />
+            )}
             <input
               className="wt-input"
               type="text"
@@ -234,6 +359,7 @@ export function AddSessionBar({
               type="submit"
               disabled={
                 (mode === "worktree" && (!branchName.trim() || !!branchError)) ||
+                (needsComponent && selectedComponents.length === 0) ||
                 (mode === "plain" && !title.trim() && !prompt.trim())
               }
             >

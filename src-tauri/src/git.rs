@@ -637,6 +637,25 @@ fn init_bare_repo_inner(project_path: &Path, project_str: &str) -> Result<String
 }
 
 #[tauri::command]
+pub fn list_components(repo_path: String, depth: u32) -> Result<Vec<String>, String> {
+    let effective_repo = find_repo_root(&repo_path)?;
+    let output = run_git(
+        &effective_repo,
+        &["ls-tree", "-d", "-r", "--name-only", "HEAD"],
+    )?;
+    let mut components: Vec<String> = output
+        .lines()
+        .filter(|line| {
+            let segments = line.split('/').count();
+            segments == depth as usize
+        })
+        .map(str::to_string)
+        .collect();
+    components.sort();
+    Ok(components)
+}
+
+#[tauri::command]
 pub fn abort_rebase(worktree_path: String) -> Result<(), String> {
     run_git(&worktree_path, &["rebase", "--abort"])?;
     Ok(())
