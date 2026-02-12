@@ -73,14 +73,34 @@ export function issueToSlug(number: number, title: string): string {
   return `${number}-${slug}`;
 }
 
-interface DiffLine {
+export interface DiffLine {
   type: "addition" | "deletion" | "context";
   content: string;
 }
 
-interface DiffHunk {
+export interface DiffHunk {
   header: string;
   lines: DiffLine[];
+}
+
+export interface DiffComment {
+  id: number;
+  filePath: string;
+  hunkIndex: number;
+  startLine: number;
+  endLine: number;
+  text: string;
+  /** The actual diff lines covered by this comment */
+  lines: DiffLine[];
+}
+
+export function formatCommentsAsPrompt(comments: DiffComment[]): string {
+  const parts = ["I have review comments on the current diff. Please address each one:"];
+  comments.forEach((c, i) => {
+    const diffBlock = c.lines.map((l) => l.content).join("\n");
+    parts.push(`\n## Comment ${i + 1}: ${c.filePath}\n\`\`\`diff\n${diffBlock}\n\`\`\`\n${c.text}`);
+  });
+  return parts.join("\n");
 }
 
 export interface DiffFile {
