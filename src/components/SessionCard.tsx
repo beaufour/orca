@@ -127,6 +127,7 @@ export function SessionCard({
     isDismissed && attention === "needs_input"
       ? { label: "Dismissed", className: "status-dismissed" }
       : ATTENTION_CONFIG[attention];
+  const isRemoving = actions.isRemoving || prActions.isRemoving;
   const isPending = actions.isPending || prActions.isPending || addWorktreeMutation.isPending;
   const mutationError =
     (mergeWorkflow === "pr" ? prActions.mutationError : actions.mutationError) ??
@@ -135,7 +136,7 @@ export function SessionCard({
   return (
     <div
       ref={cardRef}
-      className={`session-card attention-${effectiveAttention}${isSelected ? " session-card-selected" : ""}${isFocused ? " session-card-focused" : ""}`}
+      className={`session-card attention-${effectiveAttention}${isSelected ? " session-card-selected" : ""}${isFocused ? " session-card-focused" : ""}${isRemoving ? " session-card-removing" : ""}`}
       onClick={onClick}
     >
       <div className="session-card-header">
@@ -219,13 +220,21 @@ export function SessionCard({
         </div>
       )}
       <div className="session-card-body">
-        {(session.prompt || summary?.initial_prompt) && (
-          <div className="session-summary">{session.prompt ?? summary?.initial_prompt}</div>
+        {isRemoving ? (
+          <div className="loading-row">
+            <span className="spinner" /> Removing...
+          </div>
+        ) : (
+          <>
+            {(session.prompt || summary?.initial_prompt) && (
+              <div className="session-summary">{session.prompt ?? summary?.initial_prompt}</div>
+            )}
+            <div className="session-path">
+              {groupName && <span className="session-group">{groupName}</span>}
+              {formatPath(session.project_path)}
+            </div>
+          </>
         )}
-        <div className="session-path">
-          {groupName && <span className="session-group">{groupName}</span>}
-          {formatPath(session.project_path)}
-        </div>
       </div>
       {mutationError && <div className="session-wt-error">{String(mutationError)}</div>}
       <div className="session-card-footer">

@@ -104,12 +104,12 @@ pub fn add_worktree(repo_path: String, branch: String) -> Result<String, String>
     Ok(worktree_str)
 }
 
-#[tauri::command]
-pub fn remove_worktree(repo_path: String, worktree_path: String) -> Result<(), String> {
-    let effective_repo = find_repo_root(&repo_path)?;
+/// Remove a worktree and its branch (non-Tauri, callable from background threads).
+pub fn remove_worktree_sync(repo_path: &str, worktree_path: &str) -> Result<(), String> {
+    let effective_repo = find_repo_root(repo_path)?;
 
     // Get the branch name before removing
-    let worktrees = list_worktrees(repo_path)?;
+    let worktrees = list_worktrees(repo_path.to_string())?;
     let branch = worktrees
         .iter()
         .find(|w| w.path == worktree_path)
@@ -117,7 +117,7 @@ pub fn remove_worktree(repo_path: String, worktree_path: String) -> Result<(), S
 
     run_git(
         &effective_repo,
-        &["worktree", "remove", &worktree_path, "--force"],
+        &["worktree", "remove", worktree_path, "--force"],
     )?;
 
     // Clean up the branch (best-effort — worktree is already removed)
@@ -130,6 +130,11 @@ pub fn remove_worktree(repo_path: String, worktree_path: String) -> Result<(), S
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn remove_worktree(repo_path: String, worktree_path: String) -> Result<(), String> {
+    remove_worktree_sync(&repo_path, &worktree_path)
 }
 
 #[tauri::command]

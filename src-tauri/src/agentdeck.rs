@@ -586,6 +586,76 @@ pub fn remove_session(orca_db: State<'_, OrcaDb>, session_id: String) -> Result<
 }
 
 #[tauri::command]
+pub fn remove_session_background(
+    app: tauri::AppHandle,
+    orca_db: State<'_, OrcaDb>,
+    session_id: String,
+    repo_path: Option<String>,
+    worktree_path: Option<String>,
+) -> Result<(), String> {
+    let orca_db = orca_db.inner().clone();
+    std::thread::spawn(move || {
+        // Best-effort worktree removal
+        if let (Some(ref repo), Some(ref wt)) = (&repo_path, &worktree_path) {
+            if let Err(e) = crate::git::remove_worktree_sync(repo, wt) {
+                log::warn!("Background worktree removal failed (continuing): {e}");
+            }
+        }
+
+        // agent-deck remove + DB cleanup (same logic as remove_session)
+        log::info!("agent-deck remove {session_id} (background)");
+        let remove_result = new_command("agent-deck")
+            .args(["remove", &session_id])
+            .output();
+        match &remove_result {
+            Ok(output) if output.status.success() => {
+                log::debug!("agent-deck remove succeeded for {session_id}");
+            }
+            Ok(output) => {
+                log::error!(
+                    "agent-deck remove failed (exit {}): {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                );
+            }
+            Err(e) => {
+                log::error!("agent-deck remove failed to execute: {e}");
+            }
+        }
+
+        let conn = match open_db() {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = app.emit(
+                    "session-removal-failed",
+                    serde_json::json!({ "session_id": session_id, "error": e }),
+                );
+                return;
+            }
+        };
+
+        if let Err(e) = conn.execute("DELETE FROM instances WHERE id = ?1", [&session_id]) {
+            let msg = format!("Failed to delete session: {e}");
+            let _ = app.emit(
+                "session-removal-failed",
+                serde_json::json!({ "session_id": session_id, "error": msg }),
+            );
+            return;
+        }
+
+        if let Err(e) = orca_db.delete_session_data(&session_id) {
+            log::error!("Failed to clean up Orca session data for {session_id}: {e}");
+        }
+
+        let _ = app.emit(
+            "session-removed",
+            serde_json::json!({ "session_id": session_id }),
+        );
+    });
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_attention_counts() -> Result<AttentionCounts, String> {
     let conn = open_db_readonly()?;
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   useQuery,
   useMutation,
@@ -45,6 +45,7 @@ export interface PrWorkflowActionsResult {
   cleanupMutation: UseMutationResult<void, Error, "remove_all" | "remove_worktree" | "keep">;
 
   // Computed
+  isRemoving: boolean;
   isPending: boolean;
   mutationError: Error | null;
 
@@ -93,8 +94,11 @@ export function usePrWorkflowActions({
     return null;
   });
   const [mainUpdateWarning, setMainUpdateWarning] = useState<string | null>(null);
+  const [removingSessionId, setRemovingSessionId] = useState<string | null>(null);
+  const [removalError, setRemovalError] = useState<Error | null>(null);
 
   const isWorktree = !!session.worktree_branch;
+  const isRemoving = removingSessionId === session.id;
   const isFeatureBranch =
     isWorktree &&
     session.worktree_branch !== "main" &&
@@ -118,13 +122,39 @@ export function usePrWorkflowActions({
     : [];
   const hasPrWarnings = prWarnings.length > 0;
 
-  const invalidateAll = () => {
+  const invalidateAll = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["worktrees", repoPath] });
     queryClient.invalidateQueries({ queryKey: ["sessions"] });
     for (const key of extraInvalidateKeys ?? []) {
       queryClient.invalidateQueries({ queryKey: key as readonly unknown[] });
     }
-  };
+  }, [queryClient, repoPath, extraInvalidateKeys]);
+
+  // Listen for background removal events
+  useEffect(() => {
+    if (!removingSessionId) return;
+
+    const unlistenRemoved = listen<{ session_id: string }>("session-removed", (event) => {
+      if (event.payload.session_id === removingSessionId) {
+        setRemovingSessionId(null);
+        invalidateAll();
+      }
+    });
+    const unlistenFailed = listen<{ session_id: string; error: string }>(
+      "session-removal-failed",
+      (event) => {
+        if (event.payload.session_id === removingSessionId) {
+          setRemovingSessionId(null);
+          setRemovalError(new Error(event.payload.error));
+        }
+      },
+    );
+
+    return () => {
+      unlistenRemoved.then((f) => f());
+      unlistenFailed.then((f) => f());
+    };
+  }, [removingSessionId, invalidateAll]);
 
   // PR status polling
   useQuery<PrInfo>({
@@ -165,22 +195,17 @@ export function usePrWorkflowActions({
     },
   });
 
-  // Remove session mutation
+  // Remove session mutation (background)
   const removeMutation = useMutation({
     mutationFn: async () => {
-      if (isWorktree) {
-        try {
-          await invoke("remove_worktree", {
-            repoPath,
-            worktreePath: session.worktree_path,
-          });
-        } catch {
-          // Worktree may already be gone
-        }
-      }
-      await invoke("remove_session", { sessionId: session.id });
+      setRemovalError(null);
+      setRemovingSessionId(session.id);
+      await invoke("remove_session_background", {
+        sessionId: session.id,
+        repoPath: isWorktree ? repoPath : null,
+        worktreePath: isWorktree ? session.worktree_path : null,
+      });
     },
-    onSuccess: invalidateAll,
   });
 
   // Rebase mutation
@@ -342,15 +367,16 @@ export function usePrWorkflowActions({
   const cleanupMutation = useMutation({
     mutationFn: async (mode: "remove_all" | "remove_worktree" | "keep") => {
       if (mode === "remove_all") {
-        try {
-          await invoke("remove_worktree", {
-            repoPath,
-            worktreePath: session.worktree_path,
-          });
-        } catch {
-          // Worktree may already be gone
-        }
-        await invoke("remove_session", { sessionId: session.id });
+        setRemovalError(null);
+        setRemovingSessionId(session.id);
+        setPrState("idle");
+        setPrInfo(null);
+        await invoke("remove_session_background", {
+          sessionId: session.id,
+          repoPath,
+          worktreePath: session.worktree_path,
+        });
+        return;
       } else if (mode === "remove_worktree") {
         try {
           await invoke("remove_worktree", {
@@ -364,14 +390,17 @@ export function usePrWorkflowActions({
       }
       // mode === "keep" — do nothing
     },
-    onSuccess: () => {
-      setPrState("idle");
-      setPrInfo(null);
-      invalidateAll();
+    onSuccess: (_, mode) => {
+      if (mode !== "remove_all") {
+        setPrState("idle");
+        setPrInfo(null);
+        invalidateAll();
+      }
     },
   });
 
   const isPending =
+    isRemoving ||
     removeMutation.isPending ||
     rebaseMutation.isPending ||
     pushMutation.isPending ||
@@ -382,6 +411,7 @@ export function usePrWorkflowActions({
     cleanupMutation.isPending;
 
   const mutationError =
+    removalError ??
     removeMutation.error ??
     rebaseMutation.error ??
     pushMutation.error ??
@@ -422,6 +452,7 @@ export function usePrWorkflowActions({
     abortRebaseMutation,
     conflictSessionMutation,
     cleanupMutation,
+    isRemoving,
     isPending,
     mutationError,
     startPrFlow,

@@ -178,6 +178,7 @@ pub fn run() {
             agentdeck::get_attention_sessions,
             agentdeck::create_session,
             agentdeck::remove_session,
+            agentdeck::remove_session_background,
             agentdeck::restart_session,
             agentdeck::update_session_worktree,
             agentdeck::rename_session,

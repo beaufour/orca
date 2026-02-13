@@ -422,6 +422,13 @@ body {
   pointer-events: none;
 }
 
+/* Session being removed in background */
+.session-card-removing {
+  opacity: 0.6;
+  border-style: dashed;
+  pointer-events: none;
+}
+
 /* Pending session creation card */
 .session-card-creating {
   opacity: 0.6;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   useQuery,
   useMutation,
@@ -33,6 +33,7 @@ export interface WorktreeActionsResult {
   mergeCleanupMutation: UseMutationResult<void, Error, "remove_all" | "remove_worktree" | "keep">;
   conflictSessionMutation: UseMutationResult<string, Error, void>;
   abortMergeMutation: UseMutationResult<void, Error, void>;
+  isRemoving: boolean;
   isPending: boolean;
   mutationError: Error | null;
 }
@@ -54,8 +55,11 @@ export function useWorktreeActions({
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [mergeState, setMergeState] = useState<MergeState>("idle");
   const [mergeResult, setMergeResult] = useState<MergeResult | null>(null);
+  const [removingSessionId, setRemovingSessionId] = useState<string | null>(null);
+  const [removalError, setRemovalError] = useState<Error | null>(null);
 
   const isWorktree = !!session.worktree_branch;
+  const isRemoving = removingSessionId === session.id;
 
   const { data: worktreeStatus, isLoading: statusLoading } = useQuery<WorktreeStatus>({
     queryKey: queryKeys.worktreeStatus(session.worktree_path ?? ""),
@@ -75,31 +79,50 @@ export function useWorktreeActions({
   const hasWarnings = !!worktreeStatus?.warnings.length;
   const hasMergeWarnings = mergeWarnings.length > 0;
 
-  const invalidateAll = () => {
+  const invalidateAll = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.worktrees(repoPath) });
     queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
     for (const key of extraInvalidateKeys ?? []) {
       queryClient.invalidateQueries({ queryKey: key as readonly unknown[] });
     }
-  };
+  }, [queryClient, repoPath, extraInvalidateKeys]);
+
+  // Listen for background removal events
+  useEffect(() => {
+    if (!removingSessionId) return;
+
+    const unlistenRemoved = listen<{ session_id: string }>("session-removed", (event) => {
+      if (event.payload.session_id === removingSessionId) {
+        setRemovingSessionId(null);
+        setConfirmingRemove(false);
+        invalidateAll();
+      }
+    });
+    const unlistenFailed = listen<{ session_id: string; error: string }>(
+      "session-removal-failed",
+      (event) => {
+        if (event.payload.session_id === removingSessionId) {
+          setRemovingSessionId(null);
+          setRemovalError(new Error(event.payload.error));
+        }
+      },
+    );
+
+    return () => {
+      unlistenRemoved.then((f) => f());
+      unlistenFailed.then((f) => f());
+    };
+  }, [removingSessionId, invalidateAll]);
 
   const removeMutation = useMutation({
     mutationFn: async () => {
-      if (isWorktree) {
-        try {
-          await invoke("remove_worktree", {
-            repoPath,
-            worktreePath: session.worktree_path,
-          });
-        } catch {
-          // Worktree may already be gone — continue with session removal
-        }
-      }
-      await invoke("remove_session", { sessionId: session.id });
-    },
-    onSuccess: () => {
-      setConfirmingRemove(false);
-      invalidateAll();
+      setRemovalError(null);
+      setRemovingSessionId(session.id);
+      await invoke("remove_session_background", {
+        sessionId: session.id,
+        repoPath: isWorktree ? repoPath : null,
+        worktreePath: isWorktree ? session.worktree_path : null,
+      });
     },
   });
 
@@ -139,15 +162,16 @@ export function useWorktreeActions({
   const mergeCleanupMutation = useMutation({
     mutationFn: async (mode: "remove_all" | "remove_worktree" | "keep") => {
       if (mode === "remove_all") {
-        try {
-          await invoke("remove_worktree", {
-            repoPath,
-            worktreePath: session.worktree_path,
-          });
-        } catch {
-          // Worktree may already be gone
-        }
-        await invoke("remove_session", { sessionId: session.id });
+        setRemovalError(null);
+        setRemovingSessionId(session.id);
+        setMergeState("idle");
+        setMergeResult(null);
+        await invoke("remove_session_background", {
+          sessionId: session.id,
+          repoPath,
+          worktreePath: session.worktree_path,
+        });
+        return;
       } else if (mode === "remove_worktree") {
         try {
           await invoke("remove_worktree", {
@@ -161,10 +185,13 @@ export function useWorktreeActions({
       }
       // mode === "keep" — do nothing
     },
-    onSuccess: () => {
-      setMergeState("idle");
-      setMergeResult(null);
-      invalidateAll();
+    onSuccess: (_, mode) => {
+      if (mode !== "remove_all") {
+        // remove_all is handled by the event listener
+        setMergeState("idle");
+        setMergeResult(null);
+        invalidateAll();
+      }
     },
   });
 
@@ -230,12 +257,14 @@ export function useWorktreeActions({
   });
 
   const isPending =
+    isRemoving ||
     removeMutation.isPending ||
     mergeMutation.isPending ||
     mergeCleanupMutation.isPending ||
     conflictSessionMutation.isPending ||
     abortMergeMutation.isPending;
   const mutationError =
+    removalError ??
     removeMutation.error ??
     mergeMutation.error ??
     mergeCleanupMutation.error ??
@@ -261,6 +290,7 @@ export function useWorktreeActions({
     mergeCleanupMutation,
     conflictSessionMutation,
     abortMergeMutation,
+    isRemoving,
     isPending,
     mutationError,
   };
