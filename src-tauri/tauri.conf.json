@@ -10,18 +10,7 @@
     "beforeBuildCommand": "npm run build"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Orca",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 640,
-        "minHeight": 400,
-        "resizable": true,
-        "fullscreen": false,
-        "center": true
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

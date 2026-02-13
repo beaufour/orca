@@ -76,7 +76,8 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(
-      new WebLinksAddon((_event, url) => {
+      new WebLinksAddon((event, url) => {
+        event.preventDefault();
         openUrl(url);
       }),
     );

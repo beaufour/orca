@@ -11,7 +11,7 @@ mod tmux;
 use crate::command::new_command;
 use std::io::{BufRead, BufReader};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[tauri::command]
 fn read_app_log(app: tauri::AppHandle, tail_lines: Option<usize>) -> Result<String, String> {
@@ -129,6 +129,28 @@ pub fn run() {
                 &[&app_submenu, &edit_submenu, &window_submenu, &help_submenu],
             )?;
             app.set_menu(menu)?;
+
+            // Create the main window programmatically so we can add on_navigation
+            // to intercept external URLs and open them in the system browser
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                .title("Orca")
+                .inner_size(1200.0, 800.0)
+                .min_inner_size(640.0, 400.0)
+                .resizable(true)
+                .center()
+                .on_navigation(|url| {
+                    // Allow internal navigation (Tauri assets and dev server)
+                    if url.scheme() == "tauri"
+                        || url.scheme() == "asset"
+                        || url.host_str() == Some("localhost")
+                    {
+                        return true;
+                    }
+                    // External URL: open in system browser, prevent webview navigation
+                    let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
+                    false
+                })
+                .build()?;
 
             let data_dir = app
                 .path()
