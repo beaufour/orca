@@ -40,7 +40,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM5MDY5N0U3MTMxNUFDN0YKUldSL3JCVVQ1NWNHeVMweFVad0w0UkJaaXhURlg1TlJodFFFalhWNnJ2RWlBY0lNek5PTWZkekgK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVFREM5RUFGRTVEQjBDRTAKUldUZ0ROdmxyNTdjWHR6eXNUQWIvdWNGWFYvTE5HdGlpamlEbGF4c1hsOHREUFBOb2hrQ3N0Q2gK",
       "endpoints": ["https://github.com/beaufour/orca/releases/latest/download/latest.json"]
     }
   }
