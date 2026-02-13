@@ -49,6 +49,12 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       scrollback: 0, // tmux manages its own scrollback; disable xterm.js buffer
       fontSize: 13,
       fontFamily: '"SF Mono", Menlo, "Courier New", monospace',
+      // Handle OSC 8 hyperlink clicks (e.g. from Claude Code) — open in system browser
+      linkHandler: {
+        activate(_event: MouseEvent, uri: string) {
+          openUrl(uri);
+        },
+      },
       theme: {
         background: "#0d1117",
         foreground: "#c9d1d9",
