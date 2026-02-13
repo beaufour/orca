@@ -40,7 +40,7 @@ Orca requires the following tools to be installed:
 
 ## Installation
 
-You can download the .dmg here or build Orca yourself.
+You can download the .dmg [here](releases) or build Orca yourself.
 
 ## Building
 
