@@ -72,25 +72,31 @@ fn get_owner_repo(repo_path: &str) -> Result<String, String> {
 
     let url = run_cmd("git", &cwd, &["remote", "get-url", "origin"])?;
     let result = parse_owner_repo(url.trim());
-    if let Ok(ref owner_repo) = result {
-        log::debug!("get_owner_repo: resolved {repo_path} -> {owner_repo}");
+    match &result {
+        Ok(owner_repo) => log::debug!("get_owner_repo: resolved {repo_path} -> {owner_repo}"),
+        Err(e) => log::error!("get_owner_repo: failed for {repo_path}: {e}"),
     }
     result
 }
 
 fn parse_owner_repo(url: &str) -> Result<String, String> {
-    // SSH: git@github.com:owner/repo.git
-    if let Some(rest) = url.strip_prefix("git@github.com:") {
-        let repo = rest.strip_suffix(".git").unwrap_or(rest);
-        return Ok(repo.to_string());
+    // SSH: git@<host>:owner/repo.git
+    if let Some(colon_rest) = url.strip_prefix("git@") {
+        if let Some((_host, rest)) = colon_rest.split_once(':') {
+            let repo = rest.strip_suffix(".git").unwrap_or(rest);
+            return Ok(repo.to_string());
+        }
     }
-    // HTTPS: https://github.com/owner/repo.git
-    if let Some(rest) = url
-        .strip_prefix("https://github.com/")
-        .or_else(|| url.strip_prefix("http://github.com/"))
-    {
-        let repo = rest.strip_suffix(".git").unwrap_or(rest);
-        return Ok(repo.to_string());
+    // HTTPS/HTTP: https://<host>/owner/repo.git
+    let trimmed = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"));
+    if let Some(rest) = trimmed {
+        // Skip the host portion
+        if let Some((_host, path)) = rest.split_once('/') {
+            let repo = path.strip_suffix(".git").unwrap_or(path);
+            return Ok(repo.to_string());
+        }
     }
     Err(format!("Cannot parse GitHub owner/repo from URL: {url}"))
 }
@@ -410,7 +416,23 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_non_github_url() {
-        assert!(parse_owner_repo("git@gitlab.com:owner/repo.git").is_err());
+    fn test_parse_ghe_ssh_url() {
+        assert_eq!(
+            parse_owner_repo("git@ghe.spotify.net:spotify/services-pilot.git").unwrap(),
+            "spotify/services-pilot"
+        );
+    }
+
+    #[test]
+    fn test_parse_ghe_https_url() {
+        assert_eq!(
+            parse_owner_repo("https://ghe.spotify.net/spotify/services-pilot.git").unwrap(),
+            "spotify/services-pilot"
+        );
+    }
+
+    #[test]
+    fn test_parse_invalid_url() {
+        assert!(parse_owner_repo("not-a-url").is_err());
     }
 }

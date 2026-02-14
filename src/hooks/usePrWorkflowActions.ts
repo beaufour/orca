@@ -269,7 +269,7 @@ export function usePrWorkflowActions({
       }).catch((err) => console.warn("Failed to store PR info:", err));
     },
     onError: () => {
-      setPrState("editing_pr");
+      setPrState("idle");
     },
   });
 
