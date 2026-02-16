@@ -10,7 +10,7 @@ A desktop app for managing parallel <a href="https://claude.ai/claude-code">Clau
 
 ---
 
-Orca allows you to have many parallel Claude Code sessions running at the same time, while giving you a view into what each one is doing, which ones need your attention, and one-click access to handy utils like a diff view and terminals. It is built on top of [agent-deck](https://github.com/nichochar/agent-deck).
+Orca allows you to have many parallel Claude Code sessions running at the same time, while giving you a view into what each one is doing, which ones need your attention, and one-click access to handy utils like a diff view and terminals. It is built on top of [agent-deck](https://github.com/asheshgoplani/agent-deck).
 
 <p align="center">
   <img src="docs/imgs/app.png" alt="Orca screenshot" width="800">
@@ -33,7 +33,7 @@ This app is very much in development mode and is crafted for my workflow, but I'
 
 Orca requires the following tools to be installed:
 
-- [agent-deck](https://github.com/nichochar/agent-deck) — manages the underlying sessions
+- [agent-deck](https://github.com/asheshgoplani/agent-deck) — manages the underlying sessions
 - [tmux](https://github.com/tmux/tmux) — terminal multiplexing
 - [git](https://git-scm.com/) — worktree operations
 - [Claude Code](https://claude.ai/claude-code) — the AI coding assistant
