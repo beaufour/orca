@@ -7,7 +7,7 @@ use tauri::{Emitter, State};
 use crate::claude_logs::{self, AttentionStatus};
 use crate::models::{AttentionCounts, Group, Session, VersionCheck};
 
-const SUPPORTED_VERSION: &str = "0.13.0";
+const SUPPORTED_VERSION: &str = "0.19.11";
 
 fn db_path() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;

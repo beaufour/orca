@@ -3,7 +3,7 @@
 Documents the agent-deck interfaces Orca depends on. Use this to identify breaking changes when upgrading.
 
 **Repository:** https://github.com/asheshgoplani/agent-deck
-**Current version: v0.13.0**
+**Current version: v0.19.11**
 
 ## DB Path
 
@@ -15,7 +15,7 @@ Resolved via `dirs::home_dir().join(".agent-deck/profiles/default/state.db")`.
 
 ## DB Schema
 
-Dumped from v0.11.2 (unchanged through v0.13.0):
+Dumped from v0.11.2 (unchanged through v0.19.11):
 
 ```sql
 CREATE TABLE metadata (
@@ -145,7 +145,7 @@ Flags Orca uses:
 2. Conflict: matches `"Session already exists with same title and path: <name> (<id>)"`
 3. Failure: non-zero exit code, stderr returned as error
 
-Flags Orca does NOT use: `-mcp`, `-parent`, `-location`, `-wrapper`, `-quiet`, `--quick`/`-Q` (v0.13.0), `--resume-session` (v0.13.0)
+Flags Orca does NOT use: `-mcp`, `-parent`, `-location`, `-wrapper`, `-quiet`, `--quick`/`-Q`, `--resume-session`
 
 ### `agent-deck session start`
 
@@ -168,6 +168,32 @@ agent-deck remove <session_id>
 Exit 0 = reported success (but see bug below). Orca always follows up with a direct DB delete as a fallback.
 
 **Known bug**: reports success but doesn't delete from DB when the session's worktree path no longer exists as a git worktree. See `docs/todo.md`.
+
+### `agent-deck launch`
+
+Combined add + start + optional send (v0.18.1). Orca does not currently use this but could replace separate `add` / `session start` calls.
+
+```
+agent-deck launch <project_path> [flags] [-m <message>] [--no-wait]
+```
+
+Supports all `add` flags plus `-m`/`--message` and `--no-wait`.
+
+### `agent-deck rename`
+
+Rename a session (v0.17.0). Orca does not currently use this — it writes directly to the DB via `rename_session()`.
+
+```
+agent-deck rename <session_id> <new_name>
+```
+
+### `agent-deck session send --wait`
+
+Send input to a session and block until the agent completes (v0.18.1). Orca does not currently use this.
+
+```
+agent-deck session send <session_id> --wait <message>
+```
 
 ## Status Values
 
@@ -196,6 +222,36 @@ Key details:
 - Optional Telegram bot integration for notifications
 
 ## Upgrade Log
+
+### v0.13.0 → v0.19.11 (analyzed 2026-02-23)
+
+**DB schema:** Unchanged. No columns added, removed, or renamed in `instances`, `groups`, `metadata`, or `instance_heartbeats`.
+
+**New CLI commands:**
+
+- `launch` (v0.18.1) — combined add + start + optional send. Not used by Orca.
+- `rename` (v0.17.0) — rename a session. Orca still writes directly to DB.
+- `session send --wait` (v0.18.1) — send and block until agent completes.
+- `codex-notify`, `codex-hooks` (v0.18.0) — Codex integration. Not relevant to Orca.
+
+**New features (no Orca impact):**
+
+- Title-based status detection (v0.14.0) — internal to agent-deck
+- Claude Code lifecycle hooks for real-time status detection (v0.16.0) — internal, may improve status freshness in DB
+- `--teammate-mode` tmux option for Claude sessions (v0.16.0)
+- Slack integration and cross-platform daemon support (v0.16.0)
+- Conductor enhancements: Slack auth, symlinked CLAUDE.md, policy split (v0.17.0–v0.19.6)
+- Codex/OpenCode tool support (v0.18.0) — new tool types appear as regular sessions in DB
+- Notification bar show-all mode with status icons (v0.18.0)
+- Batched tmux session options for faster startup (v0.18.1)
+- `agent-deck web` mode (v0.19.0) — web UI for agent-deck
+- Environment variable support in config paths (v0.19.6)
+- `manage_mcp_json` config flag (v0.19.6)
+- Skills manager and MCP manager UI improvements (v0.19.3–v0.19.5)
+
+**Status detection changes (v0.14.0–v0.16.0):** Title-based detection (v0.14.0) and lifecycle hooks (v0.16.0) improve how agent-deck determines session status. No impact on Orca — we read status from DB, not our own pattern matching.
+
+**Verdict:** Safe to upgrade with zero Orca code changes. Only `SUPPORTED_VERSION` and this doc needed updating.
 
 ### v0.11.2 → v0.13.0 (analyzed 2025-02-11)
 
