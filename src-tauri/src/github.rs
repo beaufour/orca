@@ -54,8 +54,9 @@ fn to_github_issue(raw: GhIssue) -> GitHubIssue {
 
 const GH_JSON_FIELDS: &str = "number,title,body,state,labels,assignees,createdAt,updatedAt,url";
 
-/// Extract `owner/repo` from the git remote origin URL.
-fn get_owner_repo(repo_path: &str) -> Result<String, String> {
+/// Extract a repo identifier suitable for `gh -R`. Returns `owner/repo` for
+/// github.com repos, or `HOST/owner/repo` for GitHub Enterprise instances.
+fn get_repo_nwo(repo_path: &str) -> Result<String, String> {
     let expanded = expand_tilde(repo_path);
     let expanded_str = expanded.to_string_lossy();
 
@@ -71,20 +72,22 @@ fn get_owner_repo(repo_path: &str) -> Result<String, String> {
     }
 
     let url = run_cmd("git", &cwd, &["remote", "get-url", "origin"])?;
-    let result = parse_owner_repo(url.trim());
+    let result = parse_repo_nwo(url.trim());
     match &result {
-        Ok(owner_repo) => log::debug!("get_owner_repo: resolved {repo_path} -> {owner_repo}"),
-        Err(e) => log::error!("get_owner_repo: failed for {repo_path}: {e}"),
+        Ok(nwo) => log::debug!("get_repo_nwo: resolved {repo_path} -> {nwo}"),
+        Err(e) => log::error!("get_repo_nwo: failed for {repo_path}: {e}"),
     }
     result
 }
 
-fn parse_owner_repo(url: &str) -> Result<String, String> {
+/// Parse a git remote URL into a `gh`-compatible repo identifier.
+/// Returns `owner/repo` for github.com, `HOST/owner/repo` for other hosts.
+fn parse_repo_nwo(url: &str) -> Result<String, String> {
     // SSH: git@<host>:owner/repo.git
     if let Some(colon_rest) = url.strip_prefix("git@") {
-        if let Some((_host, rest)) = colon_rest.split_once(':') {
+        if let Some((host, rest)) = colon_rest.split_once(':') {
             let repo = rest.strip_suffix(".git").unwrap_or(rest);
-            return Ok(repo.to_string());
+            return Ok(with_host(host, repo));
         }
     }
     // HTTPS/HTTP: https://<host>/owner/repo.git
@@ -92,13 +95,21 @@ fn parse_owner_repo(url: &str) -> Result<String, String> {
         .strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"));
     if let Some(rest) = trimmed {
-        // Skip the host portion
-        if let Some((_host, path)) = rest.split_once('/') {
+        if let Some((host, path)) = rest.split_once('/') {
             let repo = path.strip_suffix(".git").unwrap_or(path);
-            return Ok(repo.to_string());
+            return Ok(with_host(host, repo));
         }
     }
     Err(format!("Cannot parse GitHub owner/repo from URL: {url}"))
+}
+
+/// For github.com, return just `owner/repo`. For other hosts, prefix with `host/`.
+fn with_host(host: &str, owner_repo: &str) -> String {
+    if host == "github.com" {
+        owner_repo.to_string()
+    } else {
+        format!("{host}/{owner_repo}")
+    }
 }
 
 fn run_gh(repo_path: &str, args: &[&str]) -> Result<String, String> {
@@ -120,14 +131,14 @@ where
 pub async fn list_issues(repo_path: String) -> Result<Vec<GitHubIssue>, String> {
     spawn_gh(move || {
         log::info!("list_issues: repo_path={repo_path}");
-        let owner_repo = get_owner_repo(&repo_path)?;
+        let nwo = get_repo_nwo(&repo_path)?;
         let output = run_gh(
             &repo_path,
             &[
                 "issue",
                 "list",
                 "-R",
-                &owner_repo,
+                &nwo,
                 "--state",
                 "open",
                 "--limit",
@@ -146,7 +157,7 @@ pub async fn list_issues(repo_path: String) -> Result<Vec<GitHubIssue>, String> 
 
 fn get_issue_sync(repo_path: &str, issue_number: u64) -> Result<GitHubIssue, String> {
     log::info!("get_issue: repo_path={repo_path}, issue_number={issue_number}");
-    let owner_repo = get_owner_repo(repo_path)?;
+    let nwo = get_repo_nwo(repo_path)?;
     let num_str = issue_number.to_string();
     let output = run_gh(
         repo_path,
@@ -155,7 +166,7 @@ fn get_issue_sync(repo_path: &str, issue_number: u64) -> Result<GitHubIssue, Str
             "view",
             &num_str,
             "-R",
-            &owner_repo,
+            &nwo,
             "--json",
             GH_JSON_FIELDS,
         ],
@@ -180,16 +191,9 @@ pub async fn create_issue(
 ) -> Result<GitHubIssue, String> {
     spawn_gh(move || {
         log::info!("create_issue: repo_path={repo_path}, title={title}");
-        let owner_repo = get_owner_repo(&repo_path)?;
+        let nwo = get_repo_nwo(&repo_path)?;
         let mut args = vec![
-            "issue",
-            "create",
-            "-R",
-            &owner_repo,
-            "--title",
-            &title,
-            "--body",
-            &body,
+            "issue", "create", "-R", &nwo, "--title", &title, "--body", &body,
         ];
         let labels_joined = labels.join(",");
         if !labels.is_empty() {
@@ -221,18 +225,10 @@ pub async fn update_issue(
 ) -> Result<GitHubIssue, String> {
     spawn_gh(move || {
         log::info!("update_issue: repo_path={repo_path}, issue_number={issue_number}");
-        let owner_repo = get_owner_repo(&repo_path)?;
+        let nwo = get_repo_nwo(&repo_path)?;
         let num_str = issue_number.to_string();
         let mut args = vec![
-            "issue",
-            "edit",
-            &num_str,
-            "-R",
-            &owner_repo,
-            "--title",
-            &title,
-            "--body",
-            &body,
+            "issue", "edit", &num_str, "-R", &nwo, "--title", &title, "--body", &body,
         ];
         // gh issue edit --add-label replaces; to set exact labels we clear then add
         let labels_joined = labels.join(",");
@@ -250,7 +246,7 @@ pub async fn update_issue(
 #[tauri::command]
 pub async fn assign_issue(repo_path: String, issue_number: u64) -> Result<(), String> {
     spawn_gh(move || {
-        let owner_repo = get_owner_repo(&repo_path)?;
+        let nwo = get_repo_nwo(&repo_path)?;
         let num_str = issue_number.to_string();
         run_gh(
             &repo_path,
@@ -259,7 +255,7 @@ pub async fn assign_issue(repo_path: String, issue_number: u64) -> Result<(), St
                 "edit",
                 &num_str,
                 "-R",
-                &owner_repo,
+                &nwo,
                 "--add-assignee",
                 "@me",
             ],
@@ -295,14 +291,14 @@ pub async fn create_pr(
 ) -> Result<PrInfo, String> {
     spawn_gh(move || {
         log::info!("create_pr: repo_path={repo_path}, branch={branch}, base={base_branch}");
-        let owner_repo = get_owner_repo(&repo_path)?;
+        let nwo = get_repo_nwo(&repo_path)?;
         let output = run_gh(
             &repo_path,
             &[
                 "pr",
                 "create",
                 "-R",
-                &owner_repo,
+                &nwo,
                 "--head",
                 &branch,
                 "--base",
@@ -335,7 +331,7 @@ pub async fn create_pr(
 pub async fn check_pr_status(repo_path: String, branch: String) -> Result<PrInfo, String> {
     spawn_gh(move || {
         log::info!("check_pr_status: repo_path={repo_path}, branch={branch}");
-        let owner_repo = get_owner_repo(&repo_path)?;
+        let nwo = get_repo_nwo(&repo_path)?;
         let output = run_gh(
             &repo_path,
             &[
@@ -343,7 +339,7 @@ pub async fn check_pr_status(repo_path: String, branch: String) -> Result<PrInfo
                 "view",
                 &branch,
                 "-R",
-                &owner_repo,
+                &nwo,
                 "--json",
                 "number,state,url,mergedAt",
             ],
@@ -371,9 +367,9 @@ pub async fn check_pr_status(repo_path: String, branch: String) -> Result<PrInfo
 pub async fn close_issue(repo_path: String, issue_number: u64) -> Result<(), String> {
     spawn_gh(move || {
         log::info!("close_issue: repo_path={repo_path}, issue_number={issue_number}");
-        let owner_repo = get_owner_repo(&repo_path)?;
+        let nwo = get_repo_nwo(&repo_path)?;
         let num_str = issue_number.to_string();
-        run_gh(&repo_path, &["issue", "close", &num_str, "-R", &owner_repo])?;
+        run_gh(&repo_path, &["issue", "close", &num_str, "-R", &nwo])?;
         Ok(())
     })
     .await
@@ -386,7 +382,7 @@ mod tests {
     #[test]
     fn test_parse_ssh_url() {
         assert_eq!(
-            parse_owner_repo("git@github.com:owner/repo.git").unwrap(),
+            parse_repo_nwo("git@github.com:owner/repo.git").unwrap(),
             "owner/repo"
         );
     }
@@ -394,7 +390,7 @@ mod tests {
     #[test]
     fn test_parse_ssh_url_no_dotgit() {
         assert_eq!(
-            parse_owner_repo("git@github.com:owner/repo").unwrap(),
+            parse_repo_nwo("git@github.com:owner/repo").unwrap(),
             "owner/repo"
         );
     }
@@ -402,7 +398,7 @@ mod tests {
     #[test]
     fn test_parse_https_url() {
         assert_eq!(
-            parse_owner_repo("https://github.com/owner/repo.git").unwrap(),
+            parse_repo_nwo("https://github.com/owner/repo.git").unwrap(),
             "owner/repo"
         );
     }
@@ -410,7 +406,7 @@ mod tests {
     #[test]
     fn test_parse_https_url_no_dotgit() {
         assert_eq!(
-            parse_owner_repo("https://github.com/owner/repo").unwrap(),
+            parse_repo_nwo("https://github.com/owner/repo").unwrap(),
             "owner/repo"
         );
     }
@@ -418,21 +414,21 @@ mod tests {
     #[test]
     fn test_parse_ghe_ssh_url() {
         assert_eq!(
-            parse_owner_repo("git@ghe.spotify.net:spotify/services-pilot.git").unwrap(),
-            "spotify/services-pilot"
+            parse_repo_nwo("git@ghe.spotify.net:spotify/services-pilot.git").unwrap(),
+            "ghe.spotify.net/spotify/services-pilot"
         );
     }
 
     #[test]
     fn test_parse_ghe_https_url() {
         assert_eq!(
-            parse_owner_repo("https://ghe.spotify.net/spotify/services-pilot.git").unwrap(),
-            "spotify/services-pilot"
+            parse_repo_nwo("https://ghe.spotify.net/spotify/services-pilot.git").unwrap(),
+            "ghe.spotify.net/spotify/services-pilot"
         );
     }
 
     #[test]
     fn test_parse_invalid_url() {
-        assert!(parse_owner_repo("not-a-url").is_err());
+        assert!(parse_repo_nwo("not-a-url").is_err());
     }
 }
