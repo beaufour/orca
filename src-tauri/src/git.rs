@@ -210,7 +210,18 @@ pub fn get_default_branch(repo_path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn get_branch_diff(worktree_path: String, branch: String) -> Result<String, String> {
     let default_branch = get_default_branch_inner(&worktree_path)?;
-    let range = format!("{default_branch}...{branch}");
+    // Prefer origin/<default> so the diff reflects upstream state rather than
+    // whatever the local branch has been moved to (e.g. after a merge in the
+    // main worktree).  Fall back to the local branch if no remote exists.
+    let base = {
+        let remote_ref = format!("origin/{default_branch}");
+        if run_git(&worktree_path, &["rev-parse", "--verify", &remote_ref]).is_ok() {
+            remote_ref
+        } else {
+            default_branch
+        }
+    };
+    let range = format!("{base}...{branch}");
     run_git(&worktree_path, &["diff", &range])
 }
 
