@@ -208,7 +208,7 @@ pub fn get_default_branch(repo_path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn get_branch_diff(worktree_path: String, branch: String) -> Result<String, String> {
+pub fn get_branch_diff(worktree_path: String, _branch: String) -> Result<String, String> {
     let default_branch = get_default_branch_inner(&worktree_path)?;
     // Prefer origin/<default> so the diff reflects upstream state rather than
     // whatever the local branch has been moved to (e.g. after a merge in the
@@ -221,7 +221,11 @@ pub fn get_branch_diff(worktree_path: String, branch: String) -> Result<String, 
             default_branch
         }
     };
-    let range = format!("{base}...{branch}");
+    // Use HEAD rather than the branch name — the session's worktree_branch may
+    // be the directory name (e.g. "migrate-to-sync") rather than the actual git
+    // branch (e.g. "allanb/async-to-blocking-squeegee"), so the ref won't resolve.
+    // Since we run from worktree_path, HEAD always points to the right commit.
+    let range = format!("{base}...HEAD");
     run_git(&worktree_path, &["diff", &range])
 }
 
