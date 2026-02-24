@@ -83,6 +83,23 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
+    // When default_path is empty (agent-deck >=0.19), fall back to the first
+    // instance's project_path for each group so we can still detect git repos.
+    let mut fallback_paths: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    if let Ok(mut fb_stmt) = conn.prepare(
+        "SELECT group_path, project_path FROM instances \
+         GROUP BY group_path ORDER BY sort_order",
+    ) {
+        if let Ok(fb_rows) = fb_stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        }) {
+            for row in fb_rows.flatten() {
+                fallback_paths.entry(row.0).or_insert(row.1);
+            }
+        }
+    }
+
     let groups = rows
         .into_iter()
         .map(|mut g| {
@@ -92,13 +109,21 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
                 g.worktree_command = s.worktree_command.clone();
                 g.component_depth = s.component_depth;
             }
-            let expanded = expand_tilde(&g.default_path);
-            g.is_git_repo = new_command("git")
-                .current_dir(&expanded)
-                .args(["rev-parse", "--git-common-dir"])
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false);
+            // Backfill default_path so all consumers (GitHub issues, etc.) have it.
+            if g.default_path.is_empty() {
+                if let Some(fb) = fallback_paths.get(&g.path) {
+                    g.default_path = fb.clone();
+                }
+            }
+            if !g.default_path.is_empty() {
+                let expanded = expand_tilde(&g.default_path);
+                g.is_git_repo = new_command("git")
+                    .current_dir(&expanded)
+                    .args(["rev-parse", "--git-common-dir"])
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false);
+            }
             g
         })
         .collect::<Vec<_>>();
