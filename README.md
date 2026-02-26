@@ -20,6 +20,13 @@ Orca allows you to have many parallel Claude Code sessions running at the same t
 
 This app is very much in development mode and is crafted for my workflow, but I'd wager it should work for most people.
 
+Should you use it though? I don't know.
+
+1. This is very much a "moment in time" tool. IDEs / other tools will surpass this little util
+2. It is customized to what I want for my workflow and might not fit yours. Also, I'm sure there are assumptions about my setup that I've forgotten about...
+
+All that said, I'm all ears for thoughts, feedback, etc.
+
 ## Features
 
 - **Attention indicators** — Color-coded status for each session: needs input (red), error (orange), running (blue), idle (green), stale (gray)
