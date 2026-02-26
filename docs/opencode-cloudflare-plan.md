@@ -1,104 +1,209 @@
-# Orca: Migration to OpenCode + Cloudflare Workers
+# Orca: Pluggable Backend Architecture (OpenCode + Cloudflare Workers)
 
 ## Overview
 
-Replace the current Claude Code + agent-deck + tmux architecture with OpenCode running
-remotely on Cloudflare Workers, accessed via OpenCode's HTTP API (the same interface
-that `opencode attach` uses under the hood). Orca becomes a GUI "attach client" — it
-drives a remote OpenCode server instead of orchestrating local tmux sessions.
+Introduce a **pluggable backend adapter** so Orca can drive sessions via different
+agents — keeping the current Claude Code + agent-deck path working while adding an
+OpenCode-on-Cloudflare path. Each group in Orca independently picks a backend.
 
-**Dropping**: `agent-deck` (session manager), `tmux` (terminal), Claude Code JSONL
-logs, PTY embedding.
+This avoids a hard cutover, lets both backends run side-by-side, and derisks the
+migration: if OpenCode on Cloudflare turns out to miss important Claude Code features,
+existing groups are unaffected.
 
-**Adding**: OpenCode HTTP API client, SSE event streaming, Cloudflare Worker deployment,
-groups managed entirely in Orca's own DB.
+---
+
+## Claude Code vs OpenCode (with Claude models)
+
+OpenCode is provider-agnostic, supports Claude, and handles most everyday coding
+tasks well. But there are meaningful gaps compared to Claude Code itself:
+
+| Capability | Claude Code | OpenCode w/ Claude |
+|---|---|---|
+| System prompt | Anthropic-tuned, deeply optimised | OpenCode's own |
+| Plan mode / ExitPlanMode | Native, first-class tool | Not present |
+| Hooks (`~/.claude/hooks/`) | Full pre/post-tool hook system | Different mechanism |
+| Extended thinking | Exposed | Not guaranteed |
+| Sub-agents / Task tool | Native | Not present |
+| Tool implementations | Anthropic's (bash, edit, read) | OpenCode's own |
+| Session format | JSONL in `~/.claude/` | OpenCode JSON |
+| Attention signals | `AskUserQuestion`, `ExitPlanMode` | `question.created` events |
+| MCP support | Yes | Yes |
+| Provider lock-in | Anthropic only | 75+ providers |
+
+**Verdict**: For day-to-day coding the gap is small, but plan mode, hooks, and
+sub-agents are Claude Code-specific capabilities that matter. Supporting both backends
+lets users choose per project.
 
 ---
 
 ## New Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                 Orca Desktop (Tauri)                 │
-│  ┌──────────┐  ┌───────────────┐  ┌──────────────┐  │
-│  │ Sidebar  │  │ Session Cards │  │ Chat/Output  │  │
-│  │ (groups) │  │ (status, sum) │  │ (SSE stream) │  │
-│  └──────────┘  └───────────────┘  └──────────────┘  │
-├─────────────────────────────────────────────────────┤
-│               Tauri Commands (IPC)                   │
-├─────────────────────────────────────────────────────┤
-│                   Rust Backend                       │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────┐  │
-│  │ opencode.rs │  │ opencode_    │  │ git.rs     │  │
-│  │ (HTTP REST) │  │ events.rs    │  │ (worktrees)│  │
-│  │             │  │ (SSE client) │  │            │  │
-│  └─────────────┘  └──────────────┘  └────────────┘  │
-│  ┌─────────────┐  ┌──────────────┐                   │
-│  │ orca_db.rs  │  │ github.rs    │                   │
-│  │ (groups +   │  │ (unchanged)  │                   │
-│  │  settings)  │  │              │                   │
-│  └─────────────┘  └──────────────┘                   │
-└────────────────────────┬────────────────────────────┘
-                         │ HTTPS (REST + SSE)
-                         ▼
-┌────────────────────────────────────────────────────┐
-│           Cloudflare (per-repo Worker)              │
-│                                                    │
-│  CF Worker  →  Durable Object  →  Container :4096  │
-│                                   opencode serve   │
-│                                                    │
-│  (optional: route AI calls through CF AI Gateway)  │
-└────────────────────────────────────────────────────┘
-                         │
-                         ▼
-               AI Provider (Claude, etc.)
+┌──────────────────────────────────────────────────────────────────┐
+│                      Orca Desktop (Tauri)                         │
+│  ┌──────────┐   ┌───────────────┐   ┌──────────────────────────┐ │
+│  │ Sidebar  │   │ Session Cards │   │ Session Detail           │ │
+│  │ (groups) │   │ (status, sum) │   │ TerminalView (CC)        │ │
+│  │          │   │               │   │   OR                     │ │
+│  │ backend  │   │ status badge  │   │ MessageStream (OC)       │ │
+│  │ per group│   │ from adapter  │   │                          │ │
+│  └──────────┘   └───────────────┘   └──────────────────────────┘ │
+├──────────────────────────────────────────────────────────────────┤
+│                       Tauri Commands (IPC)                        │
+├──────────────────────────────────────────────────────────────────┤
+│                         Rust Backend                              │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │                  backend/mod.rs (trait)                    │  │
+│  │  AgentBackend: list_sessions · create · delete · send ·    │  │
+│  │                subscribe_events · get_summary              │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│         ▲                                    ▲                    │
+│  ┌──────┴──────┐                    ┌────────┴────────┐          │
+│  │ backend/    │                    │ backend/        │          │
+│  │ claude_     │                    │ opencode.rs     │          │
+│  │ code.rs     │                    │ (HTTP REST+SSE) │          │
+│  │ (agentdeck  │                    │                 │          │
+│  │ +tmux+JSONL)│                    │                 │          │
+│  └─────────────┘                    └─────────────────┘          │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐          │
+│  │ orca_db.rs  │  │ git.rs       │  │ github.rs      │          │
+│  │ (owns groups│  │ (unchanged)  │  │ (unchanged)    │          │
+│  │  + settings)│  │              │  │                │          │
+│  └─────────────┘  └──────────────┘  └────────────────┘          │
+└──────────────────────────────────────────────────────────────────┘
+         │ (claude-code groups)         │ (opencode groups)
+         ▼                              ▼
+   agent-deck + tmux            HTTPS (REST + SSE)
+   Claude JSONL logs                    │
+   (local, unchanged)                   ▼
+                             ┌──────────────────────────┐
+                             │  Cloudflare              │
+                             │  Worker → DO → Container │
+                             │  opencode serve :4096    │
+                             └──────────────────────────┘
+                                         │
+                                         ▼
+                               AI Provider (Claude, etc.)
 ```
 
 ---
 
-## What Gets Removed
+## Backend Adapter Trait
 
-| File | Why removed |
-|------|-------------|
-| `src-tauri/src/agentdeck.rs` | Entire agent-deck integration gone |
-| `src-tauri/src/claude_logs.rs` | JSONL parsing replaced by OpenCode SSE events |
-| `src-tauri/src/tmux.rs` | No more tmux — OpenCode manages its own execution |
-| `src-tauri/src/pty.rs` | PTY embedding replaced by HTTP event streaming |
+```rust
+// src-tauri/src/backend/mod.rs
+
+#[async_trait]
+pub trait AgentBackend: Send + Sync {
+    async fn list_sessions(&self, group_path: &str) -> Result<Vec<Session>>;
+    async fn create_session(&self, params: CreateSessionParams) -> Result<Session>;
+    async fn delete_session(&self, session_id: &str) -> Result<()>;
+    async fn rename_session(&self, session_id: &str, title: &str) -> Result<()>;
+    async fn abort_session(&self, session_id: &str) -> Result<()>;
+    async fn send_message(&self, session_id: &str, text: &str) -> Result<()>;
+    async fn get_messages(&self, session_id: &str) -> Result<Vec<Message>>;
+    async fn get_summary(&self, session_id: &str) -> Result<Option<String>>;
+    async fn subscribe_events(
+        &self,
+        group_path: &str,
+        sender: mpsc::Sender<BackendEvent>,
+    ) -> Result<()>;
+    async fn respond_to_prompt(
+        &self,
+        session_id: &str,
+        prompt_id: &str,
+        response: PromptResponse,
+    ) -> Result<()>;
+}
+
+pub enum BackendEvent {
+    StatusChanged { session_id: String, status: AttentionStatus },
+    SummaryUpdated { session_id: String, summary: String },
+    SessionCreated { session: Session },
+    SessionRemoved { session_id: String },
+}
+
+// Dispatch based on group config:
+pub fn get_backend(group: &Group) -> Arc<dyn AgentBackend> {
+    match group.backend.as_str() {
+        "opencode" => Arc::new(OpenCodeBackend::new(&group.server_url, &group.password)),
+        _          => Arc::new(ClaudeCodeBackend::new()),  // default
+    }
+}
+```
 
 ---
 
-## What Gets Created
+## Backend Implementations
 
-| File | Purpose |
-|------|---------|
-| `src-tauri/src/opencode.rs` | OpenCode HTTP REST client (session CRUD, prompt sending) |
-| `src-tauri/src/opencode_events.rs` | SSE event subscription, status tracking per session |
-| `cloudflare/worker.ts` | CF Worker + Durable Object proxy to OpenCode container |
-| `cloudflare/wrangler.toml` | Cloudflare deployment config |
+### `backend/claude_code.rs` (refactored from current code)
+
+The existing `agentdeck.rs`, `claude_logs.rs`, `tmux.rs`, and `pty.rs` are
+**not deleted** — they are wrapped into `ClaudeCodeBackend` implementing the trait.
+
+- `list_sessions` → query agent-deck SQLite DB (existing logic)
+- `create_session` → `agent-deck add` CLI (existing logic)
+- `subscribe_events` → poll agent-deck DB + parse JSONL logs (existing logic)
+- `send_message` → tmux send-keys (existing logic)
+- Terminal UI → `TerminalView.tsx` with xterm.js PTY (unchanged)
+
+The refactor is mostly mechanical: move the free functions into an impl block,
+implement the trait, keep all the existing behaviour.
+
+### `backend/opencode.rs` (new)
+
+- `list_sessions` → `GET /session` on CF Worker URL
+- `create_session` → `POST /session` + optional `POST /session/:id/message`
+- `subscribe_events` → SSE stream on `GET /event`
+- `send_message` → `POST /session/:id/message`
+- Terminal UI → `MessageStream.tsx` with SSE rendering (new)
 
 ---
 
-## What Gets Modified
+## Group Schema Change
 
-| File | Changes |
-|------|---------|
-| `src-tauri/src/lib.rs` | Re-register all commands; remove old, add new |
-| `src-tauri/src/orca_db.rs` | Add `groups` and `group_settings` tables (was agent-deck's job) |
-| `src-tauri/src/models.rs` | Replace agent-deck types with OpenCode session/message types |
-| `src-tauri/Cargo.toml` | Add `reqwest`, `tokio-stream`, `eventsource-stream`; remove tmux/pty deps |
-| `src/types.ts` | Update TypeScript interfaces for OpenCode schema |
-| `src/App.tsx` | Update queries and commands to new API |
-| `src/components/TerminalView.tsx` | Replace xterm.js PTY with SSE message stream display |
-| `src/components/SessionCard.tsx` | Update status/summary derivation for OpenCode events |
-| `src/components/Sidebar.tsx` | Groups now from Orca DB, with full CRUD |
-| `CLAUDE.md` | Remove agent-deck / tmux references |
+Add a single `backend` column (and `server_url` for OpenCode groups) to the groups
+table. Groups without it default to `"claude-code"`.
+
+```sql
+-- Orca DB: groups table
+CREATE TABLE groups (
+  path        TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  backend     TEXT NOT NULL DEFAULT 'claude-code',  -- 'claude-code' | 'opencode'
+  server_url  TEXT,          -- CF Worker URL (opencode only)
+  password    TEXT,          -- server auth (opencode only)
+  sort_order  INTEGER DEFAULT 0
+);
+```
+
+Agent-deck's `groups` table is still read for `claude-code` groups (it remains the
+source of truth for their sort order, expansion state, etc). Orca's table stores the
+extra fields agent-deck doesn't know about.
+
+---
+
+## Per-Group Backend in the UI
+
+When creating or editing a group, a picker appears:
+
+```
+Backend:  ● Claude Code (local, agent-deck)
+          ○ OpenCode (remote, Cloudflare)
+               Server URL: [https://orca.example.workers.dev]
+               Password:   [••••••••••••••]
+```
+
+The session detail panel switches automatically:
+- Claude Code groups → `TerminalView` (xterm.js + PTY, existing)
+- OpenCode groups → `MessageStream` (SSE chat, new)
 
 ---
 
 ## OpenCode HTTP API (port 4096)
 
-OpenCode's server is a Hono-based HTTP API with SSE streaming. All communication
-happens over HTTPS to the Cloudflare Worker URL.
+OpenCode's server is Hono-based with REST + SSE. Orca communicates with it over
+HTTPS to the Cloudflare Worker URL.
 
 ### Session endpoints
 
@@ -132,38 +237,21 @@ GET    /session/:id/event              Per-session SSE stream
 
 SSE events relevant to Orca:
 
-| Event | Meaning for Orca |
-|-------|-----------------|
-| `session.created` | New session available |
-| `session.updated` | Title/metadata changed |
-| `message.updated` | Message content changed → update summary |
-| `session.idle` | Agent finished → status = idle |
-| `session.error` | Error occurred → status = error |
-| `tool.execute.before` | Tool running → status = running |
-| `question.created` | Agent needs input → status = needs_input |
-| `permission.created` | Agent needs permission → status = needs_input |
-
-### Send a prompt (the "attach equivalent")
-
-```http
-POST /session/:id/message
-Content-Type: application/json
-
-{
-  "parts": [
-    { "type": "text", "text": "implement the feature" }
-  ]
-}
-```
-
-Response is empty (202). Subscribe to `/session/:id/event` SSE stream to receive
-the response as it streams in.
+| Event | Maps to AttentionStatus |
+|-------|------------------------|
+| `session.idle` | Idle |
+| `session.error` | Error |
+| `tool.execute.before` | Running |
+| `question.created` | NeedsInput |
+| `permission.created` | NeedsInput |
+| `message.updated` | → update summary |
+| `session.created` / `session.updated` | → refresh session list |
 
 ### Authentication
 
-Set `OPENCODE_SERVER_PASSWORD` env var in the container. Orca sends
+Set `OPENCODE_SERVER_PASSWORD` in the container. Orca sends
 `Authorization: Basic <base64(opencode:<password>)>` on every request.
-Password stored in Orca's settings table, never hard-coded.
+Password stored in `groups.password` in Orca's SQLite, never in config files.
 
 ---
 
@@ -171,18 +259,17 @@ Password stored in Orca's settings table, never hard-coded.
 
 Based on [cloudflare/sandbox-sdk opencode example](https://github.com/cloudflare/sandbox-sdk/tree/main/examples/opencode).
 
-### Architecture
+### Request flow
 
 ```
-HTTPS request from Orca
+Orca HTTPS request
   → Cloudflare Worker (edge)
-    → Durable Object (persists container across requests)
+    → Durable Object (keyed by project name, persists container)
       → Container running `opencode serve` on :4096
 ```
 
-The Durable Object acts as a persistent proxy. The container stays alive as long as
-the DO instance exists. Each "project" (group in Orca) maps to one Durable Object
-instance (keyed by repo path or project name).
+One global Worker, many DO instances — one per Orca group. The DO key is the
+group's `path` value, making routing deterministic.
 
 ### `cloudflare/worker.ts`
 
@@ -191,18 +278,18 @@ import { DurableObject } from "cloudflare:workers"
 
 export class OpenCodeSession extends DurableObject {
   async fetch(request: Request): Promise<Response> {
-    // proxyToOpencode() → forwards to container:4096
-    // Starts container with `opencode serve` if not running
+    // Proxies to container:4096, starting it if needed
     return proxyToOpencode(request, this.ctx)
   }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    // Route: /session/<project-id>/* → specific DO instance
-    const projectId = extractProjectId(request)
-    const id = env.OPENCODE_SESSION.idFromName(projectId)
-    const stub = env.OPENCODE_SESSION.get(id)
+    // /project/<id>/* → DO instance keyed by project id
+    const projectId = new URL(request.url).pathname.split("/")[2]
+    const stub = env.OPENCODE_SESSION.get(
+      env.OPENCODE_SESSION.idFromName(projectId)
+    )
     return stub.fetch(request)
   }
 }
@@ -229,312 +316,266 @@ OPENCODE_SERVER_PASSWORD = ""  # set in .dev.vars / CF dashboard
 
 ### Container image
 
-The container runs:
-```bash
-opencode serve --port 4096
-```
-
-Uses the official OpenCode Docker image or a custom one with required tools
-(git, node, your language toolchains).
+The container runs `opencode serve --port 4096`. Use the official OpenCode image or
+a custom one with language toolchains (node, cargo, python, etc.) baked in.
 
 ---
 
-## Data Model Changes
+## Data Model
 
-### OpenCode session (replaces agent-deck `instances`)
+### Unified `Session` type
 
 ```typescript
 interface Session {
-  id: string                // OpenCode session UUID
+  id: string
   title: string
+  groupPath: string
+  backend: "claude-code" | "opencode"
+  status: AttentionStatus
+  summary?: string
+  lastTool?: string
+  // Claude Code backend only:
+  tmuxSession?: string
+  worktreePath?: string
+  worktreeBranch?: string
+  worktreeRepo?: string
+  // OpenCode backend only:
+  serverUrl?: string
   parentId?: string
-  created: number           // Unix ms
-  updated: number           // Unix ms
-}
-
-// Orca augments with:
-interface OrcaSession extends Session {
-  groupPath: string         // stored in orca_db
-  worktreeBranch?: string   // stored in orca_db
-  serverUrl: string         // which CF Worker URL
-  status: AttentionStatus   // derived from SSE events
-  summary?: string          // from latest message content
 }
 ```
 
-### Orca DB schema additions
+The frontend treats sessions uniformly; backend-specific fields are used only where
+the UI branches (TerminalView vs MessageStream).
+
+### Orca DB additions
 
 ```sql
--- Groups (was in agent-deck, now owned by Orca)
-CREATE TABLE groups (
-  path        TEXT PRIMARY KEY,
-  name        TEXT NOT NULL,
-  server_url  TEXT NOT NULL,   -- Cloudflare Worker URL for this group
-  sort_order  INTEGER DEFAULT 0
-);
+-- New columns on group_settings (or a new groups table):
+ALTER TABLE group_settings ADD COLUMN backend     TEXT DEFAULT 'claude-code';
+ALTER TABLE group_settings ADD COLUMN server_url  TEXT;
+ALTER TABLE group_settings ADD COLUMN password    TEXT;
 
--- Per-session metadata Orca tracks (worktree, group membership)
-CREATE TABLE session_meta (
-  session_id     TEXT PRIMARY KEY,
-  group_path     TEXT NOT NULL,
-  server_url     TEXT NOT NULL,
-  worktree_path  TEXT,
+-- OpenCode session metadata (maps OC session IDs into Orca groups)
+CREATE TABLE opencode_session_meta (
+  session_id      TEXT PRIMARY KEY,
+  group_path      TEXT NOT NULL,
+  server_url      TEXT NOT NULL,
+  worktree_path   TEXT,
   worktree_branch TEXT,
-  worktree_repo  TEXT,
-  prompt         TEXT,
-  dismissed      INTEGER DEFAULT 0
-);
-
--- Settings (unchanged)
-CREATE TABLE group_settings (
-  group_path         TEXT PRIMARY KEY,
-  github_issues_enabled INTEGER DEFAULT 1,
-  merge_workflow     TEXT DEFAULT 'merge',
-  worktree_command   TEXT,
-  component_depth    INTEGER DEFAULT 2
+  worktree_repo   TEXT,
+  dismissed       INTEGER DEFAULT 0
 );
 ```
 
-### AttentionStatus derivation (without JSONL)
+### AttentionStatus mapping
 
-```rust
-// Derived purely from SSE events + REST API
-enum AttentionStatus {
-    NeedsInput,   // question.created or permission.created event
-    Error,        // session.error event, or last message is_error
-    Running,      // tool.execute.before with no subsequent session.idle
-    Idle,         // session.idle event received
-    Stale,        // Idle + updated timestamp > 1 hour ago
-    Unknown,      // No events received yet
-}
-```
+Both backends produce the same `AttentionStatus` enum; derivation differs:
+
+| Status | Claude Code source | OpenCode source |
+|--------|-------------------|-----------------|
+| NeedsInput | `AskUserQuestion` / `ExitPlanMode` tool, or tmux pane check | `question.created` / `permission.created` SSE event |
+| Error | agent-deck `status=error` | `session.error` SSE event |
+| Running | agent-deck `status=running` | `tool.execute.before` SSE event |
+| Idle | agent-deck `status=idle` | `session.idle` SSE event |
+| Stale | Idle + last timestamp > 1h | Idle + `updated` > 1h |
 
 ---
 
-## Rust Backend: New Tauri Commands
+## Frontend Session Detail: Two Views
 
-### `opencode.rs` — session management
+`SessionDetailView` renders one of two panels based on `session.backend`:
 
-```rust
-// Session CRUD via OpenCode REST API
-#[tauri::command] get_sessions(group_path, server_url) -> Vec<OrcaSession>
-#[tauri::command] create_session(group_path, server_url, title, prompt?) -> Session
-#[tauri::command] delete_session(session_id, server_url) -> ()
-#[tauri::command] rename_session(session_id, server_url, title) -> ()
-#[tauri::command] send_message(session_id, server_url, text) -> ()
-#[tauri::command] abort_session(session_id, server_url) -> ()
-#[tauri::command] get_messages(session_id, server_url) -> Vec<Message>
-#[tauri::command] respond_to_permission(session_id, server_url, perm_id, allow) -> ()
+### `TerminalView` (Claude Code — unchanged)
+xterm.js + PTY attached to tmux session. Existing implementation kept as-is.
+
+### `MessageStream` (OpenCode — new)
+```
+┌────────────────────────────────────────────────┐
+│ [tool: read_file src/main.rs]           running │
+│                                                 │
+│ ┌─────────────────────────────────────────────┐ │
+│ │ assistant                                   │ │
+│ │ I'll start by reading the main entry point. │ │
+│ └─────────────────────────────────────────────┘ │
+│ ┌─────────────────────────────────────────────┐ │
+│ │ tool: bash                                  │ │
+│ │ $ cargo build                               │ │
+│ │ Compiling orca v0.1.0 ...                   │ │
+│ └─────────────────────────────────────────────┘ │
+│ ┌── Permission required ─────────────────────┐  │
+│ │ Run: rm -rf target/   [Allow] [Deny]        │  │
+│ └────────────────────────────────────────────┘  │
+│                                                 │
+│  ┌─────────────────────────────────────────┐    │
+│  │ Type a message...                  Send │    │
+│  └─────────────────────────────────────────┘    │
+└────────────────────────────────────────────────┘
 ```
 
-### `opencode_events.rs` — SSE streaming
-
-```rust
-// Subscribe to /event (global) SSE stream from a server URL
-// Emits Tauri events: "oc-event" with payload { server_url, event_type, data }
-// Maintains one SSE connection per unique server_url
-// Reconnects with exponential backoff on disconnect
-#[tauri::command] subscribe_events(server_url: String, on_event: Channel) -> ()
-#[tauri::command] unsubscribe_events(server_url: String) -> ()
-```
-
-### Group management (moved from agent-deck to orca_db)
-
-```rust
-#[tauri::command] get_groups() -> Vec<Group>
-#[tauri::command] create_group(name, server_url, path?) -> Group
-#[tauri::command] update_group(path, name?, server_url?, sort_order?) -> ()
-#[tauri::command] delete_group(path) -> ()
-```
-
-### Removed commands (no replacement needed)
-
-```
-check_agent_deck_version   → removed
-list_tmux_sessions         → removed
-attach_pty                 → removed
-write_pty                  → removed
-resize_pty                 → removed
-close_pty                  → removed
-paste_to_tmux_pane         → removed
-scroll_tmux_pane           → removed
-is_waiting_for_input       → removed
-get_session_summary        → removed (status from SSE, summary from REST)
-```
+1. On open: load history via `get_messages(session_id, server_url)`
+2. Subscribe to `session/:id/event` SSE for live streaming
+3. Render `MessagePart` types: text, tool_use, tool_result, thinking
+4. Permission/question cards with inline approve/deny
+5. Input bar → `send_message(session_id, server_url, text)`
 
 ---
 
-## Frontend: TerminalView → MessageStream
+## Files Changed
 
-The current `TerminalView` embeds xterm.js and attaches to a tmux PTY. Since OpenCode
-manages its own execution environment, there's no PTY to attach to.
+### New files
 
-### Option A: SSE message stream display (recommended)
+| File | Purpose |
+|------|---------|
+| `src-tauri/src/backend/mod.rs` | `AgentBackend` trait + dispatch |
+| `src-tauri/src/backend/claude_code.rs` | Refactored agentdeck+tmux+JSONL adapter |
+| `src-tauri/src/backend/opencode.rs` | New HTTP REST + SSE adapter |
+| `src/components/MessageStream.tsx` | OpenCode session detail view |
+| `cloudflare/worker.ts` | CF Worker + Durable Object proxy |
+| `cloudflare/wrangler.toml` | Cloudflare deployment config |
 
-Replace `TerminalView` with a chat-style view that:
-1. Loads existing messages via `GET /session/:id/message`
-2. Subscribes to `message.updated` SSE events for live streaming
-3. Renders message parts: text, tool calls, tool results, thinking blocks
-4. Input bar at bottom → `POST /session/:id/message`
-5. Shows permission/question prompts inline with approve/deny buttons
+### Modified files
 
-This is a clean fit for OpenCode's message-based architecture and works well
-for remote sessions.
+| File | What changes |
+|------|-------------|
+| `src-tauri/src/agentdeck.rs` | Internals moved into `ClaudeCodeBackend`; public API becomes the trait |
+| `src-tauri/src/lib.rs` | Commands now dispatch via `get_backend()`; add group CRUD commands |
+| `src-tauri/src/orca_db.rs` | Add `backend`, `server_url`, `password` to group settings; add `opencode_session_meta` table |
+| `src-tauri/src/models.rs` | Unified `Session` type; add OpenCode message types |
+| `src-tauri/Cargo.toml` | Add `reqwest`, `tokio-stream`, `eventsource-stream`, `async-trait` |
+| `src/types.ts` | Unified session type; `backend` discriminant field |
+| `src/App.tsx` | Pass `backend` context to queries; branch on backend where needed |
+| `src/components/SessionCard.tsx` | Unchanged; reads unified `AttentionStatus` |
+| `src/components/SessionDetailView.tsx` | New wrapper: routes to TerminalView or MessageStream |
+| `src/components/Sidebar.tsx` | Group creation UI gains backend picker |
 
-### Option B: Embed OpenCode web UI in a WebView
+### Files NOT changed
 
-OpenCode's `opencode web` serves a full web UI on port 4096. The Cloudflare Worker
-already proxies this. Orca could embed it in a Tauri WebView:
-
-```rust
-// Point a Tauri WebView at the CF Worker URL for a session
-tauri::WebviewWindowBuilder::new("session-{id}", url).build()
-```
-
-Pros: zero frontend work, full OpenCode UI. Cons: loses Orca's custom UI, harder
-to integrate with worktree actions and status badges.
-
-**Recommendation**: Option A for now, with Option B as a fallback escape hatch if
-message rendering becomes complex.
+`tmux.rs`, `pty.rs`, `claude_logs.rs` — these become internal to `ClaudeCodeBackend`.
+They are not deleted or moved until a deliberate cleanup phase (if ever).
 
 ---
 
 ## Phase-by-Phase Implementation
 
-### Phase 1 — Core infrastructure (no UI changes yet)
+### Phase 0 — Extract the adapter trait (no behaviour change)
 
-1. Add `reqwest`, `tokio-stream`, `eventsource-stream` to `Cargo.toml`
-2. Create `opencode.rs` with HTTP client helpers (auth, base URL, error types)
-3. Create `opencode_events.rs` with SSE subscription manager
-4. Extend `orca_db.rs`: add `groups`, `session_meta` tables + migrations
-5. Update `models.rs` with OpenCode types (`Session`, `Message`, `MessagePart`)
-6. Wire up new Tauri commands in `lib.rs` alongside old ones (parallel period)
-7. Create `cloudflare/` directory with `worker.ts` and `wrangler.toml`
+1. Create `src-tauri/src/backend/mod.rs` with `AgentBackend` trait
+2. Move `agentdeck.rs` logic into `ClaudeCodeBackend` implementing the trait
+3. Tauri commands call `get_backend(group)` and invoke trait methods
+4. All existing tests still pass; no UI changes
 
-### Phase 2 — Session management
+This phase produces a refactor-only diff — safe to merge independently.
 
-1. Implement `get_sessions()` via `GET /session` on the configured server URL
-2. Implement `create_session()` via `POST /session` + optional `POST /session/:id/message`
-3. Implement `delete_session()`, `rename_session()`, `abort_session()`
-4. Implement `get_groups()` / CRUD from Orca DB
-5. Update frontend `App.tsx` to use new commands; old queries behind feature flag
+### Phase 1 — OpenCode adapter infrastructure
 
-### Phase 3 — Status and summaries via SSE
+1. Add `reqwest`, `eventsource-stream`, `async-trait` to `Cargo.toml`
+2. Create `backend/opencode.rs` skeleton: HTTP client, auth headers, error types
+3. Implement SSE subscription manager (one connection per `server_url`)
+4. Add `backend`, `server_url`, `password` columns to `group_settings` in Orca DB
+5. Add `opencode_session_meta` table
+6. Create `cloudflare/` directory with `worker.ts` and `wrangler.toml`
 
-1. Implement `subscribe_events()` SSE client in `opencode_events.rs`
-2. Map OpenCode event types → `AttentionStatus`
-3. Derive session summary from latest `message.updated` content
-4. Emit `oc-event` Tauri events to frontend
-5. Update `SessionCard.tsx` to use new status + summary
+### Phase 2 — OpenCode session management
 
-### Phase 4 — Messaging / input
+1. Implement `list_sessions`, `create_session`, `delete_session`, `rename_session`
+2. Implement `get_messages`, `send_message`, `respond_to_prompt`
+3. Wire up `subscribe_events` → emit `oc-event` Tauri events per session
+4. Add group CRUD commands to `lib.rs` (groups now have backend field)
 
-1. Implement `send_message()` via `POST /session/:id/message`
-2. Implement `respond_to_permission()` for approve/deny prompts
-3. Replace `TerminalView.tsx` with `MessageStream.tsx` (Option A above):
-   - Load history via `get_messages()` command
-   - Subscribe to SSE stream for live updates
-   - Render parts: text, tool calls, tool results
-   - Inline permission request cards
+### Phase 3 — OpenCode UI
 
-### Phase 5 — Remove old code
+1. Add backend picker to group creation/edit modal in Sidebar
+2. Create `MessageStream.tsx` for OpenCode session detail
+3. Add `SessionDetailView.tsx` to route TerminalView ↔ MessageStream by backend
+4. Update `App.tsx` to pass `serverUrl` alongside `sessionId` for OpenCode groups
 
-1. Delete `agentdeck.rs`, `claude_logs.rs`, `tmux.rs`, `pty.rs`
-2. Remove `rusqlite` dep on agent-deck DB path (keep for orca_db)
-3. Remove `portable-pty` and tmux-related dependencies
-4. Remove old Tauri commands from `lib.rs`
-5. Remove old TypeScript types referencing agent-deck fields
-6. Remove prerequisite checks for `agent-deck` and `tmux`
+### Phase 4 — Cloudflare deployment
 
-### Phase 6 — Cloudflare deployment
-
-1. Test locally: run `opencode serve` locally, point Orca at `http://localhost:4096`
+1. Test locally: `opencode serve --port 4096`, point a group at `http://localhost:4096`
 2. Deploy CF Worker: `wrangler deploy`
-3. Add group UI for entering CF Worker URL when creating a group
-4. Test full flow: create group → Worker URL → session → prompt → SSE stream
+3. Document container setup (what tools to bake in, idle timeout config)
+4. End-to-end test: create OpenCode group → session → prompt → SSE stream
 
-### Phase 7 — Polish
+### Phase 5 — Polish
 
-1. Handle SSE reconnection (exponential backoff, connection status indicator)
-2. Handle offline/unreachable server gracefully in UI
-3. Git worktree actions still work (run locally against cloned repo)
-4. GitHub integration unchanged
-5. Update `CLAUDE.md` and `docs/design.md`
-6. Add settings UI for server auth password (per-group)
+1. SSE reconnection with exponential backoff; connection status indicator per group
+2. Graceful offline handling (cached last status shown, retry button)
+3. Add per-group "pause container" action (sends signal to CF Worker to hibernate DO)
+4. Auth password stored encrypted in Orca DB (using OS keychain via `keyring` crate)
+5. Update `CLAUDE.md`, `docs/design.md`
 
 ---
 
 ## Dependencies Changes
 
-### Cargo.toml — add
+### Cargo.toml additions
 
 ```toml
-reqwest = { version = "0.12", features = ["json", "stream"] }
-tokio-stream = "0.1"
-eventsource-stream = "0.2"   # or reqwest-eventsource
-futures = "0.3"
+reqwest          = { version = "0.12", features = ["json", "stream"] }
+tokio-stream     = "0.1"
+eventsource-stream = "0.2"
+async-trait      = "0.1"
+futures          = "0.3"
 ```
 
-### Cargo.toml — remove
+No removals — `portable-pty`, `rusqlite`, tmux code all stay (used by `ClaudeCodeBackend`).
 
-```toml
-# Remove (no more tmux PTY embedding):
-portable-pty = "..."
-# rusqlite stays (used by orca_db), but agent-deck DB path logic removed
-```
-
-### package.json — add
+### package.json additions
 
 ```json
-"@opencode-ai/sdk": "^0.x"   // for type definitions only (optional)
+"@opencode-ai/sdk": "^0.x"   // for TypeScript type definitions (optional)
 ```
 
 ---
 
-## Migration Path for Existing Users
+## Migration Path
 
-Since agent-deck is being dropped entirely, existing sessions stored in agent-deck's
-DB won't automatically transfer. Options:
+Existing users keep all their current sessions and groups working on the
+`claude-code` backend (default). No data migration needed.
 
-1. **Clean break**: users start fresh with OpenCode sessions (simplest)
-2. **One-time import**: read agent-deck DB on first run, create corresponding entries
-   in `session_meta` Orca DB with empty `server_url` (sessions stay visible but
-   are "legacy / disconnected")
+To try OpenCode: create a new group, select "OpenCode" backend, enter CF Worker URL.
+Both types of group can coexist in the same Orca instance indefinitely.
 
-Recommendation: clean break, given the fundamental architecture change.
+There is no forced cutover.
 
 ---
 
 ## Open Questions
 
-1. **Worktree path for remote sessions** — sessions run on Cloudflare, but git
-   worktrees are local. How does OpenCode on Cloudflare access the code?
-   Options:
-   - Clone the repo into the container on session creation
-   - Mount a volume / use R2 for code storage
-   - Sessions for remote work vs local dev are different use cases
+1. **Code access for remote sessions** — the OpenCode container on Cloudflare needs
+   the repo to work on. Options:
+   - Clone the repo into the container on session creation (simplest, costs storage)
+   - Push a branch to GitHub; container clones from there
+   - Keep a local clone synced and use a tunnel (ngrok / Cloudflare Tunnel) — hybrid
+   - Accept that OpenCode on CF is for new greenfield work, not existing local repos
 
-2. **Multiple CF Workers vs one** — one Worker per group (repo), or one global
-   Worker with per-session routing? The Durable Object keyed by project ID
-   handles this cleanly: one Worker, many DO instances.
+2. **Persistent container cost** — containers billed by runtime. Orca should expose
+   a "hibernate" button per OpenCode group, and containers should auto-sleep after
+   N minutes of `session.idle` events with no new messages.
 
-3. **Persistent container cost** — Cloudflare containers are billed by runtime.
-   Need to configure idle timeout or manual shutdown. Orca could add a
-   "pause container" action to the group settings.
+3. **Git operations for OpenCode sessions** — worktree merge/rebase/push currently
+   runs locally. For remote sessions this either needs to run inside the container
+   (via `POST /session/:id/message` with a git instruction) or Orca keeps a local
+   mirror clone and runs git locally as it does today.
 
-4. **File access for git operations** — worktree merge/rebase currently runs
-   locally. If the code lives remotely, these need to either run inside the
-   container (via `POST /session/:id/shell`) or remain local with the repo
-   cloned in both places.
+4. **`ClaudeCodeBackend` long-term** — once OpenCode matures (plan mode support,
+   hooks, sub-agents), the Claude Code backend could be deprecated. The adapter
+   pattern makes this a clean swap rather than a rewrite.
 
 ---
 
-## Summary of Key Benefits
+## Summary
 
-- **No agent-deck dependency** — simpler install, no version pinning
-- **No tmux dependency** — cleaner, works on Windows/macOS without tmux
-- **Remote execution** — sessions run on Cloudflare, not consuming local CPU
-- **Any AI provider** — OpenCode is provider-agnostic, not locked to Claude
-- **Official HTTP API** — well-defined REST + SSE interface instead of parsing
-  JSONL files and scraping tmux panes
-- **OpenCode web UI as fallback** — the same Worker URL opens in a browser too
+| | Claude Code backend | OpenCode backend |
+|---|---|---|
+| Execution | Local (tmux) | Remote (Cloudflare) |
+| Session manager | agent-deck | OpenCode HTTP API |
+| Status tracking | JSONL logs + tmux scrape | SSE events |
+| Terminal UI | xterm.js PTY | Message stream |
+| Plan mode | ✓ | ✗ |
+| Hooks | ✓ | ✗ |
+| Sub-agents | ✓ | ✗ |
+| Any AI provider | ✗ (Anthropic only) | ✓ |
+| CPU on local machine | Used | Not used |
+| Install requirements | agent-deck, tmux, claude | CF Worker URL + password |
