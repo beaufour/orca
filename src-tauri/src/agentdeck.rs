@@ -479,7 +479,7 @@ fn create_session_impl(
     components: Option<Vec<String>>,
     orca_db: &OrcaDb,
 ) -> Result<String, String> {
-    let tool_name = tool.unwrap_or_else(|| "claude".to_string());
+    let tool_name = tool.clone().unwrap_or_else(|| "claude".to_string());
     let mut effective_path = resolve_effective_path(&project_path)?;
 
     // For bare repos with no worktree branch (i.e. a "main session"), resolve
@@ -549,13 +549,14 @@ fn create_session_impl(
         start_agent_deck_session(&session_id)?;
 
         // Send prompt to the tmux session in the background so we don't
-        // block the UI while waiting for Claude Code to start up.
+        // block the UI while waiting for the AI to start up.
         if let Some(ref prompt_text) = prompt {
             if !prompt_text.trim().is_empty() {
                 let sid = session_id.clone();
                 let pt = prompt_text.clone();
+                let tool_name = tool.clone().unwrap_or_else(|| "claude".to_string());
                 std::thread::spawn(move || {
-                    if let Err(e) = send_prompt_to_session(&sid, &pt) {
+                    if let Err(e) = send_prompt_to_session(&sid, &pt, &tool_name) {
                         log::error!("Failed to send prompt to session {sid}: {e}");
                     }
                 });
@@ -1012,31 +1013,52 @@ fn get_tmux_session_name(session_id: &str) -> Result<String, String> {
     .map_err(|e| format!("Failed to get tmux session name for {session_id}: {e}"))
 }
 
-/// Send a prompt to a session's tmux session. Waits for the tmux session
-/// to exist and for Claude Code to start rendering before sending.
-/// Runs on a background thread — must not block the UI.
-fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> {
-    let tmux_name = get_tmux_session_name(session_id)?;
-    log::info!("Sending prompt to tmux session '{tmux_name}' for session {session_id}");
+/// Check if Opencode has fully started by looking for its prompt indicator
+fn is_opencode_ready(content: &str) -> bool {
+    // Opencode's TUI shows "tab agents" in the UI when it's fully loaded
+    // This is a reliable indicator that Opencode is ready to accept input
+    content.contains("tab agents")
+}
 
-    let max_attempts = 60;
-    let delay = std::time::Duration::from_millis(500);
+/// Send a prompt to a session's tmux session. Waits for the tmux session
+/// to exist and for the AI to start rendering before sending.
+/// Runs on a background thread — must not block the UI.
+fn send_prompt_to_session(session_id: &str, prompt: &str, tool: &str) -> Result<(), String> {
+    let tmux_name = get_tmux_session_name(session_id)?;
+    log::info!(
+        "Sending prompt to tmux session '{tmux_name}' for session {session_id} (tool={tool})"
+    );
+
+    let max_attempts = 100;
+    let delay = std::time::Duration::from_millis(300);
     let mut session_ready = false;
 
+    // First, wait for the tmux session to be created and for the AI to start rendering
+    // Opencode is slower to start, so we use more attempts with shorter delays
     for attempt in 0..max_attempts {
         // Use capture-pane: if the session doesn't exist it fails,
-        // if it does we can check whether Claude has started rendering.
+        // if it does we can check whether the AI has started rendering.
         let capture = new_command("tmux")
             .args(["capture-pane", "-t", &tmux_name, "-p"])
             .output();
         match capture {
             Ok(output) if output.status.success() => {
                 let content = String::from_utf8_lossy(&output.stdout);
-                // Wait until the pane has non-whitespace content — means
-                // Claude Code has started and rendered something.
-                if content.chars().any(|c| !c.is_whitespace()) {
+
+                // For Opencode, wait for the prompt indicator
+                if tool == "opencode" && is_opencode_ready(&content) {
                     log::debug!(
-                        "Claude Code rendering in tmux session '{tmux_name}' after {} attempts",
+                        "Opencode ready (prompt detected) in tmux session '{tmux_name}' after {} attempts",
+                        attempt + 1
+                    );
+                    session_ready = true;
+                    break;
+                }
+
+                // For Claude and other tools, wait for any non-whitespace content
+                if tool != "opencode" && content.chars().any(|c| !c.is_whitespace()) {
+                    log::debug!(
+                        "{tool} rendering in tmux session '{tmux_name}' after {} attempts",
                         attempt + 1
                     );
                     session_ready = true;
@@ -1052,13 +1074,13 @@ fn send_prompt_to_session(session_id: &str, prompt: &str) -> Result<(), String> 
 
     if !session_ready {
         return Err(format!(
-            "Claude Code not ready in tmux session '{tmux_name}' after {}s",
-            max_attempts as u64 * 500 / 1000
+            "{tool} not ready in tmux session '{tmux_name}' after {}s",
+            max_attempts as u64 * 400 / 1000
         ));
     }
 
-    // Give Claude Code a moment to finish initializing after first render
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    // Brief pause so the TUI processes the text before we submit
+    std::thread::sleep(std::time::Duration::from_millis(150));
 
     // Send the prompt text first (literal mode to avoid key name interpretation)
     log::info!("tmux send-keys -l -t {tmux_name} -- <prompt>");

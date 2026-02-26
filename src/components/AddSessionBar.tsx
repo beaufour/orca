@@ -35,7 +35,7 @@ interface AddSessionBarProps {
 }
 
 type SessionMode = "worktree" | "plain";
-type SessionTool = "claude" | "shell";
+type SessionTool = "claude" | "opencode" | "shell";
 
 function ComponentPicker({
   repoPath,
@@ -299,6 +299,13 @@ export function AddSessionBar({
               </button>
               <button
                 type="button"
+                className={`mode-btn ${tool === "opencode" ? "mode-btn-active" : ""}`}
+                onClick={() => setTool("opencode")}
+              >
+                Opencode
+              </button>
+              <button
+                type="button"
                 className={`mode-btn ${tool === "shell" ? "mode-btn-active" : ""}`}
                 onClick={() => setTool("shell")}
               >
@@ -344,10 +351,10 @@ export function AddSessionBar({
               autoFocus={mode === "plain"}
             />
           </div>
-          {tool === "claude" && (
+          {(tool === "claude" || tool === "opencode") && (
             <textarea
               className="wt-input wt-prompt-input"
-              placeholder="prompt (sent to Claude at start)"
+              placeholder="prompt (sent to AI at start)"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={3}
