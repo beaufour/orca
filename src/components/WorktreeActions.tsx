@@ -28,10 +28,12 @@ export function WorktreeActions({
     hasWarnings,
     hasMergeWarnings,
     removeMutation,
-    mergeMutation,
     mergeCleanupMutation,
     conflictSessionMutation,
+    abortRebaseMutation,
     abortMergeMutation,
+    startRebase,
+    startMerge,
     isPending,
   } = actions;
 
@@ -51,17 +53,30 @@ export function WorktreeActions({
             Diff
           </button>
           {isFeatureBranch && (
-            <button
-              className="wt-btn wt-btn-merge"
-              onClick={(e) => {
-                e.stopPropagation();
-                setMergeState("confirming");
-              }}
-              disabled={isPending}
-              title={`Merge ${worktreeBranch} into ${defaultBranch ?? "main"}`}
-            >
-              Merge
-            </button>
+            <>
+              <button
+                className="wt-btn wt-btn-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  startRebase();
+                }}
+                disabled={isPending}
+                title={`Rebase ${worktreeBranch} onto ${defaultBranch ?? "main"}`}
+              >
+                Rebase
+              </button>
+              <button
+                className="wt-btn wt-btn-merge"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMergeState("confirming");
+                }}
+                disabled={isPending}
+                title={`Rebase & merge ${worktreeBranch} into ${defaultBranch ?? "main"}`}
+              >
+                Merge
+              </button>
+            </>
           )}
         </>
       )}
@@ -81,13 +96,12 @@ export function WorktreeActions({
               ))}
             </div>
           )}
-          <span className="merge-label">Merge into {defaultBranch ?? "main"}?</span>
+          <span className="merge-label">Rebase & merge into {defaultBranch ?? "main"}?</span>
           <button
             className="wt-btn wt-btn-merge"
             onClick={(e) => {
               e.stopPropagation();
-              setMergeState("merging");
-              mergeMutation.mutate();
+              startMerge();
             }}
             disabled={isPending || statusLoading}
           >
@@ -103,6 +117,36 @@ export function WorktreeActions({
             Cancel
           </button>
         </>
+      )}
+      {mergeState === "rebasing" && (
+        <span className="loading-row">
+          <span className="spinner" /> Rebasing...
+        </span>
+      )}
+      {mergeState === "rebase_conflict" && (
+        <div className="merge-conflict">
+          <span className="merge-conflict-label">Rebase conflict</span>
+          <button
+            className="wt-btn wt-btn-danger"
+            onClick={(e) => {
+              e.stopPropagation();
+              abortRebaseMutation.mutate();
+            }}
+            disabled={abortRebaseMutation.isPending || conflictSessionMutation.isPending}
+          >
+            Abort
+          </button>
+          <button
+            className="wt-btn wt-btn-merge"
+            onClick={(e) => {
+              e.stopPropagation();
+              conflictSessionMutation.mutate();
+            }}
+            disabled={abortRebaseMutation.isPending || conflictSessionMutation.isPending}
+          >
+            Resolve with Claude
+          </button>
+        </div>
       )}
       {mergeState === "merging" && (
         <span className="loading-row">
