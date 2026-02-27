@@ -210,8 +210,10 @@ pub async fn rebase_worktree(
 }
 
 fn get_default_branch_inner(repo_path: &str) -> Result<String, String> {
-    // Try symbolic-ref of origin/HEAD first
-    if let Ok(output) = run_git(repo_path, &["symbolic-ref", "refs/remotes/origin/HEAD"]) {
+    // Try symbolic-ref of origin/HEAD first (expected to fail if origin/HEAD is not set)
+    if let Ok((output, true)) =
+        run_git_status(repo_path, &["symbolic-ref", "refs/remotes/origin/HEAD"])
+    {
         let trimmed = output.trim();
         if let Some(branch) = trimmed.strip_prefix("refs/remotes/origin/") {
             return Ok(branch.to_string());
@@ -219,10 +221,10 @@ fn get_default_branch_inner(repo_path: &str) -> Result<String, String> {
     }
 
     // Fallback: check if "main" or "master" branches exist
-    if run_git(repo_path, &["rev-parse", "--verify", "main"]).is_ok() {
+    if let Ok((_, true)) = run_git_status(repo_path, &["rev-parse", "--verify", "main"]) {
         return Ok("main".to_string());
     }
-    if run_git(repo_path, &["rev-parse", "--verify", "master"]).is_ok() {
+    if let Ok((_, true)) = run_git_status(repo_path, &["rev-parse", "--verify", "master"]) {
         return Ok("master".to_string());
     }
 
@@ -434,8 +436,10 @@ pub async fn abort_merge(worktree_path: String) -> Result<(), String> {
 
 /// Detect the default branch from a bare repo by checking origin refs.
 fn detect_default_branch(bare_path: &str) -> Result<String, String> {
-    // Try symbolic-ref of origin/HEAD first
-    if let Ok(output) = run_git(bare_path, &["symbolic-ref", "refs/remotes/origin/HEAD"]) {
+    // Try symbolic-ref of origin/HEAD first (expected to fail if origin/HEAD is not set)
+    if let Ok((output, true)) =
+        run_git_status(bare_path, &["symbolic-ref", "refs/remotes/origin/HEAD"])
+    {
         let trimmed = output.trim();
         if let Some(branch) = trimmed.strip_prefix("refs/remotes/origin/") {
             return Ok(branch.to_string());
@@ -443,20 +447,16 @@ fn detect_default_branch(bare_path: &str) -> Result<String, String> {
     }
 
     // Fallback: check if remote tracking branches exist for main or master
-    if run_git(
+    if let Ok((_, true)) = run_git_status(
         bare_path,
         &["rev-parse", "--verify", "refs/remotes/origin/main"],
-    )
-    .is_ok()
-    {
+    ) {
         return Ok("main".to_string());
     }
-    if run_git(
+    if let Ok((_, true)) = run_git_status(
         bare_path,
         &["rev-parse", "--verify", "refs/remotes/origin/master"],
-    )
-    .is_ok()
-    {
+    ) {
         return Ok("master".to_string());
     }
 
