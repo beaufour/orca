@@ -405,3 +405,229 @@ fn agent_deck_db_path() -> PathBuf {
     let home = dirs::home_dir().expect("could not find home directory");
     home.join(".agent-deck/profiles/default/state.db")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: create an OrcaDb backed by a temp directory.
+    /// `init()` gracefully handles the missing agent-deck DB, so this just works.
+    fn setup() -> (OrcaDb, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().expect("failed to create temp dir");
+        let db = OrcaDb::init(tmp.path()).expect("init failed");
+        (db, tmp)
+    }
+
+    // ── 1. init creates tables successfully ──────────────────────────
+
+    #[test]
+    fn test_init_creates_tables() {
+        let (db, _tmp) = setup();
+
+        // Verify we can open the DB and query each table without error
+        let conn = db.open().expect("open failed");
+
+        // Tables should exist and be queryable (may contain migrated data
+        // if an agent-deck DB exists on this machine, so we don't check
+        // exact counts -- just that the tables are accessible).
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM group_settings", [], |r| r.get(0))
+            .expect("group_settings table missing");
+        assert!(count >= 0);
+
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM session_data", [], |r| r.get(0))
+            .expect("session_data table missing");
+        assert!(count >= 0);
+
+        // migration_v1 marker should always be present after init
+        let count: i32 = conn
+            .query_row("SELECT COUNT(*) FROM metadata", [], |r| r.get(0))
+            .expect("metadata table missing");
+        assert!(count >= 1);
+    }
+
+    // ── 2. update + get_all round-trip ───────────────────────────────
+
+    #[test]
+    fn test_group_settings_round_trip() {
+        let (db, _tmp) = setup();
+
+        let baseline = db
+            .get_all_group_settings()
+            .expect("get baseline failed")
+            .len();
+
+        db.update_group_settings("/path/to/repo", true, "rebase", Some("wt-start"), 3)
+            .expect("update failed");
+
+        let all = db.get_all_group_settings().expect("get failed");
+        assert_eq!(all.len(), baseline + 1);
+
+        let s = all.get("/path/to/repo").expect("missing key");
+        assert!(s.github_issues_enabled);
+        assert_eq!(s.merge_workflow, "rebase");
+        assert_eq!(s.worktree_command.as_deref(), Some("wt-start"));
+        assert_eq!(s.component_depth, 3);
+    }
+
+    // ── 3. update_group_settings upsert ──────────────────────────────
+
+    #[test]
+    fn test_group_settings_upsert() {
+        let (db, _tmp) = setup();
+
+        let baseline = db
+            .get_all_group_settings()
+            .expect("get baseline failed")
+            .len();
+
+        db.update_group_settings("/repo", true, "merge", None, 2)
+            .expect("insert failed");
+        db.update_group_settings("/repo", false, "squash", Some("custom-cmd"), 5)
+            .expect("update failed");
+
+        let all = db.get_all_group_settings().expect("get failed");
+        // Only one new entry should exist (upsert, not two inserts)
+        assert_eq!(all.len(), baseline + 1);
+
+        let s = all.get("/repo").expect("missing key");
+        assert!(!s.github_issues_enabled);
+        assert_eq!(s.merge_workflow, "squash");
+        assert_eq!(s.worktree_command.as_deref(), Some("custom-cmd"));
+        assert_eq!(s.component_depth, 5);
+    }
+
+    // ── 4. get_group_worktree_command returns None when no settings ──
+
+    #[test]
+    fn test_worktree_command_no_settings() {
+        let (db, _tmp) = setup();
+        let result = db
+            .get_group_worktree_command("/nonexistent")
+            .expect("query failed");
+        assert!(result.is_none());
+    }
+
+    // ── 5. get_group_worktree_command returns command when set ────────
+
+    #[test]
+    fn test_worktree_command_returns_value() {
+        let (db, _tmp) = setup();
+
+        db.update_group_settings("/repo", true, "merge", Some("wt-add"), 4)
+            .expect("update failed");
+
+        let result = db
+            .get_group_worktree_command("/repo")
+            .expect("query failed");
+        assert_eq!(result, Some(("wt-add".to_string(), 4)));
+    }
+
+    // ── 6. get_group_worktree_command returns None when cmd is empty ──
+
+    #[test]
+    fn test_worktree_command_empty_string() {
+        let (db, _tmp) = setup();
+
+        db.update_group_settings("/repo", true, "merge", Some(""), 2)
+            .expect("update failed");
+
+        let result = db
+            .get_group_worktree_command("/repo")
+            .expect("query failed");
+        assert!(result.is_none());
+    }
+
+    // ── 7. store_prompt + get_all_prompts round-trip ─────────────────
+
+    #[test]
+    fn test_prompt_round_trip() {
+        let (db, _tmp) = setup();
+
+        let baseline = db.get_all_prompts().expect("get baseline failed").len();
+
+        db.store_prompt("sess-1", "Fix the login bug")
+            .expect("store failed");
+        db.store_prompt("sess-2", "Add dark mode")
+            .expect("store failed");
+
+        let prompts = db.get_all_prompts().expect("get failed");
+        assert_eq!(prompts.len(), baseline + 2);
+        assert_eq!(prompts.get("sess-1").unwrap(), "Fix the login bug");
+        assert_eq!(prompts.get("sess-2").unwrap(), "Add dark mode");
+    }
+
+    // ── 8. store_prompt upsert ───────────────────────────────────────
+
+    #[test]
+    fn test_prompt_upsert() {
+        let (db, _tmp) = setup();
+
+        let baseline = db.get_all_prompts().expect("get baseline failed").len();
+
+        db.store_prompt("sess-1", "original prompt")
+            .expect("store failed");
+        db.store_prompt("sess-1", "updated prompt")
+            .expect("upsert failed");
+
+        let prompts = db.get_all_prompts().expect("get failed");
+        assert_eq!(prompts.len(), baseline + 1);
+        assert_eq!(prompts.get("sess-1").unwrap(), "updated prompt");
+    }
+
+    // ── 9. delete_session_data removes the session ───────────────────
+
+    #[test]
+    fn test_delete_session_data() {
+        let (db, _tmp) = setup();
+
+        let baseline = db.get_all_prompts().expect("get baseline failed").len();
+
+        db.store_prompt("sess-1", "prompt 1").expect("store failed");
+        db.store_prompt("sess-2", "prompt 2").expect("store failed");
+
+        db.delete_session_data("sess-1").expect("delete failed");
+
+        let prompts = db.get_all_prompts().expect("get failed");
+        assert_eq!(prompts.len(), baseline + 1);
+        assert!(prompts.get("sess-1").is_none());
+        assert_eq!(prompts.get("sess-2").unwrap(), "prompt 2");
+    }
+
+    // ── 10. set_dismissed + get_dismissed_ids round-trip ─────────────
+
+    #[test]
+    fn test_dismissed_round_trip() {
+        let (db, _tmp) = setup();
+
+        db.set_dismissed("sess-1", true).expect("set failed");
+        db.set_dismissed("sess-2", true).expect("set failed");
+        db.set_dismissed("sess-3", false).expect("set failed");
+
+        let dismissed = db.get_dismissed_ids().expect("get failed");
+        assert_eq!(dismissed.len(), 2);
+        assert!(dismissed.contains(&"sess-1".to_string()));
+        assert!(dismissed.contains(&"sess-2".to_string()));
+        assert!(!dismissed.contains(&"sess-3".to_string()));
+    }
+
+    // ── 11. set_dismissed(false) clears the flag ─────────────────────
+
+    #[test]
+    fn test_dismissed_clear() {
+        let (db, _tmp) = setup();
+
+        db.set_dismissed("sess-1", true).expect("set failed");
+
+        // Verify it is dismissed
+        let dismissed = db.get_dismissed_ids().expect("get failed");
+        assert!(dismissed.contains(&"sess-1".to_string()));
+
+        // Now clear it
+        db.set_dismissed("sess-1", false).expect("clear failed");
+
+        let dismissed = db.get_dismissed_ids().expect("get failed");
+        assert!(!dismissed.contains(&"sess-1".to_string()));
+    }
+}
