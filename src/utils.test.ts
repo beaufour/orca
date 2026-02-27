@@ -1,14 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  ATTENTION_CONFIG,
   formatPath,
   formatTime,
   fallbackAttention,
+  extractIssueNumber,
+  issueToSlug,
+  formatCommentsAsPrompt,
   parseDiff,
   fileName,
   fileDir,
   isMainSession,
   validateBranchName,
+  storageGet,
+  storageSet,
 } from "./utils";
+import type { DiffComment } from "./utils";
 
 describe("formatPath", () => {
   it("replaces /Users/<user>/ with ~/", () => {
@@ -210,6 +217,221 @@ describe("isMainSession", () => {
 
   it("returns false for feature branch", () => {
     expect(isMainSession("feature-123")).toBe(false);
+  });
+});
+
+describe("ATTENTION_CONFIG", () => {
+  it("has entries for all expected statuses", () => {
+    const keys = Object.keys(ATTENTION_CONFIG);
+    expect(keys).toContain("needs_input");
+    expect(keys).toContain("error");
+    expect(keys).toContain("running");
+    expect(keys).toContain("idle");
+    expect(keys).toContain("stale");
+    expect(keys).toContain("unknown");
+    expect(keys).toHaveLength(6);
+  });
+
+  it("each entry has a label and className", () => {
+    for (const [, value] of Object.entries(ATTENTION_CONFIG)) {
+      expect(value).toHaveProperty("label");
+      expect(value).toHaveProperty("className");
+      expect(typeof value.label).toBe("string");
+      expect(typeof value.className).toBe("string");
+    }
+  });
+});
+
+describe("extractIssueNumber", () => {
+  it("extracts number from branch like 42-fix-bug", () => {
+    expect(extractIssueNumber("42-fix-bug")).toBe(42);
+  });
+
+  it("extracts number from branch with just number prefix", () => {
+    expect(extractIssueNumber("123-")).toBe(123);
+  });
+
+  it("returns null for branch without number prefix", () => {
+    expect(extractIssueNumber("feature-branch")).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    expect(extractIssueNumber("")).toBeNull();
+  });
+
+  it("returns null for number without dash", () => {
+    expect(extractIssueNumber("42")).toBeNull();
+  });
+
+  it("extracts only the leading number", () => {
+    expect(extractIssueNumber("7-add-99-things")).toBe(7);
+  });
+});
+
+describe("issueToSlug", () => {
+  it("generates branch name from issue number and title", () => {
+    expect(issueToSlug(42, "Fix the login bug")).toBe("42-fix-the-login-bug");
+  });
+
+  it("replaces special characters with dashes", () => {
+    expect(issueToSlug(1, "Hello, World! (test)")).toBe("1-hello-world-test");
+  });
+
+  it("trims leading and trailing dashes from slug", () => {
+    expect(issueToSlug(5, "  --hello--  ")).toBe("5-hello");
+  });
+
+  it("truncates long titles to 50 chars", () => {
+    const longTitle = "a".repeat(100);
+    const result = issueToSlug(1, longTitle);
+    // "1-" + 50 chars of "a"
+    expect(result).toBe("1-" + "a".repeat(50));
+  });
+
+  it("handles empty title", () => {
+    expect(issueToSlug(1, "")).toBe("1-");
+  });
+});
+
+describe("formatCommentsAsPrompt", () => {
+  it("formats a single comment", () => {
+    const comments: DiffComment[] = [
+      {
+        id: 1,
+        filePath: "src/foo.ts",
+        hunkIndex: 0,
+        startLine: 1,
+        endLine: 2,
+        text: "Please fix this",
+        lines: [
+          { type: "addition", content: "+new line" },
+          { type: "deletion", content: "-old line" },
+        ],
+      },
+    ];
+    const result = formatCommentsAsPrompt(comments);
+    expect(result).toContain("review comments");
+    expect(result).toContain("## Comment 1: src/foo.ts");
+    expect(result).toContain("+new line");
+    expect(result).toContain("-old line");
+    expect(result).toContain("Please fix this");
+  });
+
+  it("formats multiple comments", () => {
+    const comments: DiffComment[] = [
+      {
+        id: 1,
+        filePath: "a.ts",
+        hunkIndex: 0,
+        startLine: 1,
+        endLine: 1,
+        text: "Comment A",
+        lines: [{ type: "context", content: " line" }],
+      },
+      {
+        id: 2,
+        filePath: "b.ts",
+        hunkIndex: 0,
+        startLine: 1,
+        endLine: 1,
+        text: "Comment B",
+        lines: [{ type: "addition", content: "+added" }],
+      },
+    ];
+    const result = formatCommentsAsPrompt(comments);
+    expect(result).toContain("## Comment 1: a.ts");
+    expect(result).toContain("## Comment 2: b.ts");
+    expect(result).toContain("Comment A");
+    expect(result).toContain("Comment B");
+  });
+});
+
+describe("storageGet", () => {
+  it("returns value from localStorage", () => {
+    const original = globalThis.localStorage;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: { getItem: () => "test-value" },
+      writable: true,
+      configurable: true,
+    });
+    expect(storageGet("test-key")).toBe("test-value");
+    Object.defineProperty(globalThis, "localStorage", {
+      value: original,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it("returns null for missing key", () => {
+    const original = globalThis.localStorage;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: { getItem: () => null },
+      writable: true,
+      configurable: true,
+    });
+    expect(storageGet("nonexistent")).toBeNull();
+    Object.defineProperty(globalThis, "localStorage", {
+      value: original,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it("returns null when localStorage throws", () => {
+    const original = globalThis.localStorage;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: () => {
+          throw new Error("quota exceeded");
+        },
+      },
+      writable: true,
+      configurable: true,
+    });
+    expect(storageGet("key")).toBeNull();
+    Object.defineProperty(globalThis, "localStorage", {
+      value: original,
+      writable: true,
+      configurable: true,
+    });
+  });
+});
+
+describe("storageSet", () => {
+  it("stores value in localStorage", () => {
+    const mockSetItem = vi.fn();
+    const original = globalThis.localStorage;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: { setItem: mockSetItem },
+      writable: true,
+      configurable: true,
+    });
+    storageSet("key", "value");
+    expect(mockSetItem).toHaveBeenCalledWith("key", "value");
+    Object.defineProperty(globalThis, "localStorage", {
+      value: original,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it("silently ignores errors", () => {
+    const original = globalThis.localStorage;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        setItem: () => {
+          throw new Error("quota exceeded");
+        },
+      },
+      writable: true,
+      configurable: true,
+    });
+    expect(() => storageSet("key", "value")).not.toThrow();
+    Object.defineProperty(globalThis, "localStorage", {
+      value: original,
+      writable: true,
+      configurable: true,
+    });
   });
 });
 
