@@ -33,7 +33,7 @@ graph LR
 
 ## OpenCode Remote Backend (HTTP + SSE)
 
-Connects to a remote OpenCode server over HTTP. Sessions run on the server, not locally.
+Connects to any OpenCode server over HTTP. Sessions run on the server, not locally. Orca is a generic HTTP client — it doesn't care how the server is hosted.
 
 **Supports**: OpenCode sessions only (no tool picker shown)
 
@@ -80,12 +80,6 @@ graph TB
         API[OpenCode Server<br>REST + SSE API]
         API --> OC[OpenCode Process]
     end
-
-    subgraph "Cloudflare Workers (optional)"
-        CF[Worker + Durable Object] --> Container[OpenCode Container]
-    end
-
-    API -.->|"or"| CF
 ```
 
 ### SSE Event Flow
@@ -109,6 +103,42 @@ sequenceDiagram
         UI->>UI: Append to MessageStream
     end
 ```
+
+### Server Hosting Options
+
+Orca talks to the standard [OpenCode](https://github.com/sst/opencode) HTTP API (`opencode serve`). The server can run anywhere:
+
+#### Local (for testing)
+
+```bash
+opencode serve --port 4096
+# Server URL: http://localhost:4096
+```
+
+#### VPS / Cloud VM
+
+Run `opencode serve` on any machine. Expose the port directly or behind a reverse proxy with TLS.
+
+#### Cloudflare Workers + Containers (not yet implemented)
+
+The plan doc ([opencode-cloudflare-plan.md](opencode-cloudflare-plan.md)) describes a Cloudflare Workers deployment where:
+
+1. A **Worker** receives HTTPS requests from Orca
+2. Routes them to a **Durable Object** keyed by project name
+3. The DO manages a **Container** running `opencode serve :4096`
+4. The Worker proxies requests/SSE through to the container
+
+```mermaid
+graph LR
+    Orca -->|HTTPS| Worker[CF Worker]
+    Worker --> DO[Durable Object]
+    DO --> Container["Container<br>opencode serve :4096"]
+    Container --> Provider[AI Provider<br>Claude / GPT / etc.]
+```
+
+This is not yet built — the `cloudflare/` directory with `worker.ts` and `wrangler.toml` is a future step. See [opencode-cloudflare-plan.md](opencode-cloudflare-plan.md) Phase 4 for details.
+
+Orca's client code doesn't need to change for Cloudflare — the Worker exposes the same OpenCode REST + SSE API, just at a different URL.
 
 ## Choosing a Backend
 
