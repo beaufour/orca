@@ -8,6 +8,8 @@ export default defineConfig({
   plugins: [react()],
   clearScreen: false,
   test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test-setup.ts"],
     exclude: [...configDefaults.exclude, "src-tauri/**"],
     coverage: {
       provider: "v8",
@@ -16,10 +18,10 @@ export default defineConfig({
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/**/*.test.{ts,tsx}", "src/vite-env.d.ts", "src/main.tsx"],
       thresholds: {
-        statements: 2,
-        branches: 2,
-        functions: 1,
-        lines: 2,
+        statements: 7,
+        branches: 4,
+        functions: 6,
+        lines: 6,
       },
     },
   },
