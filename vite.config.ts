@@ -9,6 +9,19 @@ export default defineConfig({
   clearScreen: false,
   test: {
     exclude: [...configDefaults.exclude, "src-tauri/**"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "text-summary", "json-summary", "html"],
+      reportsDirectory: "./coverage",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/vite-env.d.ts", "src/main.tsx"],
+      thresholds: {
+        statements: 2,
+        branches: 2,
+        functions: 1,
+        lines: 2,
+      },
+    },
   },
   server: {
     port: 1420,
