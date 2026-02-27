@@ -77,6 +77,8 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
                 merge_workflow: "merge".to_string(), // populated below
                 worktree_command: None,              // populated below
                 component_depth: 2,                  // populated below
+                backend: "local".to_string(),        // populated below
+                server_url: None,                    // populated below
             })
         })
         .map_err(|e| e.to_string())?
@@ -108,6 +110,8 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
                 g.merge_workflow = s.merge_workflow.clone();
                 g.worktree_command = s.worktree_command.clone();
                 g.component_depth = s.component_depth;
+                g.backend = s.backend.clone();
+                g.server_url = s.server_url.clone();
             }
             // Backfill default_path so all consumers (GitHub issues, etc.) have it.
             if g.default_path.is_empty() {
@@ -133,6 +137,7 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn update_group_settings(
     orca_db: State<'_, OrcaDb>,
     group_path: String,
@@ -140,6 +145,9 @@ pub fn update_group_settings(
     merge_workflow: String,
     worktree_command: Option<String>,
     component_depth: u32,
+    backend: Option<String>,
+    server_url: Option<String>,
+    server_password: Option<String>,
 ) -> Result<(), String> {
     orca_db.update_group_settings(
         &group_path,
@@ -147,7 +155,18 @@ pub fn update_group_settings(
         &merge_workflow,
         worktree_command.as_deref(),
         component_depth,
+        backend.as_deref().unwrap_or("local"),
+        server_url.as_deref(),
+        server_password.as_deref(),
     )
+}
+
+#[tauri::command]
+pub fn get_server_password(
+    orca_db: State<'_, OrcaDb>,
+    group_path: String,
+) -> Result<Option<String>, String> {
+    orca_db.get_server_password(&group_path)
 }
 
 #[tauri::command]

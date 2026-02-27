@@ -4,6 +4,7 @@ mod command;
 mod git;
 mod github;
 mod models;
+mod opencode_remote;
 mod orca_db;
 mod pty;
 mod tmux;
@@ -186,6 +187,7 @@ pub fn run() {
             agentdeck::create_group,
             agentdeck::clear_session_worktree,
             agentdeck::update_group_settings,
+            agentdeck::get_server_password,
             agentdeck::store_session_pr_info,
             agentdeck::get_dismissed_ids,
             agentdeck::set_dismissed,
@@ -224,6 +226,13 @@ pub fn run() {
             pty::resize_pty,
             pty::close_pty,
             command::check_prerequisites,
+            opencode_remote::oc_list_sessions,
+            opencode_remote::oc_create_session,
+            opencode_remote::oc_delete_session,
+            opencode_remote::oc_send_message,
+            opencode_remote::oc_get_messages,
+            opencode_remote::oc_respond_to_permission,
+            opencode_remote::oc_subscribe_events,
             read_app_log,
             open_in_terminal,
         ])
