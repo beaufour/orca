@@ -27,6 +27,10 @@ export function PrWorkflowActions({
     statusLoading,
     prWarnings,
     hasPrWarnings,
+    confirmingRemove,
+    setConfirmingRemove,
+    removeWarnings,
+    hasRemoveWarnings,
     prInfo,
     mainUpdateWarning,
     removeMutation,
@@ -42,7 +46,7 @@ export function PrWorkflowActions({
   } = actions;
 
   // Idle: [Diff] [PR] ... [Remove] [Term]
-  if (prState === "idle" && isWorktree) {
+  if (prState === "idle" && isWorktree && !confirmingRemove) {
     return (
       <div className="session-wt-actions">
         <button
@@ -73,7 +77,7 @@ export function PrWorkflowActions({
           className="wt-btn wt-btn-danger"
           onClick={(e) => {
             e.stopPropagation();
-            removeMutation.mutate();
+            setConfirmingRemove(true);
           }}
           disabled={isPending}
           title="Remove worktree and session"
@@ -90,6 +94,47 @@ export function PrWorkflowActions({
           title={`Open iTerm in ${projectPath}`}
         >
           Term
+        </button>
+      </div>
+    );
+  }
+
+  // Remove confirmation (from idle or pr_open)
+  if (confirmingRemove && (prState === "idle" || prState === "pr_open")) {
+    return (
+      <div className="session-wt-actions">
+        {isWorktree && statusLoading && (
+          <span className="loading-row">
+            <span className="spinner" />
+          </span>
+        )}
+        {isWorktree && hasRemoveWarnings && (
+          <div className="remove-warnings">
+            {removeWarnings.map((w, i) => (
+              <span key={i} className="remove-warning-item">
+                {w}
+              </span>
+            ))}
+          </div>
+        )}
+        <button
+          className="wt-btn wt-btn-danger"
+          onClick={(e) => {
+            e.stopPropagation();
+            removeMutation.mutate();
+          }}
+          disabled={isPending || (isWorktree && statusLoading)}
+        >
+          {hasRemoveWarnings ? "Force Remove" : "Confirm"}
+        </button>
+        <button
+          className="wt-btn wt-btn-cancel"
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirmingRemove(false);
+          }}
+        >
+          Cancel
         </button>
       </div>
     );
@@ -250,7 +295,7 @@ export function PrWorkflowActions({
           className="wt-btn wt-btn-danger"
           onClick={(e) => {
             e.stopPropagation();
-            removeMutation.mutate();
+            setConfirmingRemove(true);
           }}
           disabled={isPending}
           title="Remove worktree and session"

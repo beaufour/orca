@@ -31,6 +31,10 @@ export interface PrWorkflowActionsResult {
   statusLoading: boolean;
   prWarnings: string[];
   hasPrWarnings: boolean;
+  confirmingRemove: boolean;
+  setConfirmingRemove: (value: boolean) => void;
+  removeWarnings: string[];
+  hasRemoveWarnings: boolean;
   prInfo: PrInfo | null;
   mainUpdateWarning: string | null;
 
@@ -94,6 +98,7 @@ export function usePrWorkflowActions({
     return null;
   });
   const [mainUpdateWarning, setMainUpdateWarning] = useState<string | null>(null);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [removingSessionId, setRemovingSessionId] = useState<string | null>(null);
   const [removalError, setRemovalError] = useState<Error | null>(null);
 
@@ -113,7 +118,7 @@ export function usePrWorkflowActions({
         worktreePath: session.worktree_path,
         branch: session.worktree_branch,
       }),
-    enabled: enabled && prState === "confirming" && isWorktree,
+    enabled: enabled && (prState === "confirming" || confirmingRemove) && isWorktree,
     staleTime: 5_000,
   });
 
@@ -121,6 +126,8 @@ export function usePrWorkflowActions({
     ? worktreeStatus.warnings.filter((w) => w.includes("uncommitted"))
     : [];
   const hasPrWarnings = prWarnings.length > 0;
+  const removeWarnings = worktreeStatus?.warnings ?? [];
+  const hasRemoveWarnings = removeWarnings.length > 0;
 
   const invalidateAll = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["worktrees", repoPath] });
@@ -442,6 +449,10 @@ export function usePrWorkflowActions({
     statusLoading,
     prWarnings,
     hasPrWarnings,
+    confirmingRemove,
+    setConfirmingRemove,
+    removeWarnings,
+    hasRemoveWarnings,
     prInfo,
     mainUpdateWarning,
     removeMutation,
