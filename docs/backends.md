@@ -140,6 +140,7 @@ This is not yet built — the `cloudflare/` directory with `worker.ts` and `wran
 
 Orca's client code doesn't need to change for Cloudflare — the Worker exposes the same OpenCode REST + SSE API, just at a different URL.
 
+
 ## Choosing a Backend
 
 | Feature           | Local                      | OpenCode Remote       |
