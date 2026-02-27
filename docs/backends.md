@@ -119,27 +119,6 @@ opencode serve --port 4096
 
 Run `opencode serve` on any machine. Expose the port directly or behind a reverse proxy with TLS.
 
-#### Cloudflare Workers + Containers (not yet implemented)
-
-The plan doc ([opencode-cloudflare-plan.md](opencode-cloudflare-plan.md)) describes a Cloudflare Workers deployment where:
-
-1. A **Worker** receives HTTPS requests from Orca
-2. Routes them to a **Durable Object** keyed by project name
-3. The DO manages a **Container** running `opencode serve :4096`
-4. The Worker proxies requests/SSE through to the container
-
-```mermaid
-graph LR
-    Orca -->|HTTPS| Worker[CF Worker]
-    Worker --> DO[Durable Object]
-    DO --> Container["Container<br>opencode serve :4096"]
-    Container --> Provider[AI Provider<br>Claude / GPT / etc.]
-```
-
-This is not yet built — the `cloudflare/` directory with `worker.ts` and `wrangler.toml` is a future step. See [opencode-cloudflare-plan.md](opencode-cloudflare-plan.md) Phase 4 for details.
-
-Orca's client code doesn't need to change for Cloudflare — the Worker exposes the same OpenCode REST + SSE API, just at a different URL.
-
 ## Choosing a Backend
 
 | Feature           | Local                      | OpenCode Remote       |
