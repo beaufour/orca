@@ -504,9 +504,19 @@ fn create_session_impl(
     // For bare repos with no worktree branch (i.e. a "main session"), resolve
     // to the default branch worktree so the session points at main, not
     // whatever worktree happened to be passed in.
-    if worktree_branch.is_none() && crate::git::find_bare_root(&effective_path).is_some() {
-        if let Ok(default_wt) = find_default_branch_worktree(&effective_path) {
-            effective_path = default_wt;
+    // Only do this if the effective path IS the bare root itself — if it's
+    // already a specific worktree path (e.g. for conflict resolution), respect it.
+    if worktree_branch.is_none() {
+        if let Some(bare_root) = crate::git::find_bare_root(&effective_path) {
+            let epath = std::path::Path::new(&effective_path)
+                .canonicalize()
+                .unwrap_or_else(|_| std::path::PathBuf::from(&effective_path));
+            let broot = bare_root.canonicalize().unwrap_or(bare_root);
+            if epath == broot {
+                if let Ok(default_wt) = find_default_branch_worktree(&effective_path) {
+                    effective_path = default_wt;
+                }
+            }
         }
     }
 
