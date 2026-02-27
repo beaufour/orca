@@ -4,11 +4,15 @@ use std::path::{Path, PathBuf};
 
 /// Settings for a group, stored in Orca's own DB.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct GroupSettings {
     pub github_issues_enabled: bool,
     pub merge_workflow: String,
     pub worktree_command: Option<String>,
     pub component_depth: u32,
+    pub backend: String,
+    pub server_url: Option<String>,
+    pub server_password: Option<String>,
 }
 
 /// Orca's own SQLite database for data that shouldn't be stored in agent-deck's DB.
@@ -41,6 +45,17 @@ impl OrcaDb {
             CREATE TABLE IF NOT EXISTS metadata (
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS remote_sessions (
+                id              TEXT PRIMARY KEY,
+                group_path      TEXT NOT NULL,
+                title           TEXT NOT NULL,
+                server_url      TEXT NOT NULL,
+                status          TEXT DEFAULT 'idle',
+                summary         TEXT,
+                created_at      INTEGER,
+                last_accessed   INTEGER,
+                sort_order      INTEGER DEFAULT 0
             );",
         )
         .map_err(|e| format!("Failed to create Orca DB tables: {e}"))?;
@@ -60,10 +75,12 @@ impl OrcaDb {
         let conn = self.open()?;
         Self::ensure_merge_workflow_column(&conn)?;
         Self::ensure_worktree_columns(&conn)?;
+        Self::ensure_backend_columns(&conn)?;
         let mut stmt = conn
             .prepare(
                 "SELECT group_path, github_issues_enabled, merge_workflow, \
-                 worktree_command, component_depth FROM group_settings",
+                 worktree_command, component_depth, backend, server_url, server_password \
+                 FROM group_settings",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -77,6 +94,11 @@ impl OrcaDb {
                             .unwrap_or_else(|_| "merge".to_string()),
                         worktree_command: row.get::<_, Option<String>>(3)?,
                         component_depth: row.get::<_, u32>(4).unwrap_or(2),
+                        backend: row
+                            .get::<_, String>(5)
+                            .unwrap_or_else(|_| "local".to_string()),
+                        server_url: row.get::<_, Option<String>>(6)?,
+                        server_password: row.get::<_, Option<String>>(7)?,
                     },
                 ))
             })
@@ -91,6 +113,7 @@ impl OrcaDb {
     }
 
     /// Update group settings (upsert).
+    #[allow(clippy::too_many_arguments)]
     pub fn update_group_settings(
         &self,
         group_path: &str,
@@ -98,21 +121,30 @@ impl OrcaDb {
         merge_workflow: &str,
         worktree_command: Option<&str>,
         component_depth: u32,
+        backend: &str,
+        server_url: Option<&str>,
+        server_password: Option<&str>,
     ) -> Result<(), String> {
         let conn = self.open()?;
         Self::ensure_merge_workflow_column(&conn)?;
         Self::ensure_worktree_columns(&conn)?;
+        Self::ensure_backend_columns(&conn)?;
         conn.execute(
             "INSERT INTO group_settings (group_path, github_issues_enabled, merge_workflow, \
-             worktree_command, component_depth) VALUES (?1, ?2, ?3, ?4, ?5) \
+             worktree_command, component_depth, backend, server_url, server_password) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
              ON CONFLICT(group_path) DO UPDATE SET github_issues_enabled = ?2, \
-             merge_workflow = ?3, worktree_command = ?4, component_depth = ?5",
+             merge_workflow = ?3, worktree_command = ?4, component_depth = ?5, \
+             backend = ?6, server_url = ?7, server_password = ?8",
             rusqlite::params![
                 group_path,
                 github_issues_enabled as i32,
                 merge_workflow,
                 worktree_command,
-                component_depth
+                component_depth,
+                backend,
+                server_url,
+                server_password,
             ],
         )
         .map_err(|e| format!("Failed to update group settings: {e}"))?;
@@ -186,6 +218,53 @@ impl OrcaDb {
                 [],
             )
             .map_err(|e| format!("Failed to add component_depth column: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// Get the server password for a group (kept separate from Group struct for security).
+    pub fn get_server_password(&self, group_path: &str) -> Result<Option<String>, String> {
+        let conn = self.open()?;
+        Self::ensure_backend_columns(&conn)?;
+        let result = conn.query_row(
+            "SELECT server_password FROM group_settings WHERE group_path = ?1",
+            [group_path],
+            |row| row.get::<_, Option<String>>(0),
+        );
+        match result {
+            Ok(pw) => Ok(pw),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Failed to get server password: {e}")),
+        }
+    }
+
+    /// Ensure backend, server_url, server_password columns exist on group_settings.
+    fn ensure_backend_columns(conn: &Connection) -> Result<(), String> {
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(group_settings)")
+            .map_err(|e| e.to_string())?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+
+        if !columns.iter().any(|c| c == "backend") {
+            conn.execute(
+                "ALTER TABLE group_settings ADD COLUMN backend TEXT NOT NULL DEFAULT 'local'",
+                [],
+            )
+            .map_err(|e| format!("Failed to add backend column: {e}"))?;
+        }
+        if !columns.iter().any(|c| c == "server_url") {
+            conn.execute("ALTER TABLE group_settings ADD COLUMN server_url TEXT", [])
+                .map_err(|e| format!("Failed to add server_url column: {e}"))?;
+        }
+        if !columns.iter().any(|c| c == "server_password") {
+            conn.execute(
+                "ALTER TABLE group_settings ADD COLUMN server_password TEXT",
+                [],
+            )
+            .map_err(|e| format!("Failed to add server_password column: {e}"))?;
         }
         Ok(())
     }
