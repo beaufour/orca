@@ -35,16 +35,28 @@ All that said, I'm all ears for thoughts, feedback, etc.
 - **Worktree management** — Create, diff, rebase, and merge git worktrees from session cards. Supports custom worktree scripts for monorepos with sparse checkouts
 - **Keyboard-driven** — Navigate sessions (`j`/`k`), switch groups (`0`-`9`), search (`/`), and more. Press `?` for the full list
 - **Session organization** — Group sessions by repo/project, move between groups, rename, and filter
+- **Remote OpenCode** — Connect to remote OpenCode servers via HTTP + SSE for chat-style sessions without local dependencies
+
+## Backends
+
+Orca supports two backends, configured per group:
+
+- **Local** (default) — Sessions run on your machine via agent-deck + tmux. Supports Claude Code, OpenCode, and shell sessions with full terminal embedding and worktree management.
+- **OpenCode Remote** — Connect to a remote OpenCode server over HTTP. Sessions run on the server with a chat-style message view in Orca. Configure via Group Settings with a server URL and password.
+
+See [docs/backends.md](docs/backends.md) for architecture details.
 
 ## Prerequisites
 
-Orca requires the following tools to be installed:
+For the **local** backend, Orca requires:
 
 - [agent-deck](https://github.com/asheshgoplani/agent-deck) — manages the underlying sessions
 - [tmux](https://github.com/tmux/tmux) — terminal multiplexing
 - [git](https://git-scm.com/) — worktree operations
 - [Claude Code](https://claude.ai/claude-code) — the AI coding assistant
 - [Opencode](https://github.com/sst/opencode) — the AI coding assistant (also supported)
+
+For the **opencode-remote** backend, only a reachable OpenCode server URL is needed.
 
 ## Installation
 
