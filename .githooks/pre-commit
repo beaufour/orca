@@ -18,4 +18,13 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 echo "  Clippy..."
 cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
+if [ "${SKIP_TESTS:-0}" != "1" ]; then
+  echo "  Vitest..."
+  npx vitest run
+  echo "  Cargo test..."
+  cargo test --manifest-path src-tauri/Cargo.toml
+else
+  echo "  Skipping tests (SKIP_TESTS=1)"
+fi
+
 echo "All checks passed."

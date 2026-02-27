@@ -27,7 +27,15 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npx tsc --noEmit
-      - run: npm run test
+      - run: npm run test:coverage
+
+      - name: Upload frontend coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: coverage/
+          retention-days: 14
 
   rust:
     name: Rust
@@ -51,3 +59,27 @@ jobs:
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Install cargo-tarpaulin
+        run: |
+          curl -L --proto '=https' --tlsv1.2 -sSf \
+            https://github.com/xd009642/tarpaulin/releases/latest/download/cargo-tarpaulin-x86_64-unknown-linux-gnu.tar.gz \
+            | tar xz -C $HOME/.cargo/bin
+
+      - name: Rust coverage
+        run: |
+          cargo tarpaulin \
+            --manifest-path src-tauri/Cargo.toml \
+            --out xml html \
+            --output-dir rust-coverage \
+            --skip-clean \
+            --exclude-files "src-tauri/src/main.rs" \
+            --timeout 120
+
+      - name: Upload Rust coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-coverage
+          path: rust-coverage/
+          retention-days: 14
