@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Group } from "../types";
@@ -15,7 +15,23 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
   const [mergeWorkflow, setMergeWorkflow] = useState(group.merge_workflow);
   const [worktreeCommand, setWorktreeCommand] = useState(group.worktree_command ?? "");
   const [componentDepth, setComponentDepth] = useState(group.component_depth);
+  const [backend, setBackend] = useState<"local" | "opencode-remote">(group.backend);
+  const [serverUrl, setServerUrl] = useState(group.server_url ?? "");
+  const [serverPassword, setServerPassword] = useState("");
+  const [passwordLoaded, setPasswordLoaded] = useState(group.backend !== "opencode-remote");
   const queryClient = useQueryClient();
+
+  // Load the server password (not stored in Group for security)
+  useEffect(() => {
+    if (group.backend === "opencode-remote") {
+      invoke<string | null>("get_server_password", { groupPath: group.path })
+        .then((pw) => {
+          if (pw) setServerPassword(pw);
+          setPasswordLoaded(true);
+        })
+        .catch(() => setPasswordLoaded(true));
+    }
+  }, [group.path, group.backend]);
 
   const hasComponentPlaceholder = worktreeCommand.includes("{component}");
 
@@ -27,6 +43,9 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
         mergeWorkflow: mergeWorkflow,
         worktreeCommand: worktreeCommand.trim() || null,
         componentDepth: componentDepth,
+        backend: backend,
+        serverUrl: serverUrl.trim() || null,
+        serverPassword: serverPassword || null,
       }),
     onSuccess: () => {
       queryClient.setQueryData<Group[]>(queryKeys.groups, (old) =>
@@ -38,6 +57,8 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
                 merge_workflow: mergeWorkflow,
                 worktree_command: worktreeCommand.trim() || null,
                 component_depth: componentDepth,
+                backend: backend,
+                server_url: serverUrl.trim() || null,
               }
             : g,
         ),
@@ -51,7 +72,10 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
     githubIssuesEnabled !== group.github_issues_enabled ||
     mergeWorkflow !== group.merge_workflow ||
     (worktreeCommand.trim() || null) !== (group.worktree_command ?? null) ||
-    componentDepth !== group.component_depth;
+    componentDepth !== group.component_depth ||
+    backend !== group.backend ||
+    (serverUrl.trim() || null) !== (group.server_url ?? null) ||
+    (passwordLoaded && serverPassword !== "");
 
   const handleSubmit = () => {
     if (!isDirty) {
@@ -148,6 +172,57 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
               </span>
             </div>
           )}
+        </div>
+      )}
+      <div className="settings-radio-group">
+        <span className="settings-radio-label">Backend</span>
+        <label className="settings-radio-option">
+          <input
+            type="radio"
+            name="backend"
+            value="local"
+            checked={backend === "local"}
+            onChange={() => setBackend("local")}
+          />
+          <span className="settings-radio-text">
+            <strong>Local</strong> — agent-deck + tmux (Claude, OpenCode, Shell)
+          </span>
+        </label>
+        <label className="settings-radio-option">
+          <input
+            type="radio"
+            name="backend"
+            value="opencode-remote"
+            checked={backend === "opencode-remote"}
+            onChange={() => setBackend("opencode-remote")}
+          />
+          <span className="settings-radio-text">
+            <strong>OpenCode Remote</strong> — connect to remote OpenCode server
+          </span>
+        </label>
+      </div>
+      {backend === "opencode-remote" && (
+        <div className="settings-section">
+          <label className="modal-label">Server URL</label>
+          <input
+            className="wt-input"
+            type="text"
+            placeholder="https://your-worker.workers.dev"
+            value={serverUrl}
+            onChange={(e) => setServerUrl(e.target.value)}
+            spellCheck={false}
+          />
+          <label className="modal-label" style={{ marginTop: 8 }}>
+            Password
+          </label>
+          <input
+            className="wt-input"
+            type="password"
+            placeholder={passwordLoaded ? "Enter password" : "Loading..."}
+            value={serverPassword}
+            onChange={(e) => setServerPassword(e.target.value)}
+            spellCheck={false}
+          />
         </div>
       )}
       {mutation.error && <div className="wt-error">{String(mutation.error)}</div>}

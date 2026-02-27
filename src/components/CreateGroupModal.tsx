@@ -26,6 +26,11 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
   const [createNewRepo, setCreateNewRepo] = useState(false);
   const queryClient = useQueryClient();
 
+  // Backend selection
+  const [backend, setBackend] = useState<"local" | "opencode-remote">("local");
+  const [serverUrl, setServerUrl] = useState("");
+  const [serverPassword, setServerPassword] = useState("");
+
   // Clone mode fields
   const [gitUrl, setGitUrl] = useState("");
   const [parentDir, setParentDir] = useState("~/repos");
@@ -71,7 +76,20 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
         name: name.trim(),
         defaultPath: repoPath,
       });
-      if (createNewRepo) {
+      // Save backend settings if non-default
+      if (backend === "opencode-remote") {
+        await invoke("update_group_settings", {
+          groupPath: name.trim(),
+          githubIssuesEnabled: true,
+          mergeWorkflow: "merge",
+          worktreeCommand: null,
+          componentDepth: 2,
+          backend: backend,
+          serverUrl: serverUrl.trim() || null,
+          serverPassword: serverPassword || null,
+        });
+      }
+      if (createNewRepo && backend === "local") {
         await invoke("create_session", {
           creationId: crypto.randomUUID(),
           projectPath: repoPath,
@@ -137,10 +155,11 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
     }
   };
 
+  const backendValid = backend === "local" || !!serverUrl.trim();
   const isValid =
-    mode === "existing"
+    (mode === "existing"
       ? !!(name.trim() && defaultPath.trim())
-      : !!(name.trim() && gitUrl.trim() && projectName.trim() && parentDir.trim());
+      : !!(name.trim() && gitUrl.trim() && projectName.trim() && parentDir.trim())) && backendValid;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSubmit();
@@ -255,6 +274,50 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
             onKeyDown={handleKeyDown}
           />
         </>
+      )}
+
+      <div className="settings-radio-group" style={{ marginTop: 12 }}>
+        <span className="settings-radio-label">Backend</span>
+        <div className="add-session-mode-toggle">
+          <button
+            type="button"
+            className={`mode-btn ${backend === "local" ? "mode-btn-active" : ""}`}
+            onClick={() => setBackend("local")}
+          >
+            Local
+          </button>
+          <button
+            type="button"
+            className={`mode-btn ${backend === "opencode-remote" ? "mode-btn-active" : ""}`}
+            onClick={() => setBackend("opencode-remote")}
+          >
+            OpenCode Remote
+          </button>
+        </div>
+      </div>
+      {backend === "opencode-remote" && (
+        <div className="settings-section">
+          <label className="modal-label">Server URL</label>
+          <input
+            className="modal-input"
+            type="text"
+            placeholder="https://your-worker.workers.dev"
+            value={serverUrl}
+            onChange={(e) => setServerUrl(e.target.value)}
+            onKeyDown={handleKeyDown}
+            spellCheck={false}
+          />
+          <label className="modal-label">Password</label>
+          <input
+            className="modal-input"
+            type="password"
+            placeholder="Server password"
+            value={serverPassword}
+            onChange={(e) => setServerPassword(e.target.value)}
+            onKeyDown={handleKeyDown}
+            spellCheck={false}
+          />
+        </div>
       )}
 
       <label className="modal-label">Group name</label>

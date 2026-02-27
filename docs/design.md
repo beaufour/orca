@@ -6,7 +6,7 @@ Orca is a native desktop GUI (Tauri v2 + React) for managing parallel Claude Cod
 
 **Problem**: When running 10+ parallel Claude Code sessions across repos and worktrees, it's hard to know which sessions need attention and what each one is doing. Agent-deck manages sessions well in the terminal but lacks summaries, attention indicators, and worktree management GUI.
 
-**Approach**: Orca reads agent-deck's SQLite database (read-only) for session/group data, parses Claude Code JSONL logs for summaries and status, and adds git worktree management. Session creation goes through agent-deck's CLI.
+**Approach**: Orca reads agent-deck's SQLite database (read-only) for session/group data, parses Claude Code JSONL logs for summaries and status, and adds git worktree management. Session creation goes through agent-deck's CLI. Remote OpenCode sessions are also supported via HTTP REST + SSE — see [backends.md](backends.md) for details.
 
 ## Architecture
 
@@ -63,6 +63,8 @@ orca/
 │       ├── claude_logs.rs      # Parse JSONL session logs
 │       ├── git.rs              # Git worktree operations
 │       ├── tmux.rs             # tmux capture-pane and send-keys
+│       ├── opencode_remote.rs  # Remote OpenCode HTTP+SSE client
+│       ├── orca_db.rs          # Orca's own SQLite DB (settings, prompts)
 │       └── models.rs           # Shared data types
 ├── src/
 │   ├── main.tsx
@@ -75,9 +77,11 @@ orca/
 │       ├── SessionList.tsx     # Session cards grid
 │       ├── SessionCard.tsx     # Session: name, summary, status, worktree badge, actions
 │       ├── AddSessionBar.tsx   # Create sessions (worktree/plain, claude/shell)
-│       └── TerminalView.tsx    # tmux terminal viewer + input
+│       ├── TerminalView.tsx    # tmux terminal viewer + input (local backend)
+│       └── MessageStream.tsx   # Chat-style message view (remote backend)
 ├── docs/
 │   ├── design.md               # This file
+│   ├── backends.md             # Backend architecture (local vs remote)
 │   └── research.md             # Initial research on existing tools
 ├── package.json
 ├── vite.config.ts
