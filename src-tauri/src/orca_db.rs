@@ -537,8 +537,17 @@ mod tests {
             .expect("get baseline failed")
             .len();
 
-        db.update_group_settings("/path/to/repo", true, "rebase", Some("wt-start"), 3)
-            .expect("update failed");
+        db.update_group_settings(
+            "/path/to/repo",
+            true,
+            "rebase",
+            Some("wt-start"),
+            3,
+            "local",
+            None,
+            None,
+        )
+        .expect("update failed");
 
         let all = db.get_all_group_settings().expect("get failed");
         assert_eq!(all.len(), baseline + 1);
@@ -561,10 +570,19 @@ mod tests {
             .expect("get baseline failed")
             .len();
 
-        db.update_group_settings("/repo", true, "merge", None, 2)
+        db.update_group_settings("/repo", true, "merge", None, 2, "local", None, None)
             .expect("insert failed");
-        db.update_group_settings("/repo", false, "squash", Some("custom-cmd"), 5)
-            .expect("update failed");
+        db.update_group_settings(
+            "/repo",
+            false,
+            "squash",
+            Some("custom-cmd"),
+            5,
+            "local",
+            None,
+            None,
+        )
+        .expect("update failed");
 
         let all = db.get_all_group_settings().expect("get failed");
         // Only one new entry should exist (upsert, not two inserts)
@@ -594,8 +612,17 @@ mod tests {
     fn test_worktree_command_returns_value() {
         let (db, _tmp) = setup();
 
-        db.update_group_settings("/repo", true, "merge", Some("wt-add"), 4)
-            .expect("update failed");
+        db.update_group_settings(
+            "/repo",
+            true,
+            "merge",
+            Some("wt-add"),
+            4,
+            "local",
+            None,
+            None,
+        )
+        .expect("update failed");
 
         let result = db
             .get_group_worktree_command("/repo")
@@ -609,7 +636,7 @@ mod tests {
     fn test_worktree_command_empty_string() {
         let (db, _tmp) = setup();
 
-        db.update_group_settings("/repo", true, "merge", Some(""), 2)
+        db.update_group_settings("/repo", true, "merge", Some(""), 2, "local", None, None)
             .expect("update failed");
 
         let result = db
