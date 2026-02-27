@@ -134,8 +134,8 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
                     .map(|o| o.status.success())
                     .unwrap_or(false);
                 if !g.is_git_repo {
-                    log::warn!(
-                        "get_groups: git detection failed for '{}' at {}",
+                    log::debug!(
+                        "get_groups: not a git repo: '{}' at {}",
                         g.name,
                         g.default_path
                     );
