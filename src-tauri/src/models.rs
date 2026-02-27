@@ -40,6 +40,8 @@ pub struct Group {
     pub merge_workflow: String,
     pub worktree_command: Option<String>,
     pub component_depth: u32,
+    pub backend: String,
+    pub server_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

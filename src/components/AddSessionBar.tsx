@@ -30,8 +30,10 @@ interface AddSessionBarProps {
   isGitRepo: boolean;
   worktreeCommand: string | null;
   componentDepth: number;
+  backend: "local" | "opencode-remote";
   createSession: (params: CreateSessionParams) => void;
   pendingCreations: Map<string, PendingCreation>;
+  onCreateRemoteSession?: (title: string, prompt: string | null) => void;
 }
 
 type SessionMode = "worktree" | "plain";
@@ -150,8 +152,10 @@ export function AddSessionBar({
   isGitRepo,
   worktreeCommand,
   componentDepth,
+  backend,
   createSession,
   pendingCreations,
+  onCreateRemoteSession,
 }: AddSessionBarProps) {
   const [showForm, setShowForm] = useState(false);
   useImperativeHandle(ref, () => ({
@@ -188,9 +192,18 @@ export function AddSessionBar({
     return fallback;
   };
 
+  const isRemote = backend === "opencode-remote";
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const promptValue = prompt.trim() || null;
+
+    if (isRemote) {
+      onCreateRemoteSession?.(deriveTitle("session"), promptValue);
+      resetForm();
+      return;
+    }
+
     if (mode === "worktree") {
       if (!branchName.trim() || branchError) return;
       if (needsComponent && selectedComponents.length === 0) return;
@@ -237,7 +250,7 @@ export function AddSessionBar({
       <div className="add-session-header">
         <span className="add-session-group-name">{groupName}</span>
         <div className="add-session-buttons">
-          {isGitRepo && !hasMainSession && (
+          {!isRemote && isGitRepo && !hasMainSession && (
             <button
               className="wt-btn wt-btn-main"
               onClick={handleStartMain}
@@ -271,7 +284,7 @@ export function AddSessionBar({
           }}
         >
           <div className="add-session-toggles">
-            {isGitRepo && (
+            {!isRemote && isGitRepo && (
               <div className="add-session-mode-toggle">
                 <button
                   type="button"
@@ -289,32 +302,34 @@ export function AddSessionBar({
                 </button>
               </div>
             )}
-            <div className="add-session-mode-toggle">
-              <button
-                type="button"
-                className={`mode-btn ${tool === "claude" ? "mode-btn-active" : ""}`}
-                onClick={() => setTool("claude")}
-              >
-                Claude
-              </button>
-              <button
-                type="button"
-                className={`mode-btn ${tool === "opencode" ? "mode-btn-active" : ""}`}
-                onClick={() => setTool("opencode")}
-              >
-                Opencode
-              </button>
-              <button
-                type="button"
-                className={`mode-btn ${tool === "shell" ? "mode-btn-active" : ""}`}
-                onClick={() => setTool("shell")}
-              >
-                Shell
-              </button>
-            </div>
+            {!isRemote && (
+              <div className="add-session-mode-toggle">
+                <button
+                  type="button"
+                  className={`mode-btn ${tool === "claude" ? "mode-btn-active" : ""}`}
+                  onClick={() => setTool("claude")}
+                >
+                  Claude
+                </button>
+                <button
+                  type="button"
+                  className={`mode-btn ${tool === "opencode" ? "mode-btn-active" : ""}`}
+                  onClick={() => setTool("opencode")}
+                >
+                  Opencode
+                </button>
+                <button
+                  type="button"
+                  className={`mode-btn ${tool === "shell" ? "mode-btn-active" : ""}`}
+                  onClick={() => setTool("shell")}
+                >
+                  Shell
+                </button>
+              </div>
+            )}
           </div>
           <div className="add-session-fields">
-            {mode === "worktree" && (
+            {!isRemote && mode === "worktree" && (
               <>
                 <input
                   className={`wt-input${branchError ? " wt-input-error" : ""}`}
@@ -329,7 +344,7 @@ export function AddSessionBar({
                 {branchError && <div className="wt-error wt-error-inline">{branchError}</div>}
               </>
             )}
-            {needsComponent && showForm && (
+            {!isRemote && needsComponent && showForm && (
               <ComponentPicker
                 repoPath={repoPath}
                 depth={componentDepth}
@@ -342,16 +357,18 @@ export function AddSessionBar({
               className="wt-input"
               type="text"
               placeholder={
-                mode === "worktree"
-                  ? "title (defaults to branch name or prompt)"
-                  : "title (defaults to prompt)"
+                isRemote
+                  ? "title (defaults to prompt)"
+                  : mode === "worktree"
+                    ? "title (defaults to branch name or prompt)"
+                    : "title (defaults to prompt)"
               }
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              autoFocus={mode === "plain"}
+              autoFocus={isRemote || mode === "plain"}
             />
           </div>
-          {(tool === "claude" || tool === "opencode") && (
+          {(isRemote || tool === "claude" || tool === "opencode") && (
             <textarea
               className="wt-input wt-prompt-input"
               placeholder="prompt (sent to AI at start)"
