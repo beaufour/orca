@@ -9,6 +9,36 @@ export interface Group {
   merge_workflow: "merge" | "pr";
   worktree_command: string | null;
   component_depth: number;
+  backend: "local" | "opencode-remote";
+  server_url: string | null;
+}
+
+export interface RemoteSession {
+  id: string;
+  title: string;
+  status: string;
+  summary: string | null;
+  created_at: number;
+  last_accessed: number;
+}
+
+export interface RemoteMessage {
+  id: string;
+  role: string;
+  type: string;
+  content: string;
+  tool_name: string | null;
+  tool_id: string | null;
+  timestamp: number;
+  session_id: string;
+}
+
+export interface RemotePermission {
+  id: string;
+  session_id: string;
+  tool_name: string;
+  description: string;
+  status: string;
 }
 
 export interface Session {

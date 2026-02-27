@@ -7,6 +7,7 @@ import { SessionList } from "./components/SessionList";
 import { TodoList } from "./components/TodoList";
 import { AddSessionBar, type AddSessionBarHandle } from "./components/AddSessionBar";
 import { TerminalView } from "./components/TerminalView";
+import { MessageStream } from "./components/MessageStream";
 import { ShortcutHelp } from "./components/ShortcutHelp";
 import { LogViewer } from "./components/LogViewer";
 import { RenameModal } from "./components/RenameModal";
@@ -26,7 +27,7 @@ import {
 } from "./components/PrerequisiteCheck";
 import { UpdateNotification } from "./components/UpdateNotification";
 import { useSessionCreation } from "./hooks/useSessionCreation";
-import type { Group, Session } from "./types";
+import type { Group, Session, RemoteSession } from "./types";
 import { isMainSession, storageGet, storageSet } from "./utils";
 import { queryKeys } from "./queryKeys";
 import { useSidebarResize } from "./hooks/useSidebarResize";
@@ -63,6 +64,8 @@ function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const dismissedLoaded = useRef(false);
+  const [remoteSession, setRemoteSession] = useState<RemoteSession | null>(null);
+  const [remotePassword, setRemotePassword] = useState<string>("");
 
   // Load dismissed IDs from DB on startup
   useEffect(() => {
@@ -283,7 +286,8 @@ function App() {
   const { sidebarWidth, sidebarCollapsed, setSidebarCollapsed, isResizing, handleMouseDown } =
     useSidebarResize();
 
-  const terminalOpen = selectedSession !== null;
+  const terminalOpen = selectedSession !== null || remoteSession !== null;
+  const isRemoteView = remoteSession !== null;
 
   // Wrap setFocusedIndex to also clear confirming remove state
   const updateFocusedIndex: typeof setFocusedIndex = useCallback((value) => {
@@ -316,6 +320,7 @@ function App() {
       }
     }
     setSelectedSession(null);
+    setRemoteSession(null);
   }, [selectedSession, filteredSessions, updateFocusedIndex]);
 
   // Derive clamped focused index from session count
@@ -420,7 +425,16 @@ function App() {
       <div className="resize-handle" onMouseDown={handleMouseDown} />
       <div className="main-area">
         {terminalOpen ? (
-          <TerminalView session={effectiveSession!} onClose={handleCloseTerminal} />
+          isRemoteView && remoteSession && effectiveGroup ? (
+            <MessageStream
+              session={remoteSession}
+              serverUrl={effectiveGroup.server_url ?? ""}
+              serverPassword={remotePassword}
+              onClose={handleCloseTerminal}
+            />
+          ) : (
+            <TerminalView session={effectiveSession!} onClose={handleCloseTerminal} />
+          )
         ) : (
           <>
             <main className="main-content">
@@ -494,8 +508,27 @@ function App() {
                 isGitRepo={effectiveGroup.is_git_repo}
                 worktreeCommand={effectiveGroup.worktree_command}
                 componentDepth={effectiveGroup.component_depth}
+                backend={effectiveGroup.backend}
                 createSession={createSession}
                 pendingCreations={pendingCreations}
+                onCreateRemoteSession={async (title, prompt) => {
+                  if (!effectiveGroup.server_url) return;
+                  try {
+                    const pw = await invoke<string | null>("get_server_password", {
+                      groupPath: effectiveGroup.path,
+                    });
+                    const session = await invoke<RemoteSession>("oc_create_session", {
+                      serverUrl: effectiveGroup.server_url,
+                      password: pw ?? "",
+                      title,
+                      initialMessage: prompt,
+                    });
+                    setRemoteSession(session);
+                    setRemotePassword(pw ?? "");
+                  } catch (err) {
+                    console.error("Failed to create remote session:", err);
+                  }
+                }}
               />
             )}
           </>
