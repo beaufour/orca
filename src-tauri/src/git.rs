@@ -902,4 +902,62 @@ branch some-other-ref
         let result = parse_worktree_list(output);
         assert_eq!(result[0].branch, "some-other-ref");
     }
+
+    #[test]
+    fn parse_worktree_with_special_chars_in_path() {
+        let output = "\
+worktree /home/user/my repo/main
+HEAD abc123def456
+branch refs/heads/main
+";
+        let result = parse_worktree_list(output);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].path, "/home/user/my repo/main");
+        assert_eq!(result[0].head, "abc123def456");
+        assert_eq!(result[0].branch, "main");
+        assert!(!result[0].is_bare);
+    }
+
+    #[test]
+    fn parse_multiple_bare_entries_filtered() {
+        let output = "\
+worktree /home/user/repo1
+HEAD aaa111
+bare
+
+worktree /home/user/repo2
+HEAD bbb222
+bare
+
+worktree /home/user/repo1/main
+HEAD ccc333
+branch refs/heads/main
+";
+        let result = parse_worktree_list(output);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].path, "/home/user/repo1/main");
+        assert_eq!(result[0].branch, "main");
+    }
+
+    #[test]
+    fn parse_interleaved_blank_lines() {
+        let output = "\
+worktree /home/user/repo/main
+HEAD abc123
+branch refs/heads/main
+
+
+worktree /home/user/repo/feature
+HEAD def456
+branch refs/heads/feature-x
+
+
+";
+        let result = parse_worktree_list(output);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].path, "/home/user/repo/main");
+        assert_eq!(result[0].branch, "main");
+        assert_eq!(result[1].path, "/home/user/repo/feature");
+        assert_eq!(result[1].branch, "feature-x");
+    }
 }
