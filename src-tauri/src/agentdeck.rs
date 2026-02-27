@@ -112,7 +112,17 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
             // Backfill default_path so all consumers (GitHub issues, etc.) have it.
             if g.default_path.is_empty() {
                 if let Some(fb) = fallback_paths.get(&g.path) {
+                    log::debug!(
+                        "get_groups: backfilling default_path for '{}' from instance: {}",
+                        g.name,
+                        fb
+                    );
                     g.default_path = fb.clone();
+                } else {
+                    log::debug!(
+                        "get_groups: no fallback path for '{}' (no instances)",
+                        g.name
+                    );
                 }
             }
             if !g.default_path.is_empty() {
@@ -123,6 +133,13 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
                     .output()
                     .map(|o| o.status.success())
                     .unwrap_or(false);
+                if !g.is_git_repo {
+                    log::warn!(
+                        "get_groups: git detection failed for '{}' at {}",
+                        g.name,
+                        g.default_path
+                    );
+                }
             }
             g
         })

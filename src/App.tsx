@@ -485,7 +485,7 @@ function App() {
             </main>
             {effectiveGroup && (
               <AddSessionBar
-                key={effectiveGroup.path}
+                key={`${effectiveGroup.path}:${effectiveGroup.is_git_repo}`}
                 ref={addSessionBarRef}
                 repoPath={effectiveGroup.default_path}
                 groupPath={effectiveGroup.path}
