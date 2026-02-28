@@ -928,6 +928,58 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn delete_group(orca_db: State<'_, OrcaDb>, group_path: String) -> Result<u32, String> {
+    log::info!("delete_group: group_path={group_path}");
+    let conn = open_db()?;
+
+    // 1. Get all session IDs in this group
+    let mut stmt = conn
+        .prepare("SELECT id, tmux_session FROM instances WHERE group_path = ?1")
+        .map_err(|e| e.to_string())?;
+    let sessions: Vec<(String, Option<String>)> = stmt
+        .query_map([&group_path], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let session_count = sessions.len() as u32;
+    let session_ids: Vec<String> = sessions.iter().map(|(id, _)| id.clone()).collect();
+
+    // 2. Stop each session's tmux session (best-effort) and remove via agent-deck
+    for (session_id, tmux_session) in &sessions {
+        // Kill tmux session if it exists
+        if let Some(tmux) = tmux_session {
+            let _ = new_command("tmux")
+                .args(["kill-session", "-t", tmux])
+                .output();
+        }
+
+        // Remove via agent-deck CLI
+        let _ = new_command("agent-deck")
+            .args(["remove", session_id])
+            .output();
+    }
+
+    // 3. Delete all sessions from agent-deck DB
+    conn.execute("DELETE FROM instances WHERE group_path = ?1", [&group_path])
+        .map_err(|e| format!("Failed to delete sessions: {e}"))?;
+
+    // 4. Delete the group from agent-deck DB
+    conn.execute("DELETE FROM groups WHERE path = ?1", [&group_path])
+        .map_err(|e| format!("Failed to delete group: {e}"))?;
+
+    // 5. Clean up Orca's own data
+    if let Err(e) = orca_db.delete_group_data(&group_path, &session_ids) {
+        log::error!("Failed to clean up Orca data for group {group_path}: {e}");
+    }
+
+    log::info!("delete_group: deleted group {group_path} with {session_count} sessions");
+    Ok(session_count)
+}
+
+#[tauri::command]
 pub fn move_session(session_id: String, new_group_path: String) -> Result<(), String> {
     log::info!("move_session: session_id={session_id}, new_group_path={new_group_path}");
     let conn = open_db()?;

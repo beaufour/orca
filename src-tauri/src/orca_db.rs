@@ -301,6 +301,26 @@ impl OrcaDb {
         Ok(())
     }
 
+    /// Delete all Orca data for a group (settings + session data for its sessions).
+    pub fn delete_group_data(
+        &self,
+        group_path: &str,
+        session_ids: &[String],
+    ) -> Result<(), String> {
+        let conn = self.open()?;
+        conn.execute(
+            "DELETE FROM group_settings WHERE group_path = ?1",
+            [group_path],
+        )
+        .map_err(|e| format!("Failed to delete group settings: {e}"))?;
+
+        for sid in session_ids {
+            conn.execute("DELETE FROM session_data WHERE session_id = ?1", [sid])
+                .map_err(|e| format!("Failed to delete session data for {sid}: {e}"))?;
+        }
+        Ok(())
+    }
+
     /// Clean up session data when a session is removed.
     pub fn delete_session_data(&self, session_id: &str) -> Result<(), String> {
         let conn = self.open()?;

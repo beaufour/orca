@@ -185,6 +185,7 @@ pub fn run() {
             agentdeck::rename_session,
             agentdeck::move_session,
             agentdeck::create_group,
+            agentdeck::delete_group,
             agentdeck::clear_session_worktree,
             agentdeck::update_group_settings,
             agentdeck::get_server_password,

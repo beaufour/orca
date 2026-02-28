@@ -1914,6 +1914,12 @@ body {
   text-align: center;
 }
 
+.settings-delete-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
 /* Component picker */
 .component-picker {
   display: flex;

@@ -578,7 +578,16 @@ function App() {
         />
       )}
       {settingsGroup && (
-        <GroupSettingsModal group={settingsGroup} onClose={() => setSettingsGroup(null)} />
+        <GroupSettingsModal
+          group={settingsGroup}
+          onClose={() => setSettingsGroup(null)}
+          onGroupDeleted={() => {
+            setSettingsGroup(null);
+            setSelectedGroup(null);
+            setSelectedSession(null);
+            setNeedsActionFilter(false);
+          }}
+        />
       )}
       {showLogViewer && <LogViewer onClose={() => setShowLogViewer(false)} />}
       {missingPrereqs && (

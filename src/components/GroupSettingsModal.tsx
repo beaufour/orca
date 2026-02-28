@@ -1,16 +1,17 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import type { Group } from "../types";
+import type { Group, Session } from "../types";
 import { queryKeys } from "../queryKeys";
 import { Modal } from "./Modal";
 
 interface GroupSettingsModalProps {
   group: Group;
   onClose: () => void;
+  onGroupDeleted: () => void;
 }
 
-export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) {
+export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSettingsModalProps) {
   const [githubIssuesEnabled, setGithubIssuesEnabled] = useState(group.github_issues_enabled);
   const [mergeWorkflow, setMergeWorkflow] = useState(group.merge_workflow);
   const [worktreeCommand, setWorktreeCommand] = useState(group.worktree_command ?? "");
@@ -19,7 +20,15 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
   const [serverUrl, setServerUrl] = useState(group.server_url ?? "");
   const [serverPassword, setServerPassword] = useState("");
   const [passwordLoaded, setPasswordLoaded] = useState(group.backend !== "opencode-remote");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const queryClient = useQueryClient();
+
+  // Fetch session count for this group
+  const { data: sessions } = useQuery<Session[]>({
+    queryKey: queryKeys.sessions(group.path),
+    queryFn: () => invoke("get_sessions", { groupPath: group.path }),
+  });
+  const sessionCount = sessions?.length ?? 0;
 
   // Load the server password (not stored in Group for security)
   useEffect(() => {
@@ -68,6 +77,14 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => invoke<number>("delete_group", { groupPath: group.path }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups });
+      onGroupDeleted();
+    },
+  });
+
   const isDirty =
     githubIssuesEnabled !== group.github_issues_enabled ||
     mergeWorkflow !== group.merge_workflow ||
@@ -84,6 +101,41 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
     }
     mutation.mutate();
   };
+
+  if (confirmingDelete) {
+    return (
+      <Modal onClose={() => setConfirmingDelete(false)}>
+        <h3 className="modal-title">Delete Group: {group.name}</h3>
+        <p className="settings-toggle-description" style={{ marginBottom: 12 }}>
+          This will{" "}
+          <strong>
+            stop and remove {sessionCount === 1 ? "1 session" : `all ${sessionCount} sessions`}
+          </strong>{" "}
+          in this group.
+        </p>
+        <p className="settings-toggle-description" style={{ marginBottom: 12 }}>
+          Files and directories on disk will <strong>not</strong> be removed.
+        </p>
+        {deleteMutation.error && <div className="wt-error">{String(deleteMutation.error)}</div>}
+        <div className="modal-actions">
+          <button
+            className="wt-btn wt-btn-danger"
+            onClick={() => deleteMutation.mutate()}
+            disabled={deleteMutation.isPending}
+          >
+            {deleteMutation.isPending ? "Deleting..." : "Delete Group"}
+          </button>
+          <button
+            className="wt-btn wt-btn-cancel"
+            onClick={() => setConfirmingDelete(false)}
+            disabled={deleteMutation.isPending}
+          >
+            Cancel
+          </button>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal onClose={onClose}>
@@ -232,6 +284,11 @@ export function GroupSettingsModal({ group, onClose }: GroupSettingsModalProps) 
         </button>
         <button className="wt-btn wt-btn-cancel" onClick={onClose}>
           Cancel
+        </button>
+      </div>
+      <div className="settings-delete-section">
+        <button className="wt-btn wt-btn-danger" onClick={() => setConfirmingDelete(true)}>
+          Delete Group...
         </button>
       </div>
     </Modal>
