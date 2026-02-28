@@ -10,4 +10,5 @@ export const queryKeys = {
   branchDiff: (sessionId: string) => ["branch-diff", sessionId] as const,
   summary: (sessionId: string) => ["summary", sessionId] as const,
   issues: (repoPath: string) => ["issues", repoPath] as const,
+  githubUsername: (repoPath: string) => ["githubUsername", repoPath] as const,
 };

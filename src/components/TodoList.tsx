@@ -42,6 +42,19 @@ interface TodoListProps {
   onUndismiss?: (sessionId: string) => void;
 }
 
+function labelStyle(color: string): React.CSSProperties {
+  const r = parseInt(color.slice(0, 2), 16);
+  const g = parseInt(color.slice(2, 4), 16);
+  const b = parseInt(color.slice(4, 6), 16);
+  return {
+    backgroundColor: `rgba(${r}, ${g}, ${b}, 0.2)`,
+    color: `#${color}`,
+    borderColor: `rgba(${r}, ${g}, ${b}, 0.4)`,
+  };
+}
+
+type AssigneeFilter = "all" | "unassigned" | "mine";
+
 export function TodoList({
   group,
   sessions,
@@ -65,6 +78,8 @@ export function TodoList({
     mode: "create" | "edit";
     issue?: GitHubIssue;
   } | null>(null);
+  const [labelFilter, setLabelFilter] = useState<Set<string>>(new Set());
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
 
   const {
     data: issues,
@@ -74,6 +89,12 @@ export function TodoList({
     queryKey: queryKeys.issues(group.default_path),
     queryFn: () => invoke("list_issues", { repoPath: group.default_path }),
     refetchInterval: 30_000,
+  });
+
+  const { data: githubUsername } = useQuery<string>({
+    queryKey: queryKeys.githubUsername(group.default_path),
+    queryFn: () => invoke("get_github_username", { repoPath: group.default_path }),
+    staleTime: 5 * 60_000,
   });
 
   // Build issue-session mapping
@@ -138,6 +159,50 @@ export function TodoList({
       todo: todoItems,
     };
   }, [issues, sessions]);
+
+  // Derive available labels from todo issues
+  const availableLabels = useMemo(() => {
+    const labelMap = new Map<string, string>(); // name -> color
+    for (const issue of todo) {
+      for (const label of issue.labels) {
+        if (!labelMap.has(label.name)) {
+          labelMap.set(label.name, label.color);
+        }
+      }
+    }
+    return Array.from(labelMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, color]) => ({ name, color }));
+  }, [todo]);
+
+  // Filter todo issues
+  const filteredTodo = useMemo(() => {
+    return todo.filter((issue) => {
+      // Label filter: issue must have ALL selected labels
+      if (labelFilter.size > 0) {
+        const issueLabels = new Set(issue.labels.map((l) => l.name));
+        for (const required of labelFilter) {
+          if (!issueLabels.has(required)) return false;
+        }
+      }
+      // Assignee filter
+      if (assigneeFilter === "unassigned" && issue.assignee) return false;
+      if (assigneeFilter === "mine" && issue.assignee !== githubUsername) return false;
+      return true;
+    });
+  }, [todo, labelFilter, assigneeFilter, githubUsername]);
+
+  const toggleLabel = (name: string) => {
+    setLabelFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+      } else {
+        next.add(name);
+      }
+      return next;
+    });
+  };
 
   const handleStartIssue = (issue: GitHubIssue, tool?: string) => {
     const prompt = `Please work on GitHub Issue #${issue.number} (${issue.html_url}). Review the issue and the codebase, then wait for further instructions.`;
@@ -265,7 +330,7 @@ export function TodoList({
             {issuesLoading && !issues ? (
               <span className="spinner" />
             ) : (
-              <span className="todo-section-count">{todo.length}</span>
+              <span className="todo-section-count">{filteredTodo.length}</span>
             )}
             <button
               className="wt-btn wt-btn-add todo-new-issue-btn"
@@ -275,11 +340,45 @@ export function TodoList({
             </button>
           </div>
         </div>
-        {!issuesLoading && todo.length === 0 && (
-          <div className="todo-empty">No open issues without active sessions</div>
+        {todo.length > 0 && (availableLabels.length > 0 || todo.some((i) => i.assignee)) && (
+          <div className="todo-filter-bar">
+            {availableLabels.length > 0 && (
+              <div className="todo-filter-labels">
+                {availableLabels.map((label) => (
+                  <button
+                    key={label.name}
+                    className={`issue-label-option${labelFilter.has(label.name) ? " issue-label-option-active" : ""}`}
+                    style={labelFilter.has(label.name) ? labelStyle(label.color) : undefined}
+                    onClick={() => toggleLabel(label.name)}
+                  >
+                    {label.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="todo-filter-separator" />
+            <div className="todo-filter-assignee">
+              {(["all", "unassigned", "mine"] as const).map((value) => (
+                <button
+                  key={value}
+                  className={`issue-label-option${assigneeFilter === value ? " issue-label-option-active" : ""}`}
+                  onClick={() => setAssigneeFilter(value)}
+                >
+                  {value === "all" ? "All" : value === "unassigned" ? "Unassigned" : "Mine"}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {!issuesLoading && filteredTodo.length === 0 && (
+          <div className="todo-empty">
+            {todo.length === 0
+              ? "No open issues without active sessions"
+              : "No issues match the current filters"}
+          </div>
         )}
         <div className="session-grid">
-          {todo.map((issue) => (
+          {filteredTodo.map((issue) => (
             <TodoCard
               key={issue.number}
               issue={issue}
