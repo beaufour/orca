@@ -320,6 +320,7 @@ function App() {
   // Wrap session selection to also update keyboard focus index and clear dismiss
   const handleSelectSession = useCallback(
     (session: Session) => {
+      trackEvent("session_opened");
       setSelectedSession(session);
       // Clear dismiss when user opens a session
       if (dismissedIds.has(session.id)) {
@@ -335,6 +336,7 @@ function App() {
 
   // When closing the terminal, focus the session that was just open
   const handleCloseTerminal = useCallback(() => {
+    trackEvent("session_closed");
     if (selectedSession && filteredSessions) {
       const idx = filteredSessions.findIndex((s) => s.id === selectedSession.id);
       if (idx >= 0) {
