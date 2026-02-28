@@ -398,11 +398,11 @@ pub async fn try_merge_branch(
             log::warn!("Failed to pull --ff-only on '{target}', merging against local: {e}");
         }
 
-        // Try merge — need both stdout and stderr for conflict info
-        log::info!("git merge {branch} --no-edit (cwd: {main_path})");
+        // Try merge — use --no-ff to always create a merge commit even after rebase
+        log::info!("git merge --no-ff {branch} --no-edit (cwd: {main_path})");
         let merge_output = new_command("git")
             .current_dir(&main_path)
-            .args(["merge", &branch, "--no-edit"])
+            .args(["merge", "--no-ff", &branch, "--no-edit"])
             .output()
             .map_err(|e| format!("Failed to run git merge: {e}"))?;
 
