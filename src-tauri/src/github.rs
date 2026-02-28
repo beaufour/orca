@@ -265,6 +265,28 @@ pub async fn assign_issue(repo_path: String, issue_number: u64) -> Result<(), St
     .await
 }
 
+#[tauri::command]
+pub async fn unassign_issue(repo_path: String, issue_number: u64) -> Result<(), String> {
+    spawn_gh(move || {
+        let nwo = get_repo_nwo(&repo_path)?;
+        let num_str = issue_number.to_string();
+        run_gh(
+            &repo_path,
+            &[
+                "issue",
+                "edit",
+                &num_str,
+                "-R",
+                &nwo,
+                "--remove-assignee",
+                "@me",
+            ],
+        )?;
+        Ok(())
+    })
+    .await
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrInfo {
     pub number: u64,
