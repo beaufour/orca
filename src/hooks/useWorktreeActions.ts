@@ -54,6 +54,9 @@ interface UseWorktreeActionsParams {
   repoPath: string;
   onSelectSession?: (session: Session) => void;
   extraInvalidateKeys?: QueryKey[];
+  /** When confirmingRemove state is lifted to a parent, pass the effective value here
+   *  so the worktree status query fires even though the hook's internal state isn't set. */
+  confirmingRemove?: boolean;
 }
 
 export function useWorktreeActions({
@@ -61,6 +64,7 @@ export function useWorktreeActions({
   repoPath,
   onSelectSession,
   extraInvalidateKeys,
+  confirmingRemove: externalConfirmingRemove,
 }: UseWorktreeActionsParams) {
   const queryClient = useQueryClient();
   const [confirmingRemove, setConfirmingRemove] = useState(false);
@@ -81,7 +85,8 @@ export function useWorktreeActions({
         worktreePath: session.worktree_path,
         branch: session.worktree_branch,
       }),
-    enabled: (confirmingRemove || mergeState === "confirming") && isWorktree,
+    enabled:
+      (confirmingRemove || externalConfirmingRemove || mergeState === "confirming") && isWorktree,
     staleTime: 5_000,
   });
 

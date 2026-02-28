@@ -53,6 +53,7 @@ export function SessionCard({
     session,
     repoPath,
     onSelectSession,
+    confirmingRemove: confirmingRemoveProp,
   });
 
   const prActions = usePrWorkflowActions({
