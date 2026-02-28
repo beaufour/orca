@@ -381,6 +381,33 @@ impl OrcaDb {
         Ok(())
     }
 
+    /// Check if analytics is enabled (defaults to false).
+    pub fn get_analytics_enabled(&self) -> Result<bool, String> {
+        let conn = self.open()?;
+        let result = conn.query_row(
+            "SELECT value FROM metadata WHERE key = 'analytics_enabled'",
+            [],
+            |row| row.get::<_, String>(0),
+        );
+        match result {
+            Ok(val) => Ok(val == "true"),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+            Err(e) => Err(format!("Failed to get analytics_enabled: {e}")),
+        }
+    }
+
+    /// Set whether analytics is enabled.
+    pub fn set_analytics_enabled(&self, enabled: bool) -> Result<(), String> {
+        let conn = self.open()?;
+        conn.execute(
+            "INSERT INTO metadata (key, value) VALUES ('analytics_enabled', ?1) \
+             ON CONFLICT(key) DO UPDATE SET value = ?1",
+            [if enabled { "true" } else { "false" }],
+        )
+        .map_err(|e| format!("Failed to set analytics_enabled: {e}"))?;
+        Ok(())
+    }
+
     /// One-time migration: copy github_issues_enabled and prompt data from
     /// agent-deck's DB into Orca's own DB.
     fn run_migration_v1(&self, conn: &Connection) -> Result<(), String> {
@@ -738,7 +765,28 @@ mod tests {
         assert!(!dismissed.contains(&"sess-3".to_string()));
     }
 
-    // ── 11. set_dismissed(false) clears the flag ─────────────────────
+    // ── 11. analytics_enabled defaults to false ───────────────────────
+
+    #[test]
+    fn test_analytics_enabled_default_false() {
+        let (db, _tmp) = setup();
+        assert!(!db.get_analytics_enabled().expect("get failed"));
+    }
+
+    // ── 12. set_analytics_enabled round-trip ────────────────────────
+
+    #[test]
+    fn test_analytics_enabled_round_trip() {
+        let (db, _tmp) = setup();
+
+        db.set_analytics_enabled(true).expect("set failed");
+        assert!(db.get_analytics_enabled().expect("get failed"));
+
+        db.set_analytics_enabled(false).expect("set failed");
+        assert!(!db.get_analytics_enabled().expect("get failed"));
+    }
+
+    // ── 13. set_dismissed(false) clears the flag ─────────────────────
 
     #[test]
     fn test_dismissed_clear() {

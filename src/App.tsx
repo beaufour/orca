@@ -34,6 +34,7 @@ import { queryKeys } from "./queryKeys";
 import { useSidebarResize } from "./hooks/useSidebarResize";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useDebouncedValue } from "./hooks/useDebouncedValue";
+import { initAnalytics, trackEvent } from "./analytics";
 
 const SELECTED_VIEW_KEY = "orca-selected-view";
 const VIEW_NEEDS_ACTION = "__needs_action__";
@@ -81,6 +82,18 @@ function App() {
       .catch((err) => {
         console.warn("Failed to load dismissed IDs:", err);
         dismissedLoaded.current = true;
+      });
+  }, []);
+
+  // Initialize analytics on startup
+  useEffect(() => {
+    Promise.all([invoke<boolean>("get_analytics_enabled"), getVersion()])
+      .then(([enabled, appVersion]) => {
+        initAnalytics(enabled);
+        trackEvent("app_opened", { app_version: appVersion });
+      })
+      .catch((err) => {
+        console.warn("Failed to init analytics:", err);
       });
   }, []);
 

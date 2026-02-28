@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { trackEvent } from "../analytics";
 
 export interface PendingCreation {
   creationId: string;
@@ -39,6 +40,7 @@ export function useSessionCreation({ onCreated }: UseSessionCreationOptions = {}
 
     listen<{ creation_id: string; session_id: string }>("session-created", (event) => {
       const { creation_id, session_id } = event.payload;
+      trackEvent("session_created", { session_id });
       setPendingCreations((prev) => {
         const next = new Map(prev);
         next.delete(creation_id);

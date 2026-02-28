@@ -1091,6 +1091,27 @@ body {
   text-decoration: underline;
 }
 
+.about-analytics {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+  width: 100%;
+}
+
+.about-analytics .settings-toggle-description {
+  margin-bottom: 0;
+}
+
+.about-analytics .settings-toggle-description a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.about-analytics .settings-toggle-description a:hover {
+  text-decoration: underline;
+}
+
 .about-hint {
   margin-top: 16px;
   font-size: 12px;

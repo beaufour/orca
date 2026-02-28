@@ -9,6 +9,7 @@ import { usePrWorkflowActions } from "../hooks/usePrWorkflowActions";
 import { WorktreeActions } from "./WorktreeActions";
 import { PrWorkflowActions } from "./PrWorkflowActions";
 import { DiffViewer } from "./DiffViewer";
+import { trackEvent } from "../analytics";
 
 interface SessionCardProps {
   session: Session;
@@ -107,6 +108,7 @@ export function SessionCard({
       });
     },
     onSuccess: () => {
+      trackEvent("worktree_added");
       setShowAddWorktree(false);
       setBranchName("");
       queryClient.invalidateQueries({ queryKey: queryKeys.worktrees(repoPath) });
