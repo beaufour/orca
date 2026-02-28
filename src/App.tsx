@@ -88,6 +88,10 @@ function App() {
   }, []);
 
   const [showAnalyticsPrompt, setShowAnalyticsPrompt] = useState(false);
+  const [pendingAppOpenedProps, setPendingAppOpenedProps] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
 
   // Initialize analytics on startup
   useEffect(() => {
@@ -106,7 +110,7 @@ function App() {
           ),
         );
 
-        trackEvent("app_opened", {
+        const props = {
           app_version: appVersion,
           group_count: allGroups.length,
           total_sessions: sessionCounts.reduce((a, b) => a + b, 0),
@@ -115,10 +119,14 @@ function App() {
             merge: allGroups.filter((g) => g.merge_workflow === "merge").length,
             pr: allGroups.filter((g) => g.merge_workflow === "pr").length,
           },
-        });
+        };
 
         if (!storageGet(ANALYTICS_PROMPTED_KEY)) {
+          // Don't fire yet — user hasn't consented. Stash props for the prompt.
+          setPendingAppOpenedProps(props);
           setShowAnalyticsPrompt(true);
+        } else {
+          trackEvent("app_opened", props);
         }
       })
       .catch((err) => {
@@ -650,6 +658,7 @@ function App() {
       )}
       {showAnalyticsPrompt && (
         <AnalyticsPrompt
+          appOpenedProps={pendingAppOpenedProps}
           onClose={() => {
             storageSet(ANALYTICS_PROMPTED_KEY, "true");
             setShowAnalyticsPrompt(false);

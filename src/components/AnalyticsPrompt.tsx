@@ -1,17 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
-import { setAnalyticsEnabled } from "../analytics";
+import { setAnalyticsEnabled, trackEvent } from "../analytics";
 import { Modal } from "./Modal";
 
 interface AnalyticsPromptProps {
   onClose: () => void;
+  appOpenedProps?: Record<string, unknown> | null;
 }
 
-export function AnalyticsPrompt({ onClose }: AnalyticsPromptProps) {
+export function AnalyticsPrompt({ onClose, appOpenedProps }: AnalyticsPromptProps) {
   const handleChoice = (enabled: boolean) => {
     setAnalyticsEnabled(enabled);
     invoke("set_analytics_enabled", { enabled }).catch((err) => {
       console.warn("Failed to save analytics preference:", err);
     });
+    if (enabled && appOpenedProps) {
+      trackEvent("app_opened", appOpenedProps);
+    }
     onClose();
   };
 
