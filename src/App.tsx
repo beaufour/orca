@@ -17,6 +17,7 @@ import { IssueModal } from "./components/IssueModal";
 import { GroupSettingsModal } from "./components/GroupSettingsModal";
 import { AboutDialog } from "./components/AboutDialog";
 import { AppSettingsModal } from "./components/AppSettingsModal";
+import { AnalyticsPrompt } from "./components/AnalyticsPrompt";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -39,6 +40,7 @@ import { initAnalytics, trackEvent } from "./analytics";
 const SELECTED_VIEW_KEY = "orca-selected-view";
 const VIEW_NEEDS_ACTION = "__needs_action__";
 const VIEW_ALL = "__all__";
+const ANALYTICS_PROMPTED_KEY = "orca-analytics-prompted";
 
 const initialSavedView = storageGet(SELECTED_VIEW_KEY);
 
@@ -85,12 +87,17 @@ function App() {
       });
   }, []);
 
+  const [showAnalyticsPrompt, setShowAnalyticsPrompt] = useState(false);
+
   // Initialize analytics on startup
   useEffect(() => {
     Promise.all([invoke<boolean>("get_analytics_enabled"), getVersion()])
       .then(([enabled, appVersion]) => {
         initAnalytics(enabled);
         trackEvent("app_opened", { app_version: appVersion });
+        if (!storageGet(ANALYTICS_PROMPTED_KEY)) {
+          setShowAnalyticsPrompt(true);
+        }
       })
       .catch((err) => {
         console.warn("Failed to init analytics:", err);
@@ -615,6 +622,14 @@ function App() {
           supported={versionMismatch.supported}
           installed={versionMismatch.installed}
           onClose={() => setVersionMismatch(null)}
+        />
+      )}
+      {showAnalyticsPrompt && (
+        <AnalyticsPrompt
+          onClose={() => {
+            storageSet(ANALYTICS_PROMPTED_KEY, "true");
+            setShowAnalyticsPrompt(false);
+          }}
         />
       )}
       {pendingUpdate && (
