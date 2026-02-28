@@ -2,6 +2,12 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/react";
 import { ErrorBoundary } from "./ErrorBoundary";
 
+vi.mock("../sentry", () => ({
+  captureException: vi.fn(),
+}));
+
+import { captureException } from "../sentry";
+
 function ThrowingComponent({ error }: { error: Error }) {
   throw error;
 }
@@ -10,6 +16,7 @@ describe("ErrorBoundary", () => {
   const originalError = console.error;
   beforeEach(() => {
     console.error = vi.fn();
+    vi.mocked(captureException).mockClear();
   });
   afterEach(() => {
     console.error = originalError;
@@ -44,6 +51,16 @@ describe("ErrorBoundary", () => {
     const button = container.querySelector("button");
     expect(button).not.toBeNull();
     expect(button!.textContent).toBe("Try again");
+  });
+
+  it("calls captureException when child throws", () => {
+    const error = new Error("Sentry test");
+    render(
+      <ErrorBoundary>
+        <ThrowingComponent error={error} />
+      </ErrorBoundary>,
+    );
+    expect(captureException).toHaveBeenCalledWith(error);
   });
 
   it("Try again button calls setState to clear error", () => {

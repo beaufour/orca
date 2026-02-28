@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { setAnalyticsEnabled, trackEvent } from "../analytics";
+import { setSentryEnabled } from "../sentry";
 import { Modal } from "./Modal";
 
 interface AnalyticsPromptProps {
@@ -10,6 +11,7 @@ interface AnalyticsPromptProps {
 export function AnalyticsPrompt({ onClose, appOpenedProps }: AnalyticsPromptProps) {
   const handleChoice = (enabled: boolean) => {
     setAnalyticsEnabled(enabled);
+    setSentryEnabled(enabled);
     invoke("set_analytics_enabled", { enabled }).catch((err) => {
       console.warn("Failed to save analytics preference:", err);
     });

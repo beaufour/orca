@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { storageGet, storageSet, SCROLL_SPEED_KEY, SCROLL_SPEED_DEFAULT } from "../utils";
 import { setAnalyticsEnabled } from "../analytics";
+import { setSentryEnabled } from "../sentry";
 
 interface AppSettingsModalProps {
   onClose: () => void;
@@ -30,6 +31,7 @@ export function AppSettingsModal({ onClose }: AppSettingsModalProps) {
   const handleAnalyticsToggle = (enabled: boolean) => {
     setAnalyticsEnabledState(enabled);
     setAnalyticsEnabled(enabled);
+    setSentryEnabled(enabled);
     invoke("set_analytics_enabled", { enabled }).catch((err) => {
       console.warn("Failed to save analytics preference:", err);
     });
