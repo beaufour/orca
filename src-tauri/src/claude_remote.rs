@@ -14,21 +14,13 @@ fn build_client(token: &str) -> Result<reqwest::Client, String> {
 
 // --- Types matching AgentAPI ---
 
-/// Wrapper for AgentAPI GET /messages response
-#[derive(Debug, Clone, Deserialize)]
-struct ApiMessagesResponse {
-    #[serde(default)]
-    messages: Vec<ApiMessage>,
-}
-
 /// Raw message from AgentAPI GET /messages
 #[derive(Debug, Clone, Deserialize)]
 struct ApiMessage {
-    id: i64,
+    #[serde(default)]
+    id: Option<i64>,
     role: String,
     content: String,
-    #[serde(default, rename = "time")]
-    _time: Option<String>,
 }
 
 /// Message returned to frontend (matching RemoteMessage interface)
@@ -73,15 +65,44 @@ pub async fn cr_get_messages(server_url: String, token: String) -> Result<Vec<Cr
         return Err(format!("Server returned {status}: {body}"));
     }
 
-    let wrapper: ApiMessagesResponse = resp
-        .json()
+    let body = resp
+        .text()
         .await
+        .map_err(|e| format!("Failed to read response body: {e}"))?;
+
+    // Handle empty body as empty conversation
+    if body.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Detect non-JSON responses (e.g. auth login pages, HTML error pages)
+    let trimmed = body.trim_start();
+    if trimmed.starts_with('<') {
+        return Err("Server returned an HTML page instead of JSON. Check that the server URL and authentication are configured correctly.".to_string());
+    }
+
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("Failed to parse messages: {e}"))?;
+
+    // Support both {"messages": [...]} (AgentAPI/huma) and bare [...] formats
+    let arr = if let Some(obj) = json.as_object() {
+        obj.get("messages")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+    } else if let Some(arr) = json.as_array() {
+        arr.clone()
+    } else {
+        return Ok(vec![]);
+    };
+
+    let api_messages: Vec<ApiMessage> = serde_json::from_value(serde_json::Value::Array(arr))
         .map_err(|e| format!("Failed to parse messages: {e}"))?;
 
-    Ok(wrapper
-        .messages
+    Ok(api_messages
         .into_iter()
-        .map(|m| {
+        .enumerate()
+        .map(|(i, m)| {
             // AgentAPI uses "agent" role; map to "assistant" for the frontend
             let role = if m.role == "agent" {
                 "assistant".to_string()
@@ -89,7 +110,7 @@ pub async fn cr_get_messages(server_url: String, token: String) -> Result<Vec<Cr
                 m.role
             };
             CrMessage {
-                id: format!("cr-{}", m.id),
+                id: format!("cr-{}", m.id.unwrap_or(i as i64)),
                 role,
                 msg_type: "text".to_string(),
                 content: m.content,
