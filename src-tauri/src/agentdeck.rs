@@ -1208,10 +1208,13 @@ fn send_prompt_to_session(session_id: &str, prompt: &str, tool: &str) -> Result<
     // Brief pause so the TUI processes the text before we submit
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    // Send Enter separately to submit the prompt
-    log::info!("tmux send-keys -t {tmux_name} Enter");
+    // Send Enter separately to submit the prompt.
+    // Use literal CR (\r) instead of the "Enter" key name to avoid issues
+    // with tmux extended-keys sending enhanced sequences that the TUI may
+    // not interpret as submit.
+    log::info!("tmux send-keys -l -t {tmux_name} CR");
     let output = new_command("tmux")
-        .args(["send-keys", "-t", &tmux_name, "Enter"])
+        .args(["send-keys", "-l", "-t", &tmux_name, "\r"])
         .output()
         .map_err(|e| format!("Failed to send Enter via tmux: {e}"))?;
 

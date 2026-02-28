@@ -52,7 +52,7 @@ pub fn paste_to_tmux_pane(
         std::thread::sleep(std::time::Duration::from_millis(200));
 
         let enter_output = new_command("tmux")
-            .args(["send-keys", "-t", &tmux_session, "Enter"])
+            .args(["send-keys", "-l", "-t", &tmux_session, "\r"])
             .output()
             .map_err(|e| format!("Failed to send Enter via tmux: {e}"))?;
 
