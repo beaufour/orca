@@ -72,11 +72,12 @@ export function AppSettingsModal({ onClose }: AppSettingsModalProps) {
               onChange={(e) => handleAnalyticsToggle(e.target.checked)}
             />
             <span className="settings-toggle-label">
-              Help improve Orca by sharing anonymous usage data
+              Help improve Orca by sharing anonymous usage data and crash reports
             </span>
           </label>
           <p className="settings-toggle-description">
-            Anonymous usage statistics to help improve Orca. No personal data is sent.{" "}
+            Anonymous usage statistics and crash reports to help improve Orca. No personal data is
+            sent.{" "}
             <a
               href="#"
               onClick={(e) => {
