@@ -731,11 +731,13 @@ pub fn remove_session_background(
 pub fn get_attention_counts() -> Result<AttentionCounts, String> {
     let conn = open_db_readonly()?;
 
-    // Fetch candidate sessions and refine with JSONL analysis
+    // Fetch candidate sessions and refine with JSONL analysis.
+    // Include sessions with a live tmux session — their DB status may be stale.
     let mut stmt = conn
         .prepare(
-            "SELECT id, project_path, group_path, status, tool_data FROM instances \
-             WHERE status IN ('waiting', 'error')",
+            "SELECT id, project_path, group_path, status, tool_data, tmux_session FROM instances \
+             WHERE status IN ('waiting', 'error') \
+             OR (tmux_session IS NOT NULL AND tmux_session != '')",
         )
         .map_err(|e| e.to_string())?;
 
@@ -753,22 +755,22 @@ pub fn get_attention_counts() -> Result<AttentionCounts, String> {
                 row.get::<_, String>(2)?, // group_path
                 row.get::<_, String>(3)?, // status
                 claude_session_id,
+                row.get::<_, Option<String>>(5)?, // tmux_session
             ))
         })
         .map_err(|e| e.to_string())?;
 
     let mut candidate_count = 0u32;
     for row in rows {
-        let (project_path, group_path, status, claude_session_id) =
+        let (project_path, group_path, status, claude_session_id, tmux_session) =
             row.map_err(|e| e.to_string())?;
         candidate_count += 1;
 
-        // tmux check not needed — this query only covers "waiting"/"error"
         let attention = claude_logs::compute_attention(
             &project_path,
             claude_session_id.as_deref(),
             &status,
-            None,
+            tmux_session.as_deref(),
         );
 
         let refined_status = match attention {
@@ -795,11 +797,15 @@ pub fn get_attention_counts() -> Result<AttentionCounts, String> {
 pub fn get_attention_sessions(orca_db: State<'_, OrcaDb>) -> Result<Vec<Session>, String> {
     let conn = open_db_readonly()?;
 
+    // Include sessions with a live tmux session — their DB status may be stale.
     let mut stmt = conn
         .prepare(
             "SELECT id, title, project_path, group_path, sort_order, status, tmux_session, \
              created_at, last_accessed, worktree_path, worktree_repo, worktree_branch, tool_data \
-             FROM instances WHERE status IN ('waiting', 'error') ORDER BY group_path, sort_order",
+             FROM instances \
+             WHERE status IN ('waiting', 'error') \
+             OR (tmux_session IS NOT NULL AND tmux_session != '') \
+             ORDER BY group_path, sort_order",
         )
         .map_err(|e| e.to_string())?;
 
@@ -812,16 +818,20 @@ pub fn get_attention_sessions(orca_db: State<'_, OrcaDb>) -> Result<Vec<Session>
 
     let prompts = orca_db.get_all_prompts().unwrap_or_default();
 
-    // Refine using JSONL analysis — only keep sessions that truly need attention
+    // Refine using JSONL/tmux analysis — only keep sessions that truly need attention
     let result = candidates
         .into_iter()
         .filter(|s| {
-            // tmux check not needed — this query only covers "waiting"/"error"
+            let tmux = if s.tmux_session.is_empty() {
+                None
+            } else {
+                Some(s.tmux_session.as_str())
+            };
             let attention = claude_logs::compute_attention(
                 &s.project_path,
                 s.claude_session_id.as_deref(),
                 &s.status,
-                None,
+                tmux,
             );
             matches!(
                 attention,

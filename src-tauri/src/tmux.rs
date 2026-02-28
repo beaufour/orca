@@ -106,9 +106,20 @@ pub fn scroll_tmux_pane(tmux_session: String, direction: String, lines: u32) -> 
     Ok(())
 }
 
-/// Check if a tmux session is showing a Claude Code permission prompt
-/// ("Do you want to proceed?").  Captures the last 20 lines of the pane
-/// and looks for the distinctive prompt text.
+/// Check if a tmux session exists (is alive).
+pub fn is_tmux_session_alive(tmux_session: &str) -> bool {
+    let ok = new_command("tmux")
+        .args(["has-session", "-t", tmux_session])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    log::debug!("is_tmux_session_alive: tmux_session={tmux_session}, result={ok}");
+    ok
+}
+
+/// Check if a tmux session is showing a Claude Code input prompt.
+/// Captures the last 20 lines of the pane and looks for permission prompts
+/// ("Do you want to proceed?") or Claude Code's general input prompt (❯ / >).
 pub fn is_waiting_for_input(tmux_session: &str) -> bool {
     let output = match new_command("tmux")
         .args(["capture-pane", "-t", tmux_session, "-p", "-l", "20"])
@@ -119,8 +130,29 @@ pub fn is_waiting_for_input(tmux_session: &str) -> bool {
     };
 
     let text = String::from_utf8_lossy(&output.stdout);
-    let waiting = text.contains("Do you want to proceed?");
-    log::debug!("is_waiting_for_input: tmux_session={tmux_session}, result={waiting}");
+
+    // Permission prompt
+    if text.contains("Do you want to proceed?") {
+        log::debug!(
+            "is_waiting_for_input: tmux_session={tmux_session}, result=true (permission prompt)"
+        );
+        return true;
+    }
+
+    // Claude Code's general input prompt — check last non-empty line for ❯ or >
+    let waiting = text
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| {
+            let trimmed = line.trim();
+            trimmed == "❯" || trimmed == ">" || trimmed.ends_with(" ❯") || trimmed.ends_with(" >")
+        })
+        .unwrap_or(false);
+
+    log::debug!(
+        "is_waiting_for_input: tmux_session={tmux_session}, result={waiting} (general prompt)"
+    );
     waiting
 }
 

@@ -359,15 +359,34 @@ pub fn compute_attention(
     result
 }
 
-/// Refine a Running status by checking the tmux pane for a permission prompt.
+/// Refine attention status by checking the tmux session.
+///
+/// - `Running` + tmux shows input prompt → `NeedsInput`
+/// - `Idle` + tmux session alive → `NeedsInput` (DB status is stale; session is actually active)
 fn refine_with_tmux(attention: AttentionStatus, tmux_session: Option<&str>) -> AttentionStatus {
-    if matches!(attention, AttentionStatus::Running) {
-        if let Some(ts) = tmux_session {
-            if !ts.is_empty() && crate::tmux::is_waiting_for_input(ts) {
+    let Some(ts) = tmux_session else {
+        return attention;
+    };
+    if ts.is_empty() {
+        return attention;
+    }
+
+    match attention {
+        AttentionStatus::Running => {
+            if crate::tmux::is_waiting_for_input(ts) {
                 log::debug!("refine_with_tmux: tmux check upgraded Running -> NeedsInput for {ts}");
                 return AttentionStatus::NeedsInput;
             }
         }
+        AttentionStatus::Idle => {
+            if crate::tmux::is_tmux_session_alive(ts) {
+                log::debug!(
+                    "refine_with_tmux: tmux session alive, upgraded Idle -> NeedsInput for {ts}"
+                );
+                return AttentionStatus::NeedsInput;
+            }
+        }
+        _ => {}
     }
     attention
 }
@@ -704,5 +723,59 @@ mod tests {
             ]}
         })];
         assert_eq!(extract_last_tool(&lines), None);
+    }
+
+    // ── refine_with_tmux ──
+
+    #[test]
+    fn refine_with_tmux_no_session() {
+        // No tmux session — status unchanged
+        let result = refine_with_tmux(AttentionStatus::Idle, None);
+        assert!(matches!(result, AttentionStatus::Idle));
+    }
+
+    #[test]
+    fn refine_with_tmux_empty_session() {
+        // Empty tmux session string — status unchanged
+        let result = refine_with_tmux(AttentionStatus::Idle, Some(""));
+        assert!(matches!(result, AttentionStatus::Idle));
+    }
+
+    #[test]
+    fn refine_with_tmux_nonexistent_session_idle() {
+        // Non-existent tmux session — is_tmux_session_alive returns false, stays Idle
+        let result = refine_with_tmux(AttentionStatus::Idle, Some("nonexistent-session-xyz-999"));
+        assert!(matches!(result, AttentionStatus::Idle));
+    }
+
+    #[test]
+    fn refine_with_tmux_nonexistent_session_running() {
+        // Non-existent tmux session — is_waiting_for_input returns false, stays Running
+        let result = refine_with_tmux(
+            AttentionStatus::Running,
+            Some("nonexistent-session-xyz-999"),
+        );
+        assert!(matches!(result, AttentionStatus::Running));
+    }
+
+    #[test]
+    fn refine_with_tmux_preserves_other_statuses() {
+        // Error, Stale, NeedsInput, Unknown should pass through unchanged
+        assert!(matches!(
+            refine_with_tmux(AttentionStatus::Error, Some("any")),
+            AttentionStatus::Error
+        ));
+        assert!(matches!(
+            refine_with_tmux(AttentionStatus::Stale, Some("any")),
+            AttentionStatus::Stale
+        ));
+        assert!(matches!(
+            refine_with_tmux(AttentionStatus::NeedsInput, Some("any")),
+            AttentionStatus::NeedsInput
+        ));
+        assert!(matches!(
+            refine_with_tmux(AttentionStatus::Unknown, Some("any")),
+            AttentionStatus::Unknown
+        ));
     }
 }
