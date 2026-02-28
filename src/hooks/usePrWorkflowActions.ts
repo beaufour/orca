@@ -110,7 +110,7 @@ export function usePrWorkflowActions({
     session.worktree_branch !== "master" &&
     session.worktree_branch !== defaultBranch;
 
-  const { data: worktreeStatus, isLoading: statusLoading } = useQuery<WorktreeStatus>({
+  const { data: worktreeStatus, isFetching: statusLoading } = useQuery<WorktreeStatus>({
     queryKey: ["worktreeStatus", session.worktree_path],
     queryFn: () =>
       invoke("check_worktree_status", {

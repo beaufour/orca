@@ -73,7 +73,7 @@ export function useWorktreeActions({
   const isWorktree = !!session.worktree_branch;
   const isRemoving = removingSessionId === session.id;
 
-  const { data: worktreeStatus, isLoading: statusLoading } = useQuery<WorktreeStatus>({
+  const { data: worktreeStatus, isFetching: statusLoading } = useQuery<WorktreeStatus>({
     queryKey: queryKeys.worktreeStatus(session.worktree_path ?? ""),
     queryFn: () =>
       invoke("check_worktree_status", {
