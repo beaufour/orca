@@ -1,10 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { WorktreeActionsResult } from "../hooks/useWorktreeActions";
+import { extractIssueNumber } from "../utils";
+import { CloseIssueButton } from "./CloseIssueButton";
 
 interface WorktreeActionsProps {
   actions: WorktreeActionsResult;
   projectPath: string;
   worktreeBranch: string;
+  repoPath: string;
   onShowDiff: () => void;
 }
 
@@ -12,6 +15,7 @@ export function WorktreeActions({
   actions,
   projectPath,
   worktreeBranch,
+  repoPath,
   onShowDiff,
 }: WorktreeActionsProps) {
   const {
@@ -156,6 +160,12 @@ export function WorktreeActions({
       {mergeState === "success" && (
         <div className="merge-cleanup">
           <span className="merge-success-label">Merged!</span>
+          {(() => {
+            const issueNumber = extractIssueNumber(worktreeBranch);
+            return issueNumber ? (
+              <CloseIssueButton repoPath={repoPath} issueNumber={issueNumber} />
+            ) : null;
+          })()}
           <button
             className="wt-btn wt-btn-danger"
             onClick={(e) => {

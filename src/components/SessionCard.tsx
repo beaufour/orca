@@ -247,6 +247,7 @@ export function SessionCard({
             projectPath={session.project_path}
             worktreeBranch={session.worktree_branch}
             sessionTitle={session.title}
+            repoPath={repoPath}
             onShowDiff={() => setShowDiff(true)}
           />
         ) : (
@@ -254,6 +255,7 @@ export function SessionCard({
             actions={actionsWithLiftedState}
             projectPath={session.project_path}
             worktreeBranch={session.worktree_branch}
+            repoPath={repoPath}
             onShowDiff={() => setShowDiff(true)}
           />
         )}
