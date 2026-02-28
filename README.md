@@ -23,9 +23,20 @@ This app is very much in development mode and is crafted for my workflow, but I'
 Should you use it though? I don't know.
 
 1. This is very much a "moment in time" tool. IDEs / other tools will surpass this little util
-2. It is customized to what I want for my workflow and might not fit yours. Also, I'm sure there are assumptions about my setup that I've forgotten about...
+2. It is customized to what I want for my workflow and might not fit yours
 
 All that said, I'm all ears for thoughts, feedback, etc.
+
+## Assumptions & Limitations
+
+Orca was built for my specific workflow, so there are a few things to be aware of:
+
+- **macOS only** — The app is distributed as a `.dmg` and has macOS-specific code (e.g. PATH initialization from login shell, "Open in Terminal" uses iTerm2 via AppleScript)
+- **Backend development focus** — I've primarily tested it for backend development workflows
+- **Git worktrees** — Worktree management works best with a [bare checkout](https://morgan.cugerone.com/blog/workarounds-to-git-worktree-using-bare-repository-and-target-directory/) layout where worktrees are sibling directories at the repo root (next to `.bare/`). Non-bare repos are supported but less tested
+- **Git remote** — Assumes `origin` as the remote name (not configurable)
+- **PR workflow** — The PR workflow uses the [GitHub CLI (`gh`)](https://cli.github.com/) for creating and managing pull requests. This has had limited testing compared to the local merge workflow
+- **agent-deck version** — Orca expects a specific agent-deck version and will warn on mismatch
 
 ## Features
 
@@ -55,6 +66,7 @@ For the **local** backend, Orca requires:
 - [git](https://git-scm.com/) — worktree operations
 - [Claude Code](https://claude.ai/claude-code) — the AI coding assistant
 - [Opencode](https://github.com/sst/opencode) — the AI coding assistant (also supported)
+- [GitHub CLI (`gh`)](https://cli.github.com/) — optional, needed for the PR workflow
 
 For the **opencode-remote** backend, only a reachable OpenCode server URL is needed.
 
