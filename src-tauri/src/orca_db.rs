@@ -381,31 +381,107 @@ impl OrcaDb {
         Ok(())
     }
 
+    // ── Private metadata helpers ───────────────────────────────────
+
+    fn get_metadata(&self, key: &str) -> Result<Option<String>, String> {
+        let conn = self.open()?;
+        let result = conn.query_row("SELECT value FROM metadata WHERE key = ?1", [key], |row| {
+            row.get::<_, String>(0)
+        });
+        match result {
+            Ok(val) => Ok(Some(val)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Failed to get metadata '{key}': {e}")),
+        }
+    }
+
+    fn set_metadata(&self, key: &str, value: &str) -> Result<(), String> {
+        let conn = self.open()?;
+        conn.execute(
+            "INSERT INTO metadata (key, value) VALUES (?1, ?2) \
+             ON CONFLICT(key) DO UPDATE SET value = ?2",
+            rusqlite::params![key, value],
+        )
+        .map_err(|e| format!("Failed to set metadata '{key}': {e}"))?;
+        Ok(())
+    }
+
+    fn delete_metadata(&self, key: &str) -> Result<(), String> {
+        let conn = self.open()?;
+        conn.execute("DELETE FROM metadata WHERE key = ?1", [key])
+            .map_err(|e| format!("Failed to delete metadata '{key}': {e}"))?;
+        Ok(())
+    }
+
+    // ── Analytics ────────────────────────────────────────────────────
+
     /// Check if analytics is enabled (defaults to false).
     pub fn get_analytics_enabled(&self) -> Result<bool, String> {
-        let conn = self.open()?;
-        let result = conn.query_row(
-            "SELECT value FROM metadata WHERE key = 'analytics_enabled'",
-            [],
-            |row| row.get::<_, String>(0),
-        );
-        match result {
-            Ok(val) => Ok(val == "true"),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
-            Err(e) => Err(format!("Failed to get analytics_enabled: {e}")),
-        }
+        Ok(self.get_metadata("analytics_enabled")?.as_deref() == Some("true"))
     }
 
     /// Set whether analytics is enabled.
     pub fn set_analytics_enabled(&self, enabled: bool) -> Result<(), String> {
+        self.set_metadata("analytics_enabled", if enabled { "true" } else { "false" })
+    }
+
+    // ── Global remote server settings ────────────────────────────────
+
+    pub fn get_remote_server_url(&self) -> Result<Option<String>, String> {
+        self.get_metadata("remote_server_url")
+    }
+
+    pub fn set_remote_server_url(&self, url: Option<&str>) -> Result<(), String> {
+        match url.filter(|u| !u.is_empty()) {
+            Some(u) => self.set_metadata("remote_server_url", u),
+            None => self.delete_metadata("remote_server_url"),
+        }
+    }
+
+    pub fn get_remote_auth_token(&self) -> Result<Option<String>, String> {
+        self.get_metadata("remote_auth_token")
+    }
+
+    pub fn set_remote_auth_token(&self, token: Option<&str>) -> Result<(), String> {
+        match token.filter(|t| !t.is_empty()) {
+            Some(t) => self.set_metadata("remote_auth_token", t),
+            None => self.delete_metadata("remote_auth_token"),
+        }
+    }
+
+    /// Resolve server credentials for a group: per-group values win if non-empty,
+    /// otherwise fall back to global defaults.
+    /// Returns `(Option<url>, Option<token>)`.
+    pub fn resolve_server_credentials(
+        &self,
+        group_path: &str,
+    ) -> Result<(Option<String>, Option<String>), String> {
         let conn = self.open()?;
-        conn.execute(
-            "INSERT INTO metadata (key, value) VALUES ('analytics_enabled', ?1) \
-             ON CONFLICT(key) DO UPDATE SET value = ?1",
-            [if enabled { "true" } else { "false" }],
-        )
-        .map_err(|e| format!("Failed to set analytics_enabled: {e}"))?;
-        Ok(())
+        Self::ensure_backend_columns(&conn)?;
+
+        // Per-group values
+        let (group_url, group_token) = match conn.query_row(
+            "SELECT server_url, server_password FROM group_settings WHERE group_path = ?1",
+            [group_path],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                ))
+            },
+        ) {
+            Ok(pair) => pair,
+            Err(rusqlite::Error::QueryReturnedNoRows) => (None, None),
+            Err(e) => return Err(format!("Failed to get group credentials: {e}")),
+        };
+
+        let global_url = self.get_remote_server_url()?;
+        let global_token = self.get_remote_auth_token()?;
+
+        let url = group_url.filter(|u| !u.is_empty()).or(global_url);
+        let token = group_token.filter(|t| !t.is_empty()).or(global_token);
+
+        Ok((url, token))
     }
 
     /// One-time migration: copy github_issues_enabled and prompt data from
@@ -803,5 +879,114 @@ mod tests {
 
         let dismissed = db.get_dismissed_ids().expect("get failed");
         assert!(!dismissed.contains(&"sess-1".to_string()));
+    }
+
+    // ── 14. remote_server_url round-trip ─────────────────────────────
+
+    #[test]
+    fn test_remote_server_url_round_trip() {
+        let (db, _tmp) = setup();
+
+        assert!(db.get_remote_server_url().expect("get failed").is_none());
+
+        db.set_remote_server_url(Some("https://example.com"))
+            .expect("set failed");
+        assert_eq!(
+            db.get_remote_server_url().expect("get failed").as_deref(),
+            Some("https://example.com")
+        );
+
+        db.set_remote_server_url(None).expect("clear failed");
+        assert!(db.get_remote_server_url().expect("get failed").is_none());
+    }
+
+    // ── 15. remote_auth_token round-trip ─────────────────────────────
+
+    #[test]
+    fn test_remote_auth_token_round_trip() {
+        let (db, _tmp) = setup();
+
+        assert!(db.get_remote_auth_token().expect("get failed").is_none());
+
+        db.set_remote_auth_token(Some("secret123"))
+            .expect("set failed");
+        assert_eq!(
+            db.get_remote_auth_token().expect("get failed").as_deref(),
+            Some("secret123")
+        );
+
+        // Empty string clears the token
+        db.set_remote_auth_token(Some("")).expect("clear failed");
+        assert!(db.get_remote_auth_token().expect("get failed").is_none());
+    }
+
+    // ── 16. resolve_server_credentials uses global fallback ──────────
+
+    #[test]
+    fn test_resolve_credentials_global_fallback() {
+        let (db, _tmp) = setup();
+
+        db.set_remote_server_url(Some("https://global.example.com"))
+            .expect("set url failed");
+        db.set_remote_auth_token(Some("global-token"))
+            .expect("set token failed");
+
+        // Group has no per-group overrides
+        db.update_group_settings("/repo", true, "merge", None, 2, "claude-remote", None, None)
+            .expect("update failed");
+
+        let (url, token) = db
+            .resolve_server_credentials("/repo")
+            .expect("resolve failed");
+        assert_eq!(url.as_deref(), Some("https://global.example.com"));
+        assert_eq!(token.as_deref(), Some("global-token"));
+    }
+
+    // ── 17. resolve_server_credentials prefers per-group overrides ───
+
+    #[test]
+    fn test_resolve_credentials_per_group_override() {
+        let (db, _tmp) = setup();
+
+        db.set_remote_server_url(Some("https://global.example.com"))
+            .expect("set url failed");
+        db.set_remote_auth_token(Some("global-token"))
+            .expect("set token failed");
+
+        db.update_group_settings(
+            "/repo",
+            true,
+            "merge",
+            None,
+            2,
+            "claude-remote",
+            Some("https://group.example.com"),
+            Some("group-token"),
+        )
+        .expect("update failed");
+
+        let (url, token) = db
+            .resolve_server_credentials("/repo")
+            .expect("resolve failed");
+        assert_eq!(url.as_deref(), Some("https://group.example.com"));
+        assert_eq!(token.as_deref(), Some("group-token"));
+    }
+
+    // ── 18. resolve_server_credentials no group row falls back ───────
+
+    #[test]
+    fn test_resolve_credentials_no_group_row() {
+        let (db, _tmp) = setup();
+
+        db.set_remote_server_url(Some("https://global.example.com"))
+            .expect("set url failed");
+        db.set_remote_auth_token(Some("global-token"))
+            .expect("set token failed");
+
+        let (url, token) = db
+            .resolve_server_credentials("/nonexistent")
+            .expect("resolve failed");
+        assert_eq!(url.as_deref(), Some("https://global.example.com"));
+        assert_eq!(token.as_deref(), Some("global-token"));
     }
 }

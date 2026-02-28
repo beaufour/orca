@@ -28,6 +28,21 @@ export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSett
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const queryClient = useQueryClient();
 
+  // Fetch global remote settings
+  const [globalUrl, setGlobalUrl] = useState<string>("");
+  const [globalToken, setGlobalToken] = useState<string>("");
+  useEffect(() => {
+    invoke<string | null>("get_remote_server_url")
+      .then((url) => setGlobalUrl(url ?? ""))
+      .catch(() => {});
+    invoke<string | null>("get_remote_auth_token")
+      .then((token) => setGlobalToken(token ?? ""))
+      .catch(() => {});
+  }, []);
+
+  const hasGlobalToken = globalToken.length > 0;
+  const showRemoteOptions = hasGlobalToken || group.backend !== "local";
+
   // Fetch session count for this group
   const { data: sessions } = useQuery<Session[]>({
     queryKey: queryKeys.sessions(group.path),
@@ -248,30 +263,34 @@ export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSett
             <strong>Local</strong> — agent-deck + tmux (Claude, OpenCode, Shell)
           </span>
         </label>
-        <label className="settings-radio-option">
-          <input
-            type="radio"
-            name="backend"
-            value="opencode-remote"
-            checked={backend === "opencode-remote"}
-            onChange={() => setBackend("opencode-remote")}
-          />
-          <span className="settings-radio-text">
-            <strong>OpenCode Remote</strong> — connect to remote OpenCode server
-          </span>
-        </label>
-        <label className="settings-radio-option">
-          <input
-            type="radio"
-            name="backend"
-            value="claude-remote"
-            checked={backend === "claude-remote"}
-            onChange={() => setBackend("claude-remote")}
-          />
-          <span className="settings-radio-text">
-            <strong>Claude Code Remote</strong> — connect to remote Claude Code via AgentAPI
-          </span>
-        </label>
+        {showRemoteOptions && (
+          <>
+            <label className="settings-radio-option">
+              <input
+                type="radio"
+                name="backend"
+                value="opencode-remote"
+                checked={backend === "opencode-remote"}
+                onChange={() => setBackend("opencode-remote")}
+              />
+              <span className="settings-radio-text">
+                <strong>OpenCode Remote</strong> — connect to remote OpenCode server
+              </span>
+            </label>
+            <label className="settings-radio-option">
+              <input
+                type="radio"
+                name="backend"
+                value="claude-remote"
+                checked={backend === "claude-remote"}
+                onChange={() => setBackend("claude-remote")}
+              />
+              <span className="settings-radio-text">
+                <strong>Claude Code Remote</strong> — connect to remote Claude Code via AgentAPI
+              </span>
+            </label>
+          </>
+        )}
       </div>
       {isRemoteBackend && (
         <div className="settings-section">
@@ -280,14 +299,18 @@ export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSett
             className="wt-input"
             type="text"
             placeholder={
-              backend === "claude-remote"
+              globalUrl ||
+              (backend === "claude-remote"
                 ? "https://agent-remote.example.workers.dev/claude/project-id"
-                : "https://your-worker.workers.dev"
+                : "https://your-worker.workers.dev")
             }
             value={serverUrl}
             onChange={(e) => setServerUrl(e.target.value)}
             spellCheck={false}
           />
+          {globalUrl && !serverUrl.trim() && (
+            <span className="settings-hint">Using global default</span>
+          )}
           <label className="modal-label" style={{ marginTop: 8 }}>
             {backend === "claude-remote" ? "Token" : "Password"}
           </label>
@@ -296,15 +319,33 @@ export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSett
             type="password"
             placeholder={
               passwordLoaded
-                ? backend === "claude-remote"
-                  ? "Enter token"
-                  : "Enter password"
+                ? globalToken
+                  ? "Using global default"
+                  : backend === "claude-remote"
+                    ? "Enter token"
+                    : "Enter password"
                 : "Loading..."
             }
             value={serverPassword}
             onChange={(e) => setServerPassword(e.target.value)}
             spellCheck={false}
           />
+          {globalToken && !serverPassword && passwordLoaded && (
+            <span className="settings-hint">Using global default</span>
+          )}
+          {(serverUrl.trim() || serverPassword) && (
+            <button
+              className="wt-btn"
+              style={{ marginTop: 8, alignSelf: "flex-start" }}
+              type="button"
+              onClick={() => {
+                setServerUrl("");
+                setServerPassword("");
+              }}
+            >
+              Reset to global defaults
+            </button>
+          )}
         </div>
       )}
       {mutation.error && <div className="wt-error">{String(mutation.error)}</div>}

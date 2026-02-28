@@ -72,6 +72,7 @@ function App() {
   const dismissedLoaded = useRef(false);
   const [remoteSession, setRemoteSession] = useState<RemoteSession | null>(null);
   const [remotePassword, setRemotePassword] = useState<string>("");
+  const [remoteServerUrl, setRemoteServerUrl] = useState<string>("");
 
   // Load dismissed IDs from DB on startup
   useEffect(() => {
@@ -485,7 +486,7 @@ function App() {
           isRemoteView && remoteSession && effectiveGroup ? (
             <MessageStream
               session={remoteSession}
-              serverUrl={effectiveGroup.server_url ?? ""}
+              serverUrl={remoteServerUrl}
               serverPassword={remotePassword}
               backend={effectiveGroup.backend as "opencode-remote" | "claude-remote"}
               onClose={handleCloseTerminal}
@@ -527,13 +528,12 @@ function App() {
                   onDismissPending={dismissPending}
                   createSession={createSession}
                   onCreateRemoteSession={async (title, prompt) => {
-                    if (!effectiveGroup.server_url) return;
                     try {
-                      const pw = await invoke<string | null>("get_server_password", {
-                        groupPath: effectiveGroup.path,
-                      });
+                      const [resolvedUrl, resolvedToken] = await invoke<
+                        [string | null, string | null]
+                      >("get_resolved_credentials", { groupPath: effectiveGroup.path });
+                      if (!resolvedUrl) return;
                       if (effectiveGroup.backend === "claude-remote") {
-                        // Claude remote: single session per URL, no server-side creation
                         const syntheticSession: RemoteSession = {
                           id: `cr-${Date.now()}`,
                           title: title || "Claude Remote",
@@ -543,24 +543,25 @@ function App() {
                           last_accessed: Date.now(),
                         };
                         setRemoteSession(syntheticSession);
-                        setRemotePassword(pw ?? "");
-                        // Send initial prompt if provided
+                        setRemotePassword(resolvedToken ?? "");
+                        setRemoteServerUrl(resolvedUrl);
                         if (prompt) {
                           invoke("cr_send_message", {
-                            serverUrl: effectiveGroup.server_url,
-                            token: pw ?? "",
+                            serverUrl: resolvedUrl,
+                            token: resolvedToken ?? "",
                             content: prompt,
                           }).catch((err) => console.error("Failed to send initial message:", err));
                         }
                       } else {
                         const session = await invoke<RemoteSession>("oc_create_session", {
-                          serverUrl: effectiveGroup.server_url,
-                          password: pw ?? "",
+                          serverUrl: resolvedUrl,
+                          password: resolvedToken ?? "",
                           title,
                           initialMessage: prompt,
                         });
                         setRemoteSession(session);
-                        setRemotePassword(pw ?? "");
+                        setRemotePassword(resolvedToken ?? "");
+                        setRemoteServerUrl(resolvedUrl);
                       }
                     } catch (err) {
                       console.error("Failed to create remote session:", err);
@@ -610,11 +611,11 @@ function App() {
                 createSession={createSession}
                 pendingCreations={pendingCreations}
                 onCreateRemoteSession={async (title, prompt) => {
-                  if (!effectiveGroup.server_url) return;
                   try {
-                    const pw = await invoke<string | null>("get_server_password", {
-                      groupPath: effectiveGroup.path,
-                    });
+                    const [resolvedUrl, resolvedToken] = await invoke<
+                      [string | null, string | null]
+                    >("get_resolved_credentials", { groupPath: effectiveGroup.path });
+                    if (!resolvedUrl) return;
                     if (effectiveGroup.backend === "claude-remote") {
                       const syntheticSession: RemoteSession = {
                         id: `cr-${Date.now()}`,
@@ -625,23 +626,25 @@ function App() {
                         last_accessed: Date.now(),
                       };
                       setRemoteSession(syntheticSession);
-                      setRemotePassword(pw ?? "");
+                      setRemotePassword(resolvedToken ?? "");
+                      setRemoteServerUrl(resolvedUrl);
                       if (prompt) {
                         invoke("cr_send_message", {
-                          serverUrl: effectiveGroup.server_url,
-                          token: pw ?? "",
+                          serverUrl: resolvedUrl,
+                          token: resolvedToken ?? "",
                           content: prompt,
                         }).catch((err) => console.error("Failed to send initial message:", err));
                       }
                     } else {
                       const session = await invoke<RemoteSession>("oc_create_session", {
-                        serverUrl: effectiveGroup.server_url,
-                        password: pw ?? "",
+                        serverUrl: resolvedUrl,
+                        password: resolvedToken ?? "",
                         title,
                         initialMessage: prompt,
                       });
                       setRemoteSession(session);
-                      setRemotePassword(pw ?? "");
+                      setRemotePassword(resolvedToken ?? "");
+                      setRemoteServerUrl(resolvedUrl);
                     }
                   } catch (err) {
                     console.error("Failed to create remote session:", err);
