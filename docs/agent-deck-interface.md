@@ -92,6 +92,7 @@ All read queries use `SQLITE_OPEN_READ_ONLY`.
 | `get_attention_sessions()`  | Full 13-column SELECT + `WHERE status IN ('waiting', 'error') ORDER BY group_path, sort_order`                                                                                                                     |
 | `get_tmux_session_name()`   | `SELECT tmux_session FROM instances WHERE id = ?1`                                                                                                                                                                 |
 | `clear_session_worktree()`  | `SELECT worktree_repo FROM instances WHERE id = ?1`                                                                                                                                                                |
+| `query_group_sessions()`    | `SELECT id, tmux_session FROM instances WHERE group_path = ?1`                                                                                                                                                     |
 
 ### tool_data JSON parsing
 
@@ -186,6 +187,16 @@ Rename a session (v0.17.0). Orca does not currently use this — it writes direc
 ```
 agent-deck rename <session_id> <new_name>
 ```
+
+### `agent-deck group delete`
+
+Delete a group. Fails if the group still has sessions (unless `--force` is used, which moves sessions to the parent group instead of deleting them).
+
+```
+agent-deck group delete <name>
+```
+
+Exit 0 = success, non-zero = failure (e.g. group has sessions). Orca removes all sessions first via `agent-deck remove`, then calls `group delete` on the empty group.
 
 ### `agent-deck session send --wait`
 
@@ -291,7 +302,8 @@ When upgrading agent-deck, verify:
 7. **Conflict message** — still matches `"Session already exists with same title and path: <name> (<id>)"`?
 8. **`session start`** — still accepts `agent-deck session start <id>`?
 9. **`remove`** — still accepts `agent-deck remove <id>`?
-10. **Update `SUPPORTED_VERSION`** in `src-tauri/src/agentdeck.rs` and the version at the top of this doc.
+10. **`group delete`** — still accepts `agent-deck group delete <name>`? Still requires sessions to be removed first (no `--force`)?
+11. **Update `SUPPORTED_VERSION`** in `src-tauri/src/agentdeck.rs` and the version at the top of this doc.
 
 ## Source Files
 
