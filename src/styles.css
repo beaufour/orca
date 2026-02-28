@@ -498,7 +498,8 @@ body {
   border-radius: 3px;
   white-space: nowrap;
   font-family: "SF Mono", "Menlo", monospace;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wt-badge-yes {
@@ -507,6 +508,7 @@ body {
 }
 
 .wt-badge-no {
+  flex-shrink: 0;
   background: rgba(107, 114, 128, 0.1);
   color: var(--text-muted);
 }
