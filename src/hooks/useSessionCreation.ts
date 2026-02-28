@@ -40,7 +40,7 @@ export function useSessionCreation({ onCreated }: UseSessionCreationOptions = {}
 
     listen<{ creation_id: string; session_id: string }>("session-created", (event) => {
       const { creation_id, session_id } = event.payload;
-      trackEvent("session_created", { session_id });
+      trackEvent("session_created");
       setPendingCreations((prev) => {
         const next = new Map(prev);
         next.delete(creation_id);
