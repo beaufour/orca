@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import logoSrc from "../assets/logo.png";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface AboutDialogProps {
   onClose: () => void;
@@ -9,6 +10,7 @@ interface AboutDialogProps {
 
 export function AboutDialog({ onClose }: AboutDialogProps) {
   const [version, setVersion] = useState("");
+  useEscapeKey(onClose);
 
   useEffect(() => {
     getVersion().then(setVersion);
