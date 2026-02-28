@@ -382,9 +382,10 @@ export function AddSessionBar({
               className="wt-btn wt-btn-confirm"
               type="submit"
               disabled={
-                (mode === "worktree" && (!branchName.trim() || !!branchError)) ||
-                (needsComponent && selectedComponents.length === 0) ||
-                (mode === "plain" && !title.trim() && !prompt.trim())
+                !isRemote &&
+                ((mode === "worktree" && (!branchName.trim() || !!branchError)) ||
+                  (needsComponent && selectedComponents.length === 0) ||
+                  (mode === "plain" && !title.trim() && !prompt.trim()))
               }
             >
               Create
