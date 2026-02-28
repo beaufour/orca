@@ -1838,6 +1838,15 @@ body {
   line-height: 1.4;
 }
 
+.settings-toggle-description a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.settings-toggle-description a:hover {
+  text-decoration: underline;
+}
+
 /* Settings radio group */
 .settings-radio-group {
   display: flex;

@@ -9,6 +9,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { Session, WorktreeStatus, PrInfo, RebaseResult, PushResult } from "../types";
+import { trackEvent } from "../analytics";
 
 export type PrState =
   | "idle"
@@ -143,6 +144,7 @@ export function usePrWorkflowActions({
 
     const unlistenRemoved = listen<{ session_id: string }>("session-removed", (event) => {
       if (event.payload.session_id === removingSessionId) {
+        trackEvent("session_removed");
         setRemovingSessionId(null);
         invalidateAll();
       }
@@ -266,6 +268,7 @@ export function usePrWorkflowActions({
         body,
       }),
     onSuccess: (info) => {
+      trackEvent("pr_created");
       setPrInfo(info);
       setPrState("pr_open");
       // Persist PR info

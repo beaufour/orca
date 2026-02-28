@@ -10,6 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { Session, WorktreeStatus, MergeResult, RebaseResult } from "../types";
 import { queryKeys } from "../queryKeys";
+import { trackEvent } from "../analytics";
 
 export type MergeState =
   | "idle"
@@ -110,6 +111,7 @@ export function useWorktreeActions({
 
     const unlistenRemoved = listen<{ session_id: string }>("session-removed", (event) => {
       if (event.payload.session_id === removingSessionId) {
+        trackEvent("session_removed");
         setRemovingSessionId(null);
         setConfirmingRemove(false);
         invalidateAll();
@@ -191,6 +193,9 @@ export function useWorktreeActions({
     onSuccess: (result) => {
       setMergeResult(result);
       setMergeState(result.success ? "success" : "conflict");
+      if (result.success) {
+        trackEvent("worktree_merged");
+      }
       // Clear cached worktree status so the remove dialog doesn't show stale "not merged" data
       queryClient.removeQueries({
         queryKey: queryKeys.worktreeStatus(session.worktree_path ?? ""),

@@ -17,6 +17,7 @@ import { IssueModal } from "./components/IssueModal";
 import { GroupSettingsModal } from "./components/GroupSettingsModal";
 import { AboutDialog } from "./components/AboutDialog";
 import { AppSettingsModal } from "./components/AppSettingsModal";
+import { AnalyticsPrompt } from "./components/AnalyticsPrompt";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -34,10 +35,12 @@ import { queryKeys } from "./queryKeys";
 import { useSidebarResize } from "./hooks/useSidebarResize";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useDebouncedValue } from "./hooks/useDebouncedValue";
+import { initAnalytics, trackEvent } from "./analytics";
 
 const SELECTED_VIEW_KEY = "orca-selected-view";
 const VIEW_NEEDS_ACTION = "__needs_action__";
 const VIEW_ALL = "__all__";
+const ANALYTICS_PROMPTED_KEY = "orca-analytics-prompted";
 
 const initialSavedView = storageGet(SELECTED_VIEW_KEY);
 
@@ -81,6 +84,53 @@ function App() {
       .catch((err) => {
         console.warn("Failed to load dismissed IDs:", err);
         dismissedLoaded.current = true;
+      });
+  }, []);
+
+  const [showAnalyticsPrompt, setShowAnalyticsPrompt] = useState(false);
+  const [pendingAppOpenedProps, setPendingAppOpenedProps] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+
+  // Initialize analytics on startup
+  useEffect(() => {
+    Promise.all([
+      invoke<boolean>("get_analytics_enabled"),
+      getVersion(),
+      invoke<Group[]>("get_groups"),
+    ])
+      .then(async ([enabled, appVersion, allGroups]) => {
+        initAnalytics(enabled);
+
+        // Gather per-group session counts
+        const sessionCounts = await Promise.all(
+          allGroups.map((g) =>
+            invoke<Session[]>("get_sessions", { groupPath: g.path }).then((s) => s.length),
+          ),
+        );
+
+        const props = {
+          app_version: appVersion,
+          group_count: allGroups.length,
+          total_sessions: sessionCounts.reduce((a, b) => a + b, 0),
+          sessions_per_group: sessionCounts,
+          merge_workflow_counts: {
+            merge: allGroups.filter((g) => g.merge_workflow === "merge").length,
+            pr: allGroups.filter((g) => g.merge_workflow === "pr").length,
+          },
+        };
+
+        if (!storageGet(ANALYTICS_PROMPTED_KEY)) {
+          // Don't fire yet — user hasn't consented. Stash props for the prompt.
+          setPendingAppOpenedProps(props);
+          setShowAnalyticsPrompt(true);
+        } else {
+          trackEvent("app_opened", props);
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to init analytics:", err);
       });
   }, []);
 
@@ -300,6 +350,7 @@ function App() {
   // Wrap session selection to also update keyboard focus index and clear dismiss
   const handleSelectSession = useCallback(
     (session: Session) => {
+      trackEvent("session_opened");
       setSelectedSession(session);
       // Clear dismiss when user opens a session
       if (dismissedIds.has(session.id)) {
@@ -315,6 +366,7 @@ function App() {
 
   // When closing the terminal, focus the session that was just open
   const handleCloseTerminal = useCallback(() => {
+    trackEvent("session_closed");
     if (selectedSession && filteredSessions) {
       const idx = filteredSessions.findIndex((s) => s.id === selectedSession.id);
       if (idx >= 0) {
@@ -602,6 +654,15 @@ function App() {
           supported={versionMismatch.supported}
           installed={versionMismatch.installed}
           onClose={() => setVersionMismatch(null)}
+        />
+      )}
+      {showAnalyticsPrompt && (
+        <AnalyticsPrompt
+          appOpenedProps={pendingAppOpenedProps}
+          onClose={() => {
+            storageSet(ANALYTICS_PROMPTED_KEY, "true");
+            setShowAnalyticsPrompt(false);
+          }}
         />
       )}
       {pendingUpdate && (

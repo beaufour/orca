@@ -52,6 +52,19 @@ fn open_in_terminal(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn get_analytics_enabled(orca_db: tauri::State<'_, orca_db::OrcaDb>) -> Result<bool, String> {
+    orca_db.get_analytics_enabled()
+}
+
+#[tauri::command]
+fn set_analytics_enabled(
+    orca_db: tauri::State<'_, orca_db::OrcaDb>,
+    enabled: bool,
+) -> Result<(), String> {
+    orca_db.set_analytics_enabled(enabled)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     command::init_path();
@@ -236,6 +249,8 @@ pub fn run() {
             opencode_remote::oc_subscribe_events,
             read_app_log,
             open_in_terminal,
+            get_analytics_enabled,
+            set_analytics_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

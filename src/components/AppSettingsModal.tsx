@@ -1,5 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { storageGet, storageSet, SCROLL_SPEED_KEY, SCROLL_SPEED_DEFAULT } from "../utils";
+import { setAnalyticsEnabled } from "../analytics";
 
 interface AppSettingsModalProps {
   onClose: () => void;
@@ -11,9 +14,25 @@ export function AppSettingsModal({ onClose }: AppSettingsModalProps) {
     return stored ? parseFloat(stored) : SCROLL_SPEED_DEFAULT;
   });
 
+  const [analyticsEnabled, setAnalyticsEnabledState] = useState(false);
+
+  useEffect(() => {
+    invoke<boolean>("get_analytics_enabled")
+      .then(setAnalyticsEnabledState)
+      .catch((err) => console.warn("Failed to get analytics preference:", err));
+  }, []);
+
   const handleScrollSpeedChange = (value: number) => {
     setScrollSpeed(value);
     storageSet(SCROLL_SPEED_KEY, value.toString());
+  };
+
+  const handleAnalyticsToggle = (enabled: boolean) => {
+    setAnalyticsEnabledState(enabled);
+    setAnalyticsEnabled(enabled);
+    invoke("set_analytics_enabled", { enabled }).catch((err) => {
+      console.warn("Failed to save analytics preference:", err);
+    });
   };
 
   const handleReset = () => {
@@ -43,6 +62,31 @@ export function AppSettingsModal({ onClose }: AppSettingsModalProps) {
             <span>Slow</span>
             <span>Fast</span>
           </div>
+        </div>
+
+        <div className="app-settings-field">
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={analyticsEnabled}
+              onChange={(e) => handleAnalyticsToggle(e.target.checked)}
+            />
+            <span className="settings-toggle-label">
+              Help improve Orca by sharing anonymous usage data
+            </span>
+          </label>
+          <p className="settings-toggle-description">
+            Anonymous usage statistics to help improve Orca. No personal data is sent.{" "}
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                openUrl("https://posthog.com/privacy");
+              }}
+            >
+              Learn more
+            </a>
+          </p>
         </div>
 
         <div className="modal-actions">
