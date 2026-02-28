@@ -3,7 +3,7 @@
 Documents the agent-deck interfaces Orca depends on. Use this to identify breaking changes when upgrading.
 
 **Repository:** https://github.com/asheshgoplani/agent-deck
-**Current version: v0.19.11**
+**Current version: v0.19.19**
 
 ## DB Path
 
@@ -15,7 +15,7 @@ Resolved via `dirs::home_dir().join(".agent-deck/profiles/default/state.db")`.
 
 ## DB Schema
 
-Dumped from v0.11.2 (unchanged through v0.19.11):
+Dumped from v0.11.2 (unchanged through v0.19.19):
 
 ```sql
 CREATE TABLE metadata (
@@ -233,6 +233,37 @@ Key details:
 - Optional Telegram bot integration for notifications
 
 ## Upgrade Log
+
+### v0.19.11 → v0.19.19 (analyzed 2026-02-28)
+
+**DB schema:** Unchanged. No columns added, removed, or renamed. Migration logic optimized to skip redundant schema-version writes (reduces lock contention). Storage layer added SQLite busy-retry for transient lock errors during startup.
+
+**New CLI commands:**
+
+- `notify-daemon` — notification daemon subcommand. Not used by Orca.
+
+**New CLI flags (no Orca impact):**
+
+- `launch --no-parent` — disable automatic parent linking
+- `launch --sandbox`, `--sandbox-image` — Docker sandbox support
+- `session fork --sandbox`, `--sandbox-image` — Docker sandbox for forked sessions
+- `add --sandbox-image` — sandbox image override
+
+**New features (no Orca impact):**
+
+- Docker sandbox support (v0.19.17) — run sessions inside containers, with dead-pane restart
+- Worktree TOCTOU race fix (v0.19.16) — eliminates filesystem pre-check race in `add`
+- Auto-parent session resolution in `launch` (v0.19.16)
+- Conductor heartbeat externalized to `HEARTBEAT_RULES.md` (v0.19.15)
+- Notification minimal mode with icon+count summary (v0.19.15)
+- ANSI color preservation in session preview (v0.19.15)
+- Filterable recent paths in path input dialog (v0.19.15)
+- Homebrew update improvements (v0.19.15, v0.19.19)
+- `session show` JSON output now includes `parent_session_id` and `parent_project_path`
+- Claude session deduplication enforced on save (`UpdateClaudeSessionsWithDedup`)
+- ANSI stripping in send-retry verification loop
+
+**Verdict:** Safe to upgrade with zero Orca code changes. Only `SUPPORTED_VERSION` and this doc needed updating.
 
 ### v0.13.0 → v0.19.11 (analyzed 2026-02-23)
 
