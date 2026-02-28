@@ -1,5 +1,6 @@
 mod agentdeck;
 mod claude_logs;
+mod claude_remote;
 mod command;
 mod git;
 mod github;
@@ -313,6 +314,10 @@ pub fn run() {
             opencode_remote::oc_get_messages,
             opencode_remote::oc_respond_to_permission,
             opencode_remote::oc_subscribe_events,
+            claude_remote::cr_get_messages,
+            claude_remote::cr_send_message,
+            claude_remote::cr_get_status,
+            claude_remote::cr_subscribe_events,
             read_app_log,
             open_in_terminal,
             get_analytics_enabled,

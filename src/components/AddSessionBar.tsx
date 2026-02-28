@@ -30,7 +30,7 @@ interface AddSessionBarProps {
   isGitRepo: boolean;
   worktreeCommand: string | null;
   componentDepth: number;
-  backend: "local" | "opencode-remote";
+  backend: "local" | "opencode-remote" | "claude-remote";
   createSession: (params: CreateSessionParams) => void;
   pendingCreations: Map<string, PendingCreation>;
   onCreateRemoteSession?: (title: string, prompt: string | null) => void;
@@ -192,7 +192,7 @@ export function AddSessionBar({
     return fallback;
   };
 
-  const isRemote = backend === "opencode-remote";
+  const isRemote = backend === "opencode-remote" || backend === "claude-remote";
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

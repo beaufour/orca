@@ -27,7 +27,7 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
   const queryClient = useQueryClient();
 
   // Backend selection
-  const [backend, setBackend] = useState<"local" | "opencode-remote">("local");
+  const [backend, setBackend] = useState<"local" | "opencode-remote" | "claude-remote">("local");
   const [serverUrl, setServerUrl] = useState("");
   const [serverPassword, setServerPassword] = useState("");
 
@@ -77,7 +77,7 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
         defaultPath: repoPath,
       });
       // Save backend settings if non-default
-      if (backend === "opencode-remote") {
+      if (backend === "opencode-remote" || backend === "claude-remote") {
         await invoke("update_group_settings", {
           groupPath: name.trim(),
           githubIssuesEnabled: true,
@@ -293,25 +293,38 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
           >
             OpenCode Remote
           </button>
+          <button
+            type="button"
+            className={`mode-btn ${backend === "claude-remote" ? "mode-btn-active" : ""}`}
+            onClick={() => setBackend("claude-remote")}
+          >
+            Claude Remote
+          </button>
         </div>
       </div>
-      {backend === "opencode-remote" && (
+      {(backend === "opencode-remote" || backend === "claude-remote") && (
         <div className="settings-section">
           <label className="modal-label">Server URL</label>
           <input
             className="modal-input"
             type="text"
-            placeholder="https://your-worker.workers.dev"
+            placeholder={
+              backend === "claude-remote"
+                ? "https://agent-remote.example.workers.dev/claude/project-id"
+                : "https://your-worker.workers.dev"
+            }
             value={serverUrl}
             onChange={(e) => setServerUrl(e.target.value)}
             onKeyDown={handleKeyDown}
             spellCheck={false}
           />
-          <label className="modal-label">Password</label>
+          <label className="modal-label">
+            {backend === "claude-remote" ? "Token" : "Password"}
+          </label>
           <input
             className="modal-input"
             type="password"
-            placeholder="Server password"
+            placeholder={backend === "claude-remote" ? "Auth token" : "Server password"}
             value={serverPassword}
             onChange={(e) => setServerPassword(e.target.value)}
             onKeyDown={handleKeyDown}

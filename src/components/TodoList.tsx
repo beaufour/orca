@@ -213,7 +213,7 @@ export function TodoList({
       issueNumber: issue.number,
     }).catch((err) => console.warn("Failed to assign issue:", err));
 
-    if (group.backend === "opencode-remote") {
+    if (group.backend === "opencode-remote" || group.backend === "claude-remote") {
       onCreateRemoteSession?.(issue.title, prompt);
       return;
     }

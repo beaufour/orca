@@ -7,26 +7,42 @@ interface MessageStreamProps {
   session: RemoteSession;
   serverUrl: string;
   serverPassword: string;
+  backend: "opencode-remote" | "claude-remote";
   onClose: () => void;
 }
 
-export function MessageStream({ session, serverUrl, serverPassword, onClose }: MessageStreamProps) {
+export function MessageStream({
+  session,
+  serverUrl,
+  serverPassword,
+  backend,
+  onClose,
+}: MessageStreamProps) {
   const [messages, setMessages] = useState<RemoteMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agentStatus, setAgentStatus] = useState<string>(session.status);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isClaude = backend === "claude-remote";
 
   // Load message history
   useEffect(() => {
     setLoading(true);
-    invoke<RemoteMessage[]>("oc_get_messages", {
-      serverUrl,
-      password: serverPassword,
-      sessionId: session.id,
-    })
+    const promise = isClaude
+      ? invoke<RemoteMessage[]>("cr_get_messages", {
+          serverUrl,
+          token: serverPassword,
+        })
+      : invoke<RemoteMessage[]>("oc_get_messages", {
+          serverUrl,
+          password: serverPassword,
+          sessionId: session.id,
+        });
+
+    promise
       .then((msgs) => {
         setMessages(msgs);
         setLoading(false);
@@ -35,20 +51,38 @@ export function MessageStream({ session, serverUrl, serverPassword, onClose }: M
         setError(String(err));
         setLoading(false);
       });
-  }, [session.id, serverUrl, serverPassword]);
+  }, [session.id, serverUrl, serverPassword, isClaude]);
 
-  // Subscribe to SSE events
+  // Start SSE subscription for claude-remote
   useEffect(() => {
+    if (!isClaude) return;
+    invoke("cr_subscribe_events", { serverUrl, token: serverPassword }).catch((err) =>
+      console.error("Failed to subscribe to SSE:", err),
+    );
+  }, [isClaude, serverUrl, serverPassword]);
+
+  // Listen to SSE events
+  useEffect(() => {
+    const eventName = isClaude ? "cr-event" : "oc-event";
     const unlisten = listen<{ event_type: string; data: Record<string, unknown> }>(
-      "oc-event",
+      eventName,
       (event) => {
         const { event_type, data } = event.payload;
-        if (
-          event_type === "message" &&
-          data &&
-          (data as { session_id?: string }).session_id === session.id
-        ) {
-          setMessages((prev) => [...prev, data as unknown as RemoteMessage]);
+        if (event_type === "message" && data) {
+          if (isClaude) {
+            // For claude-remote, re-fetch all messages (handles both new and updated)
+            invoke<RemoteMessage[]>("cr_get_messages", {
+              serverUrl,
+              token: serverPassword,
+            })
+              .then((msgs) => setMessages(msgs))
+              .catch((err) => console.error("Failed to refresh messages:", err));
+          } else if ((data as { session_id?: string }).session_id === session.id) {
+            setMessages((prev) => [...prev, data as unknown as RemoteMessage]);
+          }
+        } else if (event_type === "status" && isClaude && data) {
+          const status = (data as { status?: string }).status;
+          if (status) setAgentStatus(status);
         }
       },
     );
@@ -56,7 +90,7 @@ export function MessageStream({ session, serverUrl, serverPassword, onClose }: M
     return () => {
       unlisten.then((fn) => fn()).catch(() => {});
     };
-  }, [session.id]);
+  }, [session.id, isClaude, serverUrl, serverPassword]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -70,19 +104,27 @@ export function MessageStream({ session, serverUrl, serverPassword, onClose }: M
     setSending(true);
     setInput("");
     try {
-      await invoke("oc_send_message", {
-        serverUrl,
-        password: serverPassword,
-        sessionId: session.id,
-        message: text,
-      });
+      if (isClaude) {
+        await invoke("cr_send_message", {
+          serverUrl,
+          token: serverPassword,
+          content: text,
+        });
+      } else {
+        await invoke("oc_send_message", {
+          serverUrl,
+          password: serverPassword,
+          sessionId: session.id,
+          message: text,
+        });
+      }
     } catch (err) {
       setError(String(err));
     } finally {
       setSending(false);
       textareaRef.current?.focus();
     }
-  }, [input, sending, serverUrl, serverPassword, session.id]);
+  }, [input, sending, serverUrl, serverPassword, session.id, isClaude]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && e.metaKey) {
@@ -101,7 +143,9 @@ export function MessageStream({ session, serverUrl, serverPassword, onClose }: M
           Back
         </button>
         <span className="message-stream-title">{session.title || session.id}</span>
-        <span className={`message-stream-status status-${session.status}`}>{session.status}</span>
+        <span className={`message-stream-status status-${isClaude ? agentStatus : session.status}`}>
+          {isClaude ? agentStatus : session.status}
+        </span>
       </div>
 
       <div className="message-stream-body">

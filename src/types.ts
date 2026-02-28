@@ -9,7 +9,7 @@ export interface Group {
   merge_workflow: "merge" | "pr";
   worktree_command: string | null;
   component_depth: number;
-  backend: "local" | "opencode-remote";
+  backend: "local" | "opencode-remote" | "claude-remote";
   server_url: string | null;
 }
 

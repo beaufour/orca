@@ -487,6 +487,7 @@ function App() {
               session={remoteSession}
               serverUrl={effectiveGroup.server_url ?? ""}
               serverPassword={remotePassword}
+              backend={effectiveGroup.backend as "opencode-remote" | "claude-remote"}
               onClose={handleCloseTerminal}
             />
           ) : (
@@ -531,14 +532,36 @@ function App() {
                       const pw = await invoke<string | null>("get_server_password", {
                         groupPath: effectiveGroup.path,
                       });
-                      const session = await invoke<RemoteSession>("oc_create_session", {
-                        serverUrl: effectiveGroup.server_url,
-                        password: pw ?? "",
-                        title,
-                        initialMessage: prompt,
-                      });
-                      setRemoteSession(session);
-                      setRemotePassword(pw ?? "");
+                      if (effectiveGroup.backend === "claude-remote") {
+                        // Claude remote: single session per URL, no server-side creation
+                        const syntheticSession: RemoteSession = {
+                          id: `cr-${Date.now()}`,
+                          title: title || "Claude Remote",
+                          status: "stable",
+                          summary: null,
+                          created_at: Date.now(),
+                          last_accessed: Date.now(),
+                        };
+                        setRemoteSession(syntheticSession);
+                        setRemotePassword(pw ?? "");
+                        // Send initial prompt if provided
+                        if (prompt) {
+                          invoke("cr_send_message", {
+                            serverUrl: effectiveGroup.server_url,
+                            token: pw ?? "",
+                            content: prompt,
+                          }).catch((err) => console.error("Failed to send initial message:", err));
+                        }
+                      } else {
+                        const session = await invoke<RemoteSession>("oc_create_session", {
+                          serverUrl: effectiveGroup.server_url,
+                          password: pw ?? "",
+                          title,
+                          initialMessage: prompt,
+                        });
+                        setRemoteSession(session);
+                        setRemotePassword(pw ?? "");
+                      }
                     } catch (err) {
                       console.error("Failed to create remote session:", err);
                     }
@@ -592,14 +615,34 @@ function App() {
                     const pw = await invoke<string | null>("get_server_password", {
                       groupPath: effectiveGroup.path,
                     });
-                    const session = await invoke<RemoteSession>("oc_create_session", {
-                      serverUrl: effectiveGroup.server_url,
-                      password: pw ?? "",
-                      title,
-                      initialMessage: prompt,
-                    });
-                    setRemoteSession(session);
-                    setRemotePassword(pw ?? "");
+                    if (effectiveGroup.backend === "claude-remote") {
+                      const syntheticSession: RemoteSession = {
+                        id: `cr-${Date.now()}`,
+                        title: title || "Claude Remote",
+                        status: "stable",
+                        summary: null,
+                        created_at: Date.now(),
+                        last_accessed: Date.now(),
+                      };
+                      setRemoteSession(syntheticSession);
+                      setRemotePassword(pw ?? "");
+                      if (prompt) {
+                        invoke("cr_send_message", {
+                          serverUrl: effectiveGroup.server_url,
+                          token: pw ?? "",
+                          content: prompt,
+                        }).catch((err) => console.error("Failed to send initial message:", err));
+                      }
+                    } else {
+                      const session = await invoke<RemoteSession>("oc_create_session", {
+                        serverUrl: effectiveGroup.server_url,
+                        password: pw ?? "",
+                        title,
+                        initialMessage: prompt,
+                      });
+                      setRemoteSession(session);
+                      setRemotePassword(pw ?? "");
+                    }
                   } catch (err) {
                     console.error("Failed to create remote session:", err);
                   }
