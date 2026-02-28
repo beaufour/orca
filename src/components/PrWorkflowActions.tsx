@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { PrWorkflowActionsResult } from "../hooks/usePrWorkflowActions";
 import { CreatePrModal } from "./CreatePrModal";
+import { CloseIssueButton } from "./CloseIssueButton";
 import { extractIssueNumber } from "../utils";
 
 interface PrWorkflowActionsProps {
@@ -9,6 +10,7 @@ interface PrWorkflowActionsProps {
   projectPath: string;
   worktreeBranch: string;
   sessionTitle: string;
+  repoPath: string;
   onShowDiff: () => void;
 }
 
@@ -17,6 +19,7 @@ export function PrWorkflowActions({
   projectPath,
   worktreeBranch,
   sessionTitle,
+  repoPath,
   onShowDiff,
 }: PrWorkflowActionsProps) {
   const {
@@ -311,6 +314,12 @@ export function PrWorkflowActions({
     return (
       <div className="merge-cleanup">
         <span className="pr-merged-label">PR Merged!</span>
+        {(() => {
+          const issueNumber = extractIssueNumber(worktreeBranch);
+          return issueNumber ? (
+            <CloseIssueButton repoPath={repoPath} issueNumber={issueNumber} />
+          ) : null;
+        })()}
         {mainUpdateWarning && (
           <div className="remove-warnings">
             <span className="remove-warning-item">Main not updated: {mainUpdateWarning}</span>

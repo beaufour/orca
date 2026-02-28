@@ -193,6 +193,7 @@ function TodoCardInProgress({
             projectPath={session.project_path}
             worktreeBranch={session.worktree_branch}
             sessionTitle={session.title}
+            repoPath={sessionRepoPath}
             onShowDiff={() => setShowDiff(true)}
           />
         ) : (
@@ -200,6 +201,7 @@ function TodoCardInProgress({
             actions={actions}
             projectPath={session.project_path}
             worktreeBranch={session.worktree_branch}
+            repoPath={sessionRepoPath}
             onShowDiff={() => setShowDiff(true)}
           />
         )}
