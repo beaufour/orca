@@ -36,6 +36,7 @@ import { useSidebarResize } from "./hooks/useSidebarResize";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useDebouncedValue } from "./hooks/useDebouncedValue";
 import { initAnalytics, trackEvent } from "./analytics";
+import { setSentryEnabled } from "./sentry";
 
 const SELECTED_VIEW_KEY = "orca-selected-view";
 const VIEW_NEEDS_ACTION = "__needs_action__";
@@ -102,6 +103,7 @@ function App() {
     ])
       .then(async ([enabled, appVersion, allGroups]) => {
         initAnalytics(enabled);
+        setSentryEnabled(enabled);
 
         // Gather per-group session counts
         const sessionCounts = await Promise.all(
