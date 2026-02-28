@@ -10,6 +10,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import "@xterm/xterm/css/xterm.css";
 import type { Session } from "../types";
 import { queryKeys } from "../queryKeys";
+import { storageGet, SCROLL_SPEED_KEY } from "../utils";
 import { DiffViewer } from "./DiffViewer";
 
 interface TerminalViewProps {
@@ -249,10 +250,9 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
 
       const direction = e.deltaY < 0 ? "up" : "down";
       // Convert pixel delta to lines (deltaMode 0 = pixels, 1 = lines)
-      const lines = Math.max(
-        3,
-        e.deltaMode === 1 ? Math.round(Math.abs(e.deltaY)) : Math.round(Math.abs(e.deltaY) / 8),
-      );
+      const speed = parseFloat(storageGet(SCROLL_SPEED_KEY) ?? "1.0");
+      const raw = e.deltaMode === 1 ? Math.abs(e.deltaY) : Math.abs(e.deltaY) / 20;
+      const lines = Math.max(1, Math.round(raw * speed));
       invoke("scroll_tmux_pane", { tmuxSession, direction, lines }).catch(() => {});
     };
     container.addEventListener("wheel", handleWheel, { passive: false, capture: true });

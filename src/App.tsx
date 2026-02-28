@@ -16,6 +16,7 @@ import { CreateGroupModal } from "./components/CreateGroupModal";
 import { IssueModal } from "./components/IssueModal";
 import { GroupSettingsModal } from "./components/GroupSettingsModal";
 import { AboutDialog } from "./components/AboutDialog";
+import { AppSettingsModal } from "./components/AppSettingsModal";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -62,6 +63,7 @@ function App() {
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [settingsGroup, setSettingsGroup] = useState<Group | null>(null);
   const [showAbout, setShowAbout] = useState(false);
+  const [showAppSettings, setShowAppSettings] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const dismissedLoaded = useRef(false);
   const [remoteSession, setRemoteSession] = useState<RemoteSession | null>(null);
@@ -417,6 +419,7 @@ function App() {
         }}
         onCreateGroup={() => setShowCreateGroup(true)}
         onOpenSettings={(g) => setSettingsGroup(g)}
+        onOpenAppSettings={() => setShowAppSettings(true)}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
         width={sidebarWidth}
@@ -589,6 +592,7 @@ function App() {
           }}
         />
       )}
+      {showAppSettings && <AppSettingsModal onClose={() => setShowAppSettings(false)} />}
       {showLogViewer && <LogViewer onClose={() => setShowLogViewer(false)} />}
       {missingPrereqs && (
         <PrerequisiteCheck missing={missingPrereqs} onClose={() => setMissingPrereqs(null)} />

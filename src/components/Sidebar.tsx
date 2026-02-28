@@ -12,6 +12,7 @@ interface SidebarProps {
   onSelectNeedsAction: () => void;
   onCreateGroup: () => void;
   onOpenSettings: (group: Group) => void;
+  onOpenAppSettings: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
   width: number;
@@ -25,6 +26,7 @@ export function Sidebar({
   onSelectNeedsAction,
   onCreateGroup,
   onOpenSettings,
+  onOpenAppSettings,
   collapsed,
   onToggleCollapse,
   width,
@@ -142,6 +144,9 @@ export function Sidebar({
           ))}
           <button className="sidebar-item sidebar-add-group" onClick={onCreateGroup}>
             + Add Group
+          </button>
+          <button className="sidebar-item sidebar-app-settings" onClick={onOpenAppSettings}>
+            &#x2699; App Settings
           </button>
         </nav>
       )}

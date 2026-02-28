@@ -171,6 +171,9 @@ export function validateBranchName(name: string): string | null {
   return null;
 }
 
+export const SCROLL_SPEED_KEY = "orca-scroll-speed";
+export const SCROLL_SPEED_DEFAULT = 1.0;
+
 /** Safe localStorage.getItem — returns null on error (e.g. private browsing). */
 export function storageGet(key: string): string | null {
   try {
