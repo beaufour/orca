@@ -519,16 +519,21 @@ pub async fn force_push_branch(
 pub async fn rebase_branch(
     worktree_path: String,
     main_branch: String,
+    use_remote: Option<bool>,
 ) -> Result<RebaseResult, String> {
     spawn_git(move || {
-        // Fetch latest
-        let _ = run_git_status(&worktree_path, &["fetch", "origin", &main_branch]);
-
-        let remote_ref = format!("origin/{main_branch}");
-        log::info!("git rebase {remote_ref} (cwd: {worktree_path})");
+        let rebase_target = if use_remote.unwrap_or(false) {
+            // Fetch latest and rebase onto remote (for PR workflow)
+            let _ = run_git_status(&worktree_path, &["fetch", "origin", &main_branch]);
+            format!("origin/{main_branch}")
+        } else {
+            // Rebase onto local branch (for merge workflow)
+            main_branch.clone()
+        };
+        log::info!("git rebase {rebase_target} (cwd: {worktree_path})");
         let output = new_command("git")
             .current_dir(&worktree_path)
-            .args(["rebase", &remote_ref])
+            .args(["rebase", &rebase_target])
             .output()
             .map_err(|e| format!("Failed to run git rebase: {e}"))?;
 

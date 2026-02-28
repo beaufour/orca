@@ -221,6 +221,7 @@ export function usePrWorkflowActions({
       invoke<RebaseResult>("rebase_branch", {
         worktreePath: session.worktree_path,
         mainBranch: defaultBranch ?? "main",
+        useRemote: true,
       }),
     onSuccess: (result) => {
       if (result.success) {
@@ -286,6 +287,7 @@ export function usePrWorkflowActions({
       const rebaseResult = await invoke<RebaseResult>("rebase_branch", {
         worktreePath: session.worktree_path,
         mainBranch: defaultBranch ?? "main",
+        useRemote: true,
       });
       if (!rebaseResult.success) {
         setPrState("rebase_conflict");
@@ -326,7 +328,8 @@ export function usePrWorkflowActions({
   // Create conflict resolution session
   const conflictSessionMutation = useMutation({
     mutationFn: async () => {
-      const prompt = `There are rebase conflicts from rebasing onto ${defaultBranch ?? "main"}. Please resolve all conflicts and continue the rebase with \`git rebase --continue\`.`;
+      const branch = defaultBranch ?? "main";
+      const prompt = `A \`git rebase origin/${branch}\` is in progress but hit conflicts. Please resolve them:\n1. Run \`git status\` to see which files have conflicts\n2. Open each conflicted file and resolve the conflict markers (<<<<<<< ======= >>>>>>>)\n3. Stage each resolved file with \`git add <file>\`\n4. Run \`git rebase --continue\`\n5. If more conflicts appear, repeat from step 1\n\nDo NOT use \`git merge\` — this is a rebase, not a merge.`;
       const creationId = crypto.randomUUID();
       await invoke("create_session", {
         creationId,

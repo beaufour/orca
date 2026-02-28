@@ -238,9 +238,10 @@ export function useWorktreeActions({
       const targetPath = isRebaseConflict ? session.worktree_path : mergeResult?.main_worktree_path;
       if (!targetPath) throw new Error("No worktree path for conflict resolution");
 
+      const branch = defaultBranch ?? "main";
       const prompt = isRebaseConflict
-        ? `There are rebase conflicts from rebasing onto ${defaultBranch ?? "main"}. Please resolve all conflicts and continue the rebase with \`git rebase --continue\`.`
-        : `There are merge conflicts from merging '${session.worktree_branch}' into ${defaultBranch ?? "main"}. Please resolve all conflicts, then commit the merge.`;
+        ? `A \`git rebase ${branch}\` is in progress but hit conflicts. Please resolve them:\n1. Run \`git status\` to see which files have conflicts\n2. Open each conflicted file and resolve the conflict markers (<<<<<<< ======= >>>>>>>)\n3. Stage each resolved file with \`git add <file>\`\n4. Run \`git rebase --continue\`\n5. If more conflicts appear, repeat from step 1\n\nDo NOT use \`git merge\` — this is a rebase, not a merge.`
+        : `There are merge conflicts from merging '${session.worktree_branch}' into ${branch}. Please resolve all conflicts, then commit the merge.`;
       const title = isRebaseConflict
         ? `rebase-${session.worktree_branch}`
         : `merge-${session.worktree_branch}`;
