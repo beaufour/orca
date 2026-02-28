@@ -14,11 +14,21 @@ fn build_client(token: &str) -> Result<reqwest::Client, String> {
 
 // --- Types matching AgentAPI ---
 
+/// Wrapper for AgentAPI GET /messages response
+#[derive(Debug, Clone, Deserialize)]
+struct ApiMessagesResponse {
+    #[serde(default)]
+    messages: Vec<ApiMessage>,
+}
+
 /// Raw message from AgentAPI GET /messages
 #[derive(Debug, Clone, Deserialize)]
 struct ApiMessage {
+    id: i64,
     role: String,
     content: String,
+    #[serde(default, rename = "time")]
+    _time: Option<String>,
 }
 
 /// Message returned to frontend (matching RemoteMessage interface)
@@ -63,23 +73,31 @@ pub async fn cr_get_messages(server_url: String, token: String) -> Result<Vec<Cr
         return Err(format!("Server returned {status}: {body}"));
     }
 
-    let api_messages: Vec<ApiMessage> = resp
+    let wrapper: ApiMessagesResponse = resp
         .json()
         .await
         .map_err(|e| format!("Failed to parse messages: {e}"))?;
 
-    Ok(api_messages
+    Ok(wrapper
+        .messages
         .into_iter()
-        .enumerate()
-        .map(|(i, m)| CrMessage {
-            id: format!("cr-{i}"),
-            role: m.role,
-            msg_type: "text".to_string(),
-            content: m.content,
-            tool_name: None,
-            tool_id: None,
-            timestamp: None,
-            session_id: String::new(),
+        .map(|m| {
+            // AgentAPI uses "agent" role; map to "assistant" for the frontend
+            let role = if m.role == "agent" {
+                "assistant".to_string()
+            } else {
+                m.role
+            };
+            CrMessage {
+                id: format!("cr-{}", m.id),
+                role,
+                msg_type: "text".to_string(),
+                content: m.content,
+                tool_name: None,
+                tool_id: None,
+                timestamp: None,
+                session_id: String::new(),
+            }
         })
         .collect())
 }
