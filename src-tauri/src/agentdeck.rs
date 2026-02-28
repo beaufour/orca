@@ -229,6 +229,20 @@ fn query_sessions(conn: &Connection, group_path: Option<&str>) -> Result<Vec<Ses
     Ok(result)
 }
 
+/// Read session IDs and tmux session names for a group (read-only).
+fn query_group_sessions(group_path: &str) -> Result<Vec<(String, Option<String>)>, String> {
+    let conn = open_db_readonly()?;
+    let mut stmt = conn
+        .prepare("SELECT id, tmux_session FROM instances WHERE group_path = ?1")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([group_path], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+}
+
 /// Resolve the effective working path for session creation.
 /// For bare repos (with .bare subdir), resolves to an existing worktree path.
 fn resolve_effective_path(project_path: &str) -> Result<String, String> {
@@ -930,47 +944,36 @@ pub fn create_group(name: String, default_path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn delete_group(orca_db: State<'_, OrcaDb>, group_path: String) -> Result<u32, String> {
     log::info!("delete_group: group_path={group_path}");
-    let conn = open_db()?;
 
-    // 1. Get all session IDs in this group
-    let mut stmt = conn
-        .prepare("SELECT id, tmux_session FROM instances WHERE group_path = ?1")
-        .map_err(|e| e.to_string())?;
-    let sessions: Vec<(String, Option<String>)> = stmt
-        .query_map([&group_path], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<_, _>>()
-        .map_err(|e| e.to_string())?;
+    // 1. Read all sessions in this group (read-only)
+    let sessions = query_group_sessions(&group_path)?;
 
     let session_count = sessions.len() as u32;
     let session_ids: Vec<String> = sessions.iter().map(|(id, _)| id.clone()).collect();
 
-    // 2. Stop each session's tmux session (best-effort) and remove via agent-deck
+    // 2. Stop each session's tmux session (best-effort) and remove via agent-deck CLI
     for (session_id, tmux_session) in &sessions {
-        // Kill tmux session if it exists
         if let Some(tmux) = tmux_session {
             let _ = new_command("tmux")
                 .args(["kill-session", "-t", tmux])
                 .output();
         }
-
-        // Remove via agent-deck CLI
         let _ = new_command("agent-deck")
             .args(["remove", session_id])
             .output();
     }
 
-    // 3. Delete all sessions from agent-deck DB
-    conn.execute("DELETE FROM instances WHERE group_path = ?1", [&group_path])
-        .map_err(|e| format!("Failed to delete sessions: {e}"))?;
+    // 3. Delete the group via agent-deck CLI
+    let output = new_command("agent-deck")
+        .args(["group", "delete", &group_path])
+        .output()
+        .map_err(|e| format!("Failed to run agent-deck group delete: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("agent-deck group delete failed: {}", stderr.trim()));
+    }
 
-    // 4. Delete the group from agent-deck DB
-    conn.execute("DELETE FROM groups WHERE path = ?1", [&group_path])
-        .map_err(|e| format!("Failed to delete group: {e}"))?;
-
-    // 5. Clean up Orca's own data
+    // 4. Clean up Orca's own data
     if let Err(e) = orca_db.delete_group_data(&group_path, &session_ids) {
         log::error!("Failed to clean up Orca data for group {group_path}: {e}");
     }
