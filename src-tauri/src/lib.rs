@@ -233,6 +233,7 @@ pub fn run() {
             github::update_issue,
             github::close_issue,
             github::assign_issue,
+            github::unassign_issue,
             github::create_pr,
             github::check_pr_status,
             pty::attach_pty,

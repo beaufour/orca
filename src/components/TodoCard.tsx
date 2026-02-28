@@ -76,8 +76,18 @@ function TodoCardInProgress({
   onDismiss?: () => void;
   onUndismiss?: () => void;
 }) {
+  const queryClient = useQueryClient();
   const cardRef = useRef<HTMLDivElement>(null);
   const [showDiff, setShowDiff] = useState(false);
+  const [confirmUnassign, setConfirmUnassign] = useState(false);
+
+  const unassignMutation = useMutation({
+    mutationFn: () => invoke("unassign_issue", { repoPath, issueNumber: issue.number }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues(repoPath) });
+      setConfirmUnassign(false);
+    },
+  });
 
   useEffect(() => {
     if (isFocused && cardRef.current) {
@@ -150,6 +160,11 @@ function TodoCardInProgress({
           >
             #{issue.number}
           </span>
+          {issue.assignee && (
+            <span className="assignee-badge" title={`Assigned to ${issue.assignee}`}>
+              {issue.assignee}
+            </span>
+          )}
           <span className="session-title">{issue.title}</span>
         </div>
         <div className="session-badges">
@@ -186,6 +201,9 @@ function TodoCardInProgress({
           {String(mergeWorkflow === "pr" ? prActions.mutationError : actions.mutationError)}
         </div>
       )}
+      {unassignMutation.error && (
+        <div className="session-wt-error">{String(unassignMutation.error)}</div>
+      )}
       <div className="session-card-footer">
         {mergeWorkflow === "pr" ? (
           <PrWorkflowActions
@@ -204,6 +222,43 @@ function TodoCardInProgress({
             repoPath={sessionRepoPath}
             onShowDiff={() => setShowDiff(true)}
           />
+        )}
+        {issue.assignee && (
+          <div className="session-wt-actions">
+            {!confirmUnassign ? (
+              <button
+                className="wt-btn wt-btn-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmUnassign(true);
+                }}
+              >
+                Unassign
+              </button>
+            ) : (
+              <>
+                <button
+                  className="wt-btn wt-btn-danger"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    unassignMutation.mutate();
+                  }}
+                  disabled={unassignMutation.isPending}
+                >
+                  Confirm
+                </button>
+                <button
+                  className="wt-btn wt-btn-cancel"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmUnassign(false);
+                  }}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+          </div>
         )}
         <span className="session-time">{formatTime(session.last_accessed)}</span>
       </div>
@@ -245,6 +300,16 @@ export function TodoCard({
     },
   });
 
+  const assignMutation = useMutation({
+    mutationFn: () => invoke("assign_issue", { repoPath, issueNumber: issue.number }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.issues(repoPath) }),
+  });
+
+  const unassignMutation = useMutation({
+    mutationFn: () => invoke("unassign_issue", { repoPath, issueNumber: issue.number }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.issues(repoPath) }),
+  });
+
   if (session) {
     return (
       <TodoCardInProgress
@@ -277,6 +342,11 @@ export function TodoCard({
           >
             #{issue.number}
           </span>
+          {issue.assignee && (
+            <span className="assignee-badge" title={`Assigned to ${issue.assignee}`}>
+              {issue.assignee}
+            </span>
+          )}
           <span className="session-title">{issue.title}</span>
         </div>
       </div>
@@ -345,6 +415,29 @@ export function TodoCard({
               >
                 Start
               </button>
+              {!issue.assignee ? (
+                <button
+                  className="wt-btn wt-btn-action"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    assignMutation.mutate();
+                  }}
+                  disabled={assignMutation.isPending}
+                >
+                  Assign
+                </button>
+              ) : (
+                <button
+                  className="wt-btn wt-btn-action"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    unassignMutation.mutate();
+                  }}
+                  disabled={unassignMutation.isPending}
+                >
+                  Unassign
+                </button>
+              )}
               <button
                 className="wt-btn wt-btn-action"
                 onClick={(e) => {
@@ -392,6 +485,12 @@ export function TodoCard({
         </div>
       </div>
       {closeMutation.error && <div className="session-wt-error">{String(closeMutation.error)}</div>}
+      {assignMutation.error && (
+        <div className="session-wt-error">{String(assignMutation.error)}</div>
+      )}
+      {unassignMutation.error && (
+        <div className="session-wt-error">{String(unassignMutation.error)}</div>
+      )}
     </div>
   );
 }
