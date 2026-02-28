@@ -34,7 +34,7 @@ export function AppSettingsModal({ onClose }: AppSettingsModalProps) {
             type="range"
             className="app-settings-range"
             min="0.1"
-            max="3.0"
+            max="10.0"
             step="0.1"
             value={scrollSpeed}
             onChange={(e) => handleScrollSpeedChange(parseFloat(e.target.value))}
