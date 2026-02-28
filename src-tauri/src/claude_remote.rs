@@ -53,6 +53,10 @@ pub async fn cr_get_messages(server_url: String, token: String) -> Result<Vec<Cr
         .await
         .map_err(|e| format!("Request failed: {e}"))?;
 
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(vec![]);
+    }
+
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();

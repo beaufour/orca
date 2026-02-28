@@ -8,6 +8,7 @@ interface MessageStreamProps {
   serverUrl: string;
   serverPassword: string;
   backend: "opencode-remote" | "claude-remote";
+  initialPrompt?: string | null;
   onClose: () => void;
 }
 
@@ -16,6 +17,7 @@ export function MessageStream({
   serverUrl,
   serverPassword,
   backend,
+  initialPrompt,
   onClose,
 }: MessageStreamProps) {
   const [messages, setMessages] = useState<RemoteMessage[]>([]);
@@ -60,6 +62,20 @@ export function MessageStream({
       console.error("Failed to subscribe to SSE:", err),
     );
   }, [isClaude, serverUrl, serverPassword]);
+
+  // Send initial prompt on mount (claude-remote)
+  useEffect(() => {
+    if (!isClaude || !initialPrompt) return;
+    invoke("cr_send_message", {
+      serverUrl,
+      token: serverPassword,
+      content: initialPrompt,
+    }).catch((err) => {
+      setError(`Failed to send initial message: ${String(err)}`);
+    });
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Listen to SSE events
   useEffect(() => {

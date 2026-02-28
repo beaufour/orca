@@ -73,6 +73,7 @@ function App() {
   const [remoteSession, setRemoteSession] = useState<RemoteSession | null>(null);
   const [remotePassword, setRemotePassword] = useState<string>("");
   const [remoteServerUrl, setRemoteServerUrl] = useState<string>("");
+  const [remoteInitialPrompt, setRemoteInitialPrompt] = useState<string | null>(null);
 
   // Prevent action buttons from stealing focus from the terminal prompt
   useEffect(() => {
@@ -382,13 +383,7 @@ function App() {
           setRemoteSession(syntheticSession);
           setRemotePassword(resolvedToken ?? "");
           setRemoteServerUrl(resolvedUrl);
-          if (prompt) {
-            invoke("cr_send_message", {
-              serverUrl: resolvedUrl,
-              token: resolvedToken ?? "",
-              content: prompt,
-            }).catch((err) => console.error("Failed to send initial message:", err));
-          }
+          setRemoteInitialPrompt(prompt || null);
         } else {
           const session = await invoke<RemoteSession>("oc_create_session", {
             serverUrl: resolvedUrl,
@@ -441,6 +436,7 @@ function App() {
     }
     setSelectedSession(null);
     setRemoteSession(null);
+    setRemoteInitialPrompt(null);
   }, [selectedSession, filteredSessions, updateFocusedIndex]);
 
   // Derive clamped focused index from session count
@@ -556,6 +552,7 @@ function App() {
               serverUrl={remoteServerUrl}
               serverPassword={remotePassword}
               backend={effectiveGroup.backend as "opencode-remote" | "claude-remote"}
+              initialPrompt={remoteInitialPrompt}
               onClose={handleCloseTerminal}
             />
           ) : effectiveSession ? (
