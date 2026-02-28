@@ -17,7 +17,8 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// Placeholder DSN — replace with your actual Sentry project DSN.
-const SENTRY_DSN: &str = "https://examplePublicKey@o0.ingest.sentry.io/0";
+const SENTRY_DSN: &str =
+    "https://784e5e4951e78d437d264568ae36dd53@o1366758.ingest.us.sentry.io/4510964361658368";
 
 /// Wrapper so we can store the flag as Tauri managed state.
 pub struct SentryEnabled(Arc<AtomicBool>);
