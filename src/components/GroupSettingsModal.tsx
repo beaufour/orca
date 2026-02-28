@@ -140,6 +140,9 @@ export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSett
   return (
     <Modal onClose={onClose}>
       <h3 className="modal-title">Settings: {group.name}</h3>
+      <p className="settings-base-path" title={group.default_path}>
+        {group.default_path}
+      </p>
       <label
         className={`settings-toggle${!group.is_git_repo ? " settings-toggle-disabled" : ""}`}
         onKeyDown={(e) => {
