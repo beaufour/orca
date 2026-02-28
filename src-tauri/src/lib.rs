@@ -1,5 +1,6 @@
 mod agentdeck;
 mod claude_logs;
+mod claude_remote;
 mod command;
 mod git;
 mod github;
@@ -95,6 +96,44 @@ fn set_analytics_enabled(
 ) -> Result<(), String> {
     sentry_flag.0.store(enabled, Ordering::Relaxed);
     orca_db.set_analytics_enabled(enabled)
+}
+
+#[tauri::command]
+fn get_remote_server_url(
+    orca_db: tauri::State<'_, orca_db::OrcaDb>,
+) -> Result<Option<String>, String> {
+    orca_db.get_remote_server_url()
+}
+
+#[tauri::command]
+fn set_remote_server_url(
+    orca_db: tauri::State<'_, orca_db::OrcaDb>,
+    url: Option<&str>,
+) -> Result<(), String> {
+    orca_db.set_remote_server_url(url)
+}
+
+#[tauri::command]
+fn get_remote_auth_token(
+    orca_db: tauri::State<'_, orca_db::OrcaDb>,
+) -> Result<Option<String>, String> {
+    orca_db.get_remote_auth_token()
+}
+
+#[tauri::command]
+fn set_remote_auth_token(
+    orca_db: tauri::State<'_, orca_db::OrcaDb>,
+    token: Option<&str>,
+) -> Result<(), String> {
+    orca_db.set_remote_auth_token(token)
+}
+
+#[tauri::command]
+fn get_resolved_credentials(
+    orca_db: tauri::State<'_, orca_db::OrcaDb>,
+    group_path: &str,
+) -> Result<(Option<String>, Option<String>), String> {
+    orca_db.resolve_server_credentials(group_path)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -313,10 +352,19 @@ pub fn run() {
             opencode_remote::oc_get_messages,
             opencode_remote::oc_respond_to_permission,
             opencode_remote::oc_subscribe_events,
+            claude_remote::cr_get_messages,
+            claude_remote::cr_send_message,
+            claude_remote::cr_get_status,
+            claude_remote::cr_subscribe_events,
             read_app_log,
             open_in_terminal,
             get_analytics_enabled,
             set_analytics_enabled,
+            get_remote_server_url,
+            set_remote_server_url,
+            get_remote_auth_token,
+            set_remote_auth_token,
+            get_resolved_credentials,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

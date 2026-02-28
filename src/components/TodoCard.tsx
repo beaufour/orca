@@ -15,7 +15,7 @@ interface TodoCardProps {
   issue: GitHubIssue;
   session?: Session;
   repoPath: string;
-  backend?: "local" | "opencode-remote";
+  backend?: "local" | "opencode-remote" | "claude-remote";
   onSelectSession?: (session: Session) => void;
   onStartIssue?: (issue: GitHubIssue, tool?: string) => void;
   onEditIssue?: (issue: GitHubIssue) => void;
@@ -406,7 +406,7 @@ export function TodoCard({
                 className="wt-btn wt-btn-start"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (backend === "opencode-remote") {
+                  if (backend === "opencode-remote" || backend === "claude-remote") {
                     onStartIssue?.(issue);
                   } else {
                     setShowToolPicker(true);

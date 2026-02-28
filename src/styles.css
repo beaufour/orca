@@ -1965,6 +1965,13 @@ body {
   text-align: center;
 }
 
+.settings-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 2px;
+}
+
 .settings-delete-section {
   margin-top: 16px;
   padding-top: 16px;

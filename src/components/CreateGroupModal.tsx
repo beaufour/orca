@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -27,9 +27,22 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
   const queryClient = useQueryClient();
 
   // Backend selection
-  const [backend, setBackend] = useState<"local" | "opencode-remote">("local");
+  const [backend, setBackend] = useState<"local" | "opencode-remote" | "claude-remote">("local");
   const [serverUrl, setServerUrl] = useState("");
   const [serverPassword, setServerPassword] = useState("");
+
+  // Global remote settings
+  const [globalRemoteUrl, setGlobalRemoteUrl] = useState("");
+  const [globalRemoteToken, setGlobalRemoteToken] = useState("");
+  useEffect(() => {
+    invoke<string | null>("get_remote_server_url")
+      .then((url) => setGlobalRemoteUrl(url ?? ""))
+      .catch(() => {});
+    invoke<string | null>("get_remote_auth_token")
+      .then((token) => setGlobalRemoteToken(token ?? ""))
+      .catch(() => {});
+  }, []);
+  const hasGlobalToken = globalRemoteToken.length > 0;
 
   // Clone mode fields
   const [gitUrl, setGitUrl] = useState("");
@@ -77,7 +90,7 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
         defaultPath: repoPath,
       });
       // Save backend settings if non-default
-      if (backend === "opencode-remote") {
+      if (backend === "opencode-remote" || backend === "claude-remote") {
         await invoke("update_group_settings", {
           groupPath: name.trim(),
           githubIssuesEnabled: true,
@@ -155,7 +168,7 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
     }
   };
 
-  const backendValid = backend === "local" || !!serverUrl.trim();
+  const backendValid = backend === "local" || !!(serverUrl.trim() || globalRemoteUrl);
   const isValid =
     (mode === "existing"
       ? !!(name.trim() && defaultPath.trim())
@@ -286,37 +299,67 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
           >
             Local
           </button>
-          <button
-            type="button"
-            className={`mode-btn ${backend === "opencode-remote" ? "mode-btn-active" : ""}`}
-            onClick={() => setBackend("opencode-remote")}
-          >
-            OpenCode Remote
-          </button>
+          {hasGlobalToken && (
+            <>
+              <button
+                type="button"
+                className={`mode-btn ${backend === "opencode-remote" ? "mode-btn-active" : ""}`}
+                onClick={() => setBackend("opencode-remote")}
+              >
+                OpenCode Remote
+              </button>
+              <button
+                type="button"
+                className={`mode-btn ${backend === "claude-remote" ? "mode-btn-active" : ""}`}
+                onClick={() => setBackend("claude-remote")}
+              >
+                Claude Remote
+              </button>
+            </>
+          )}
         </div>
       </div>
-      {backend === "opencode-remote" && (
+      {(backend === "opencode-remote" || backend === "claude-remote") && (
         <div className="settings-section">
           <label className="modal-label">Server URL</label>
           <input
             className="modal-input"
             type="text"
-            placeholder="https://your-worker.workers.dev"
+            placeholder={
+              globalRemoteUrl ||
+              (backend === "claude-remote"
+                ? "https://agent-remote.example.workers.dev/claude/project-id"
+                : "https://your-worker.workers.dev")
+            }
             value={serverUrl}
             onChange={(e) => setServerUrl(e.target.value)}
             onKeyDown={handleKeyDown}
             spellCheck={false}
           />
-          <label className="modal-label">Password</label>
+          {globalRemoteUrl && !serverUrl.trim() && (
+            <span className="settings-hint">Using global default</span>
+          )}
+          <label className="modal-label">
+            {backend === "claude-remote" ? "Token" : "Password"}
+          </label>
           <input
             className="modal-input"
             type="password"
-            placeholder="Server password"
+            placeholder={
+              globalRemoteToken
+                ? "Using global default"
+                : backend === "claude-remote"
+                  ? "Auth token"
+                  : "Server password"
+            }
             value={serverPassword}
             onChange={(e) => setServerPassword(e.target.value)}
             onKeyDown={handleKeyDown}
             spellCheck={false}
           />
+          {globalRemoteToken && !serverPassword && (
+            <span className="settings-hint">Using global default</span>
+          )}
         </div>
       )}
 
