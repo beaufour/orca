@@ -128,8 +128,8 @@ export function useWorktreeActions({
     );
 
     return () => {
-      unlistenRemoved.then((f) => f());
-      unlistenFailed.then((f) => f());
+      unlistenRemoved.then((f) => f()).catch(() => {});
+      unlistenFailed.then((f) => f()).catch(() => {});
     };
   }, [removingSessionId, invalidateAll]);
 

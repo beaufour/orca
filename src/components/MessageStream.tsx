@@ -54,7 +54,7 @@ export function MessageStream({ session, serverUrl, serverPassword, onClose }: M
     );
 
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   }, [session.id]);
 
