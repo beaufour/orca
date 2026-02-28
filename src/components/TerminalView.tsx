@@ -304,7 +304,9 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
       return pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom;
     };
 
+    let cleaned = false;
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+      if (cleaned) return;
       const { payload } = event;
       if (payload.type === "over" || payload.type === "enter") {
         setIsDragOver(isOverContainer(payload.position));
@@ -322,7 +324,8 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     });
 
     return () => {
-      unlisten.then((fn) => fn());
+      cleaned = true;
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   }, [session.tmux_session]);
 

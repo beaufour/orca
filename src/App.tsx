@@ -187,7 +187,7 @@ function App() {
   useEffect(() => {
     const unlisten = listen("show-about", () => setShowAbout(true));
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => fn()).catch(() => {});
     };
   }, []);
 
