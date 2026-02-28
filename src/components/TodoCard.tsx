@@ -15,8 +15,9 @@ interface TodoCardProps {
   issue: GitHubIssue;
   session?: Session;
   repoPath: string;
+  backend?: "local" | "opencode-remote";
   onSelectSession?: (session: Session) => void;
-  onStartIssue?: (issue: GitHubIssue) => void;
+  onStartIssue?: (issue: GitHubIssue, tool?: string) => void;
   onEditIssue?: (issue: GitHubIssue) => void;
   liveTmuxSessions?: Set<string>;
   isFocused?: boolean;
@@ -219,6 +220,7 @@ export function TodoCard({
   issue,
   session,
   repoPath,
+  backend,
   onSelectSession,
   onStartIssue,
   onEditIssue,
@@ -231,6 +233,7 @@ export function TodoCard({
 }: TodoCardProps) {
   const queryClient = useQueryClient();
   const [confirmClose, setConfirmClose] = useState(false);
+  const [showToolPicker, setShowToolPicker] = useState(false);
 
   const closeMutation = useMutation({
     mutationFn: () => invoke("close_issue", { repoPath, issueNumber: issue.number }),
@@ -283,55 +286,105 @@ export function TodoCard({
       )}
       <div className="session-card-footer">
         <div className="session-wt-actions">
-          <button
-            className="wt-btn wt-btn-start"
-            onClick={(e) => {
-              e.stopPropagation();
-              onStartIssue?.(issue);
-            }}
-          >
-            Start
-          </button>
-          <button
-            className="wt-btn wt-btn-action"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEditIssue?.(issue);
-            }}
-          >
-            Edit
-          </button>
-          {!confirmClose ? (
-            <button
-              className="wt-btn wt-btn-danger"
-              onClick={(e) => {
-                e.stopPropagation();
-                setConfirmClose(true);
-              }}
-            >
-              Close
-            </button>
-          ) : (
+          {showToolPicker ? (
             <>
               <button
-                className="wt-btn wt-btn-danger"
+                className="wt-btn wt-btn-start"
                 onClick={(e) => {
                   e.stopPropagation();
-                  closeMutation.mutate();
+                  setShowToolPicker(false);
+                  onStartIssue?.(issue, "claude");
                 }}
-                disabled={closeMutation.isPending}
               >
-                Confirm
+                Claude
+              </button>
+              <button
+                className="wt-btn wt-btn-start"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowToolPicker(false);
+                  onStartIssue?.(issue, "opencode");
+                }}
+              >
+                OpenCode
+              </button>
+              <button
+                className="wt-btn wt-btn-start"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowToolPicker(false);
+                  onStartIssue?.(issue, "shell");
+                }}
+              >
+                Shell
               </button>
               <button
                 className="wt-btn wt-btn-cancel"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setConfirmClose(false);
+                  setShowToolPicker(false);
                 }}
               >
                 Cancel
               </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="wt-btn wt-btn-start"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (backend === "opencode-remote") {
+                    onStartIssue?.(issue);
+                  } else {
+                    setShowToolPicker(true);
+                  }
+                }}
+              >
+                Start
+              </button>
+              <button
+                className="wt-btn wt-btn-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditIssue?.(issue);
+                }}
+              >
+                Edit
+              </button>
+              {!confirmClose ? (
+                <button
+                  className="wt-btn wt-btn-danger"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmClose(true);
+                  }}
+                >
+                  Close
+                </button>
+              ) : (
+                <>
+                  <button
+                    className="wt-btn wt-btn-danger"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeMutation.mutate();
+                    }}
+                    disabled={closeMutation.isPending}
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    className="wt-btn wt-btn-cancel"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmClose(false);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>

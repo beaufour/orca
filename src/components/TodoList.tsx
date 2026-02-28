@@ -36,6 +36,7 @@ interface TodoListProps {
   pendingCreations?: Map<string, PendingCreation>;
   onDismissPending?: (creationId: string) => void;
   createSession?: (params: CreateSessionParams) => void;
+  onCreateRemoteSession?: (title: string, prompt: string | null) => void;
   dismissedIds?: Set<string>;
   onDismiss?: (sessionId: string) => void;
   onUndismiss?: (sessionId: string) => void;
@@ -55,6 +56,7 @@ export function TodoList({
   pendingCreations,
   onDismissPending,
   createSession,
+  onCreateRemoteSession,
   dismissedIds,
   onDismiss,
   onUndismiss,
@@ -137,9 +139,7 @@ export function TodoList({
     };
   }, [issues, sessions]);
 
-  const handleStartIssue = (issue: GitHubIssue) => {
-    if (!createSession) return;
-    const branch = issueToSlug(issue.number, issue.title);
+  const handleStartIssue = (issue: GitHubIssue, tool?: string) => {
     const prompt = `Please work on GitHub Issue #${issue.number} (${issue.html_url}). Review the issue and the codebase, then wait for further instructions.`;
 
     // Assign the issue to ourselves on GitHub (fire-and-forget)
@@ -148,11 +148,18 @@ export function TodoList({
       issueNumber: issue.number,
     }).catch((err) => console.warn("Failed to assign issue:", err));
 
+    if (group.backend === "opencode-remote") {
+      onCreateRemoteSession?.(issue.title, prompt);
+      return;
+    }
+
+    if (!createSession) return;
+    const branch = issueToSlug(issue.number, issue.title);
     createSession({
       projectPath: group.default_path,
       group: group.path,
       title: issue.title,
-      tool: "claude",
+      tool: tool ?? "claude",
       worktreeBranch: branch,
       newBranch: true,
       start: true,
@@ -277,6 +284,7 @@ export function TodoList({
               key={issue.number}
               issue={issue}
               repoPath={group.default_path}
+              backend={group.backend}
               onSelectSession={onSelectSession}
               onStartIssue={handleStartIssue}
               onEditIssue={(issue) => setIssueModal({ mode: "edit", issue })}

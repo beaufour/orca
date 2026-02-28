@@ -468,6 +468,24 @@ function App() {
                   pendingCreations={pendingCreations}
                   onDismissPending={dismissPending}
                   createSession={createSession}
+                  onCreateRemoteSession={async (title, prompt) => {
+                    if (!effectiveGroup.server_url) return;
+                    try {
+                      const pw = await invoke<string | null>("get_server_password", {
+                        groupPath: effectiveGroup.path,
+                      });
+                      const session = await invoke<RemoteSession>("oc_create_session", {
+                        serverUrl: effectiveGroup.server_url,
+                        password: pw ?? "",
+                        title,
+                        initialMessage: prompt,
+                      });
+                      setRemoteSession(session);
+                      setRemotePassword(pw ?? "");
+                    } catch (err) {
+                      console.error("Failed to create remote session:", err);
+                    }
+                  }}
                   dismissedIds={dismissedIds}
                   onDismiss={handleDismiss}
                   onUndismiss={handleUndismiss}
@@ -499,7 +517,7 @@ function App() {
             </main>
             {effectiveGroup && (
               <AddSessionBar
-                key={effectiveGroup.path}
+                key={`${effectiveGroup.path}:${effectiveGroup.is_git_repo}`}
                 ref={addSessionBarRef}
                 repoPath={effectiveGroup.default_path}
                 groupPath={effectiveGroup.path}
