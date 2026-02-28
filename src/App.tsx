@@ -91,10 +91,32 @@ function App() {
 
   // Initialize analytics on startup
   useEffect(() => {
-    Promise.all([invoke<boolean>("get_analytics_enabled"), getVersion()])
-      .then(([enabled, appVersion]) => {
+    Promise.all([
+      invoke<boolean>("get_analytics_enabled"),
+      getVersion(),
+      invoke<Group[]>("get_groups"),
+    ])
+      .then(async ([enabled, appVersion, allGroups]) => {
         initAnalytics(enabled);
-        trackEvent("app_opened", { app_version: appVersion });
+
+        // Gather per-group session counts
+        const sessionCounts = await Promise.all(
+          allGroups.map((g) =>
+            invoke<Session[]>("get_sessions", { groupPath: g.path }).then((s) => s.length),
+          ),
+        );
+
+        trackEvent("app_opened", {
+          app_version: appVersion,
+          group_count: allGroups.length,
+          total_sessions: sessionCounts.reduce((a, b) => a + b, 0),
+          sessions_per_group: sessionCounts,
+          merge_workflow_counts: {
+            merge: allGroups.filter((g) => g.merge_workflow === "merge").length,
+            pr: allGroups.filter((g) => g.merge_workflow === "pr").length,
+          },
+        });
+
         if (!storageGet(ANALYTICS_PROMPTED_KEY)) {
           setShowAnalyticsPrompt(true);
         }
