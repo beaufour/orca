@@ -386,6 +386,16 @@ pub async fn check_pr_status(repo_path: String, branch: String) -> Result<PrInfo
 }
 
 #[tauri::command]
+pub async fn get_github_username(repo_path: String) -> Result<String, String> {
+    spawn_gh(move || {
+        log::info!("get_github_username: repo_path={repo_path}");
+        let output = run_gh(&repo_path, &["api", "user", "--jq", ".login"])?;
+        Ok(output.trim().to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn close_issue(repo_path: String, issue_number: u64) -> Result<(), String> {
     spawn_gh(move || {
         log::info!("close_issue: repo_path={repo_path}, issue_number={issue_number}");
