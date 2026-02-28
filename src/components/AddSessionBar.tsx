@@ -336,7 +336,7 @@ export function AddSessionBar({
                   type="text"
                   placeholder="branch-name"
                   value={branchName}
-                  onChange={(e) => setBranchName(e.target.value)}
+                  onChange={(e) => setBranchName(e.target.value.replace(/ /g, "-"))}
                   spellCheck={false}
                   autoCapitalize="off"
                   autoFocus
