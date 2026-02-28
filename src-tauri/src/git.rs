@@ -239,22 +239,24 @@ pub async fn get_default_branch(repo_path: String) -> Result<String, String> {
 #[tauri::command]
 pub async fn get_branch_diff(worktree_path: String, _branch: String) -> Result<String, String> {
     spawn_git(move || {
-        let default_branch = get_default_branch_inner(&worktree_path)?;
-        // Prefer origin/<default> so the diff reflects upstream state rather than
-        // whatever the local branch has been moved to (e.g. after a merge in the
-        // main worktree).  Fall back to the local branch if no remote exists.
-        let base = {
-            let remote_ref = format!("origin/{default_branch}");
-            if run_git(&worktree_path, &["rev-parse", "--verify", &remote_ref]).is_ok() {
-                remote_ref
-            } else {
-                default_branch
-            }
-        };
-        // Use HEAD rather than the branch name — the session's worktree_branch may
-        // be the directory name (e.g. "migrate-to-sync") rather than the actual git
-        // branch (e.g. "allanb/async-to-blocking-squeegee"), so the ref won't resolve.
-        // Since we run from worktree_path, HEAD always points to the right commit.
+        let base = get_default_branch_inner(&worktree_path)?;
+        // Show only the changes unique to this branch vs the default branch.
+        //
+        // We use `git diff <default>...HEAD` (three-dot) which diffs from the
+        // merge-base of <default> and HEAD to HEAD. This means:
+        //   - Only this branch's changes are shown, not commits on <default>
+        //   - Even if <default> moves forward (e.g. other branches merged), the
+        //     merge-base stays at the fork point, so the diff stays correct
+        //   - If this branch has been merged into <default>, the diff is empty
+        //     (correct: the changes are already on <default>)
+        //
+        // We use the LOCAL default branch, not origin/<default>. Using origin/
+        // shows too many changes when origin is behind local (common in bare
+        // worktree setups where you merge locally before pushing).
+        //
+        // We use HEAD instead of the branch name because the session's
+        // worktree_branch can be the directory name rather than the actual git
+        // branch name.
         let range = format!("{base}...HEAD");
         run_git(&worktree_path, &["diff", &range])
     })
