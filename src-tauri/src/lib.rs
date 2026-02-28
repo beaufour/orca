@@ -11,8 +11,37 @@ mod tmux;
 
 use crate::command::new_command;
 use std::io::{BufRead, BufReader};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+
+/// Placeholder DSN — replace with your actual Sentry project DSN.
+const SENTRY_DSN: &str = "https://examplePublicKey@o0.ingest.sentry.io/0";
+
+/// Wrapper so we can store the flag as Tauri managed state.
+pub struct SentryEnabled(Arc<AtomicBool>);
+
+/// Read the analytics_enabled flag directly from the Orca SQLite DB
+/// *before* Tauri's path resolver is available.
+fn read_analytics_enabled_early() -> bool {
+    let Some(data_dir) = dirs::data_dir() else {
+        return false;
+    };
+    let db_path = data_dir.join("dk.beaufour.orca").join("orca.db");
+    let Ok(conn) =
+        rusqlite::Connection::open_with_flags(&db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+    else {
+        return false;
+    };
+    conn.query_row(
+        "SELECT value FROM metadata WHERE key = 'analytics_enabled'",
+        [],
+        |row| row.get::<_, String>(0),
+    )
+    .map(|v| v == "true")
+    .unwrap_or(false)
+}
 
 #[tauri::command]
 fn read_app_log(app: tauri::AppHandle, tail_lines: Option<usize>) -> Result<String, String> {
@@ -60,8 +89,10 @@ fn get_analytics_enabled(orca_db: tauri::State<'_, orca_db::OrcaDb>) -> Result<b
 #[tauri::command]
 fn set_analytics_enabled(
     orca_db: tauri::State<'_, orca_db::OrcaDb>,
+    sentry_flag: tauri::State<'_, SentryEnabled>,
     enabled: bool,
 ) -> Result<(), String> {
+    sentry_flag.0.store(enabled, Ordering::Relaxed);
     orca_db.set_analytics_enabled(enabled)
 }
 
@@ -69,11 +100,43 @@ fn set_analytics_enabled(
 pub fn run() {
     command::init_path();
 
+    // Initialize Sentry before the Tauri builder so it captures panics from the start.
+    let analytics_enabled = read_analytics_enabled_early();
+    let sentry_flag = Arc::new(AtomicBool::new(analytics_enabled));
+    let flag_for_hook = sentry_flag.clone();
+
+    let sentry_client = sentry::init((
+        SENTRY_DSN,
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            environment: Some(
+                if cfg!(debug_assertions) {
+                    "development"
+                } else {
+                    "production"
+                }
+                .into(),
+            ),
+            before_send: Some(Arc::new(move |event| {
+                if flag_for_hook.load(Ordering::Relaxed) {
+                    Some(event)
+                } else {
+                    None
+                }
+            })),
+            ..Default::default()
+        },
+    ));
+
+    let _minidump = tauri_plugin_sentry::minidump::init(&sentry_client);
+
     tauri::Builder::default()
+        .plugin(tauri_plugin_sentry::init(&sentry_client))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .manage(SentryEnabled(sentry_flag))
         .manage(pty::PtyManager::default())
         .setup(|app| {
             let handle = app.handle();

@@ -31,6 +31,8 @@ tauri-plugin-process = "2"
 tokio = { version = "1", features = ["rt"] }
 reqwest = { version = "0.13", features = ["json", "stream"] }
 futures = "0.3"
+sentry = "0.42"
+tauri-plugin-sentry = "0.5"
 
 [dev-dependencies]
 tempfile = "3"

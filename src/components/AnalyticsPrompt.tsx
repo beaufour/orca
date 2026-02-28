@@ -23,8 +23,8 @@ export function AnalyticsPrompt({ onClose, appOpenedProps }: AnalyticsPromptProp
     <Modal onClose={onClose}>
       <h3 className="modal-title">Help Improve Orca</h3>
       <p className="version-warning-text">
-        Would you like to share anonymous usage statistics? This helps us understand which features
-        are used and improve Orca.
+        Would you like to share anonymous usage statistics and crash reports? This helps us
+        understand which features are used and improve Orca.
       </p>
       <p className="version-warning-text" style={{ color: "var(--text-muted)", fontSize: "12px" }}>
         No personal data is collected. You can change this anytime in App Settings.

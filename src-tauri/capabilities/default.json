@@ -10,6 +10,7 @@
     "dialog:allow-open",
     "opener:default",
     "updater:default",
-    "process:default"
+    "process:default",
+    "sentry:default"
   ]
 }
