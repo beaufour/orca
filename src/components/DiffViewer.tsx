@@ -24,9 +24,8 @@ interface LineSelection {
 const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
 const MOD_KEY = isMac ? "\u2318" : "Ctrl";
 
-let nextCommentId = 1;
-
 export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
+  const nextCommentId = useRef(1);
   const { data, isLoading, error } = useQuery<string>({
     queryKey: queryKeys.branchDiff(session.id),
     queryFn: () =>
@@ -55,6 +54,12 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
       onClose();
     }
   }, [comments.length, onClose]);
+
+  const cancelComment = () => {
+    setSelection(null);
+    setActiveCommentInput(null);
+    setCommentText("");
+  };
 
   useEscapeKey(() => {
     if (confirmingClose) {
@@ -123,7 +128,7 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
     setComments((prev) => [
       ...prev,
       {
-        id: nextCommentId++,
+        id: nextCommentId.current++,
         filePath: selection.filePath,
         hunkIndex: selection.hunkIndex,
         startLine: start,
@@ -133,12 +138,6 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
       },
     ]);
 
-    setSelection(null);
-    setActiveCommentInput(null);
-    setCommentText("");
-  };
-
-  const cancelComment = () => {
     setSelection(null);
     setActiveCommentInput(null);
     setCommentText("");
