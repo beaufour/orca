@@ -83,6 +83,7 @@ fn get_repo_nwo(repo_path: &str) -> Result<String, String> {
 /// Parse a git remote URL into a `gh`-compatible repo identifier.
 /// Returns `owner/repo` for github.com, `HOST/owner/repo` for other hosts.
 fn parse_repo_nwo(url: &str) -> Result<String, String> {
+    let url = url.trim_end_matches('/');
     // SSH: git@<host>:owner/repo.git
     if let Some(colon_rest) = url.strip_prefix("git@") {
         if let Some((host, rest)) = colon_rest.split_once(':') {
@@ -483,10 +484,8 @@ mod tests {
 
     #[test]
     fn test_parse_https_url_trailing_slash() {
-        // Trailing slash is preserved in the path portion; .git stripping doesn't apply
-        // but the URL still parses successfully
         let result = parse_repo_nwo("https://github.com/owner/repo/").unwrap();
-        assert_eq!(result, "owner/repo/");
+        assert_eq!(result, "owner/repo");
     }
 
     #[test]

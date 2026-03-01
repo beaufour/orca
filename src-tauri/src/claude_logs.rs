@@ -2,7 +2,7 @@ use crate::command::expand_tilde;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionSummary {
@@ -74,7 +74,7 @@ pub fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<Pa
 }
 
 /// Read the last N bytes of a file and parse JSONL lines from it
-fn read_tail_lines(path: &PathBuf, max_bytes: u64) -> Vec<serde_json::Value> {
+fn read_tail_lines(path: &Path, max_bytes: u64) -> Vec<serde_json::Value> {
     let Ok(file) = File::open(path) else {
         log::warn!("read_tail_lines: failed to open {}", path.display());
         return vec![];
@@ -122,7 +122,7 @@ fn read_tail_lines(path: &PathBuf, max_bytes: u64) -> Vec<serde_json::Value> {
 }
 
 /// Read the first N bytes of a file and parse JSONL lines from it
-fn read_head_lines(path: &PathBuf, max_bytes: u64) -> Vec<serde_json::Value> {
+fn read_head_lines(path: &Path, max_bytes: u64) -> Vec<serde_json::Value> {
     let Ok(file) = File::open(path) else {
         return vec![];
     };

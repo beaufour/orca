@@ -19,8 +19,6 @@ fn build_client(token: &str) -> Result<reqwest::Client, String> {
 struct ApiMessage {
     role: String,
     content: String,
-    #[serde(default)]
-    _timestamp: Option<String>,
 }
 
 /// Message returned to frontend (matching RemoteMessage interface)
