@@ -21,6 +21,9 @@ interface LineSelection {
   endLine: number | null;
 }
 
+const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+const MOD_KEY = isMac ? "\u2318" : "Ctrl";
+
 let nextCommentId = 1;
 
 export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
@@ -364,8 +367,7 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
                                     Delete
                                   </button>
                                   <span className="diff-comment-shortcut-hint">
-                                    {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl"}+Enter
-                                    to save
+                                    {MOD_KEY}+Enter to save
                                   </span>
                                 </div>
                               </div>
@@ -420,8 +422,7 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
                                 Cancel
                               </button>
                               <span className="diff-comment-shortcut-hint">
-                                {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl"}+Enter to
-                                submit
+                                {MOD_KEY}+Enter to submit
                               </span>
                             </div>
                           </div>
