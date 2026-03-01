@@ -819,8 +819,7 @@ pub fn run_setup_worktree_script(repo_root: &str, new_worktree_path: &str) {
     }
 
     // Find the default branch worktree to pass as argument
-    let default_branch_path = find_default_branch_worktree_path(repo_root);
-    let Some(main_path) = default_branch_path else {
+    let Ok(main_path) = find_default_branch_worktree(repo_root) else {
         log::warn!("setup-worktree.sh exists but could not determine default branch worktree");
         return;
     };
@@ -851,14 +850,15 @@ pub fn run_setup_worktree_script(repo_root: &str, new_worktree_path: &str) {
     }
 }
 
-/// Find the default branch (main/master) worktree path in a bare repo.
-fn find_default_branch_worktree_path(repo_root: &str) -> Option<String> {
-    let worktrees_output = run_git(repo_root, &["worktree", "list", "--porcelain"]).ok()?;
-    let worktrees = parse_worktree_list(&worktrees_output);
+/// Find the worktree for the default branch (main/master).
+/// `repo_path` should be a path inside the repo (used to run git commands).
+pub fn find_default_branch_worktree(repo_path: &str) -> Result<String, String> {
+    let output = run_git(repo_path, &["worktree", "list", "--porcelain"])?;
+    let worktrees = parse_worktree_list(&output);
 
     // Determine default branch name from origin/HEAD, falling back to main/master
     let default_branch = new_command("git")
-        .current_dir(repo_root)
+        .current_dir(repo_path)
         .args(["symbolic-ref", "refs/remotes/origin/HEAD"])
         .output()
         .ok()
@@ -870,17 +870,21 @@ fn find_default_branch_worktree_path(repo_root: &str) -> Option<String> {
         .unwrap_or_else(|| "main".to_string());
 
     if let Some(wt) = worktrees.iter().find(|w| w.branch == default_branch) {
-        return Some(wt.path.clone());
+        return Ok(wt.path.clone());
     }
+    // Fallback: try "master" if default was "main" or vice versa
     let fallback = if default_branch == "main" {
         "master"
     } else {
         "main"
     };
-    worktrees
-        .iter()
-        .find(|w| w.branch == fallback)
-        .map(|w| w.path.clone())
+    if let Some(wt) = worktrees.iter().find(|w| w.branch == fallback) {
+        return Ok(wt.path.clone());
+    }
+
+    Err(format!(
+        "No worktree found for default branch '{default_branch}'"
+    ))
 }
 
 /// Walk up from `path` looking for a directory containing `.bare/`.
