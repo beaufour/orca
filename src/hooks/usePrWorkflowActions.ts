@@ -189,7 +189,6 @@ export function usePrWorkflowActions({
 
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting to polled external data
     setPrState("pr_merged");
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPrInfo(prStatusData);
     // Persist merged state
     invoke("store_session_pr_info", {
