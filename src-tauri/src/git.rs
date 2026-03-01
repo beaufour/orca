@@ -224,11 +224,25 @@ fn get_default_branch_inner(repo_path: &str) -> Result<String, String> {
         }
     }
 
-    // Fallback: check if "main" or "master" branches exist
+    // Fallback: check if local "main" or "master" branches exist
     if let Ok((_, true)) = run_git_status(repo_path, &["rev-parse", "--verify", "main"]) {
         return Ok("main".to_string());
     }
     if let Ok((_, true)) = run_git_status(repo_path, &["rev-parse", "--verify", "master"]) {
+        return Ok("master".to_string());
+    }
+
+    // Fallback: check remote tracking branches (for bare repos before worktree creation)
+    if let Ok((_, true)) = run_git_status(
+        repo_path,
+        &["rev-parse", "--verify", "refs/remotes/origin/main"],
+    ) {
+        return Ok("main".to_string());
+    }
+    if let Ok((_, true)) = run_git_status(
+        repo_path,
+        &["rev-parse", "--verify", "refs/remotes/origin/master"],
+    ) {
         return Ok("master".to_string());
     }
 
@@ -440,45 +454,6 @@ pub async fn abort_merge(worktree_path: String) -> Result<(), String> {
     .await
 }
 
-/// Detect the default branch from a bare repo by checking origin refs.
-fn detect_default_branch(bare_path: &str) -> Result<String, String> {
-    // Try symbolic-ref of origin/HEAD first (expected to fail if origin/HEAD is not set)
-    if let Ok((output, true)) =
-        run_git_status(bare_path, &["symbolic-ref", "refs/remotes/origin/HEAD"])
-    {
-        let trimmed = output.trim();
-        if let Some(branch) = trimmed.strip_prefix("refs/remotes/origin/") {
-            return Ok(branch.to_string());
-        }
-    }
-
-    // Fallback: check if remote tracking branches exist for main or master
-    if let Ok((_, true)) = run_git_status(
-        bare_path,
-        &["rev-parse", "--verify", "refs/remotes/origin/main"],
-    ) {
-        return Ok("main".to_string());
-    }
-    if let Ok((_, true)) = run_git_status(
-        bare_path,
-        &["rev-parse", "--verify", "refs/remotes/origin/master"],
-    ) {
-        return Ok("master".to_string());
-    }
-
-    Ok("main".to_string())
-}
-
-/// Expand `~/` prefix to the user's home directory.
-fn expand_home(path: &str) -> Result<String, String> {
-    if let Some(rest) = path.strip_prefix("~/") {
-        let home = dirs::home_dir().ok_or("Could not determine home directory")?;
-        Ok(home.join(rest).to_string_lossy().to_string())
-    } else {
-        Ok(path.to_string())
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushResult {
     pub success: bool,
@@ -580,7 +555,9 @@ pub async fn clone_bare_worktree_repo(
             return Err("Project name cannot contain path separators".to_string());
         }
 
-        let parent = expand_home(parent_dir.trim())?;
+        let parent = expand_tilde(parent_dir.trim())
+            .to_string_lossy()
+            .to_string();
         let parent_path = Path::new(&parent);
         if !parent_path.is_dir() {
             return Err(format!("Parent directory does not exist: {parent}"));
@@ -650,7 +627,7 @@ fn clone_bare_worktree_inner(
     run_git(project_str, &["fetch", "origin"])?;
 
     // Detect default branch
-    let default_branch = detect_default_branch(project_str)?;
+    let default_branch = get_default_branch_inner(project_str)?;
     log::info!("Detected default branch: {default_branch}");
 
     // Create worktree for default branch
@@ -664,7 +641,7 @@ fn clone_bare_worktree_inner(
 #[tauri::command]
 pub async fn init_bare_repo(directory: String) -> Result<String, String> {
     spawn_git(move || {
-        let expanded = expand_home(directory.trim())?;
+        let expanded = expand_tilde(directory.trim()).to_string_lossy().to_string();
         let project_path = Path::new(&expanded);
 
         // Create directory if it doesn't exist

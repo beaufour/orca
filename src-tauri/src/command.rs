@@ -23,7 +23,11 @@ pub fn check_prerequisites() -> Vec<PrerequisiteStatus> {
     checks
         .iter()
         .map(|(name, args, required)| {
-            let found = Command::new(name).args(*args).output().is_ok();
+            let found = Command::new(name)
+                .args(*args)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
             PrerequisiteStatus {
                 name: name.to_string(),
                 found,

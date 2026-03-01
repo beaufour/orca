@@ -8,6 +8,7 @@ mod models;
 mod opencode_remote;
 mod orca_db;
 mod pty;
+mod remote_common;
 mod tmux;
 
 use crate::command::new_command;
@@ -178,6 +179,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(SentryEnabled(sentry_flag))
         .manage(pty::PtyManager::default())
+        .manage(remote_common::SseHandles::default())
         .setup(|app| {
             let handle = app.handle();
 

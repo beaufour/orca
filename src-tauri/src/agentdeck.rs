@@ -295,48 +295,53 @@ fn create_bare_worktree(
 
 /// Run a custom worktree script, substituting {branch} and {component} placeholders.
 /// Returns (worktree_path, repo_root, branch).
-fn create_scripted_worktree(
+/// Expand `{branch}` and `{component}` placeholders in a command template.
+///
+/// For `{component}`, the flag token immediately before it (e.g. `-c` in
+/// `-c {component}`) is detected and repeated for each component value.
+fn expand_command_template(
     command_template: &str,
     branch: &str,
     components: Option<&[String]>,
-    cwd: &str,
-) -> Result<(String, String, String), String> {
-    // Substitute {branch}
+) -> Result<String, String> {
     let mut command = command_template.replace("{branch}", branch);
 
-    // Handle {component} placeholder: find the flag token before it and
-    // repeat it for each component
     if command.contains("{component}") {
         let components = components.unwrap_or(&[]);
         if components.is_empty() {
             return Err("Command template uses {component} but no components were selected".into());
         }
 
-        // Find the flag token immediately before {component}
-        // e.g. "-c {component}" → flag is "-c"
         if let Some(pos) = command.find("{component}") {
             let before = &command[..pos];
-            // Find the last whitespace-delimited token before {component}
             let trimmed = before.trim_end();
             if let Some(last_space) = trimmed.rfind(char::is_whitespace) {
                 let flag = &trimmed[last_space + 1..];
                 let flag_start = last_space + 1;
-                // Build replacement: "flag comp1 flag comp2 ..."
                 let replacement = components
                     .iter()
                     .map(|c| format!("{flag} {c}"))
                     .collect::<Vec<_>>()
                     .join(" ");
-                // Replace from flag_start through end of {component}
                 let after = &command[pos + "{component}".len()..];
                 command = format!("{}{replacement}{after}", &command[..flag_start]);
             } else {
-                // No flag before {component}, just join components with spaces
                 let replacement = components.join(" ");
                 command = command.replace("{component}", &replacement);
             }
         }
     }
+
+    Ok(command)
+}
+
+fn create_scripted_worktree(
+    command_template: &str,
+    branch: &str,
+    components: Option<&[String]>,
+    cwd: &str,
+) -> Result<(String, String, String), String> {
+    let command = expand_command_template(command_template, branch, components)?;
 
     let expanded_cwd = expand_tilde(cwd);
     let cwd_str = expanded_cwd.to_string_lossy().to_string();
@@ -1190,7 +1195,7 @@ fn send_prompt_to_session(session_id: &str, prompt: &str, tool: &str) -> Result<
     if !session_ready {
         return Err(format!(
             "{tool} not ready in tmux session '{tmux_name}' after {}s",
-            max_attempts as u64 * 400 / 1000
+            max_attempts as u64 * delay.as_millis() as u64 / 1000
         ));
     }
 
@@ -1257,24 +1262,12 @@ fn find_worktree_in_bare(bare_path: &str) -> Result<String, String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     log::debug!("git worktree list succeeded: {}", stdout.trim());
-    let mut found_bare = false;
 
-    for line in stdout.lines() {
-        if line == "bare" {
-            found_bare = true;
-            continue;
-        }
-        if let Some(path) = line.strip_prefix("worktree ") {
-            if found_bare {
-                // This is the first non-bare worktree
-                return Ok(path.to_string());
-            }
-            // Reset bare flag for next entry
-            found_bare = false;
-        }
-    }
-
-    Err(format!("No worktrees found in bare repo at {bare_path}"))
+    let worktrees = crate::git::parse_worktree_list(&stdout);
+    worktrees
+        .first()
+        .map(|w| w.path.clone())
+        .ok_or_else(|| format!("No worktrees found in bare repo at {bare_path}"))
 }
 
 fn find_default_branch_worktree(any_worktree: &str) -> Result<String, String> {
@@ -1322,5 +1315,57 @@ mod tests {
     fn parse_session_id_unparseable() {
         let output = "something unexpected";
         assert!(parse_session_id(output).is_err());
+    }
+
+    // ── expand_command_template tests ────────────────────────────────
+
+    #[test]
+    fn template_branch_substitution() {
+        let result = expand_command_template("wt-start {branch}", "my-feature", None).unwrap();
+        assert_eq!(result, "wt-start my-feature");
+    }
+
+    #[test]
+    fn template_component_with_flag() {
+        let components = vec!["src/foo".to_string(), "src/bar".to_string()];
+        let result = expand_command_template(
+            "wt-start {branch} -c {component}",
+            "feat",
+            Some(&components),
+        )
+        .unwrap();
+        assert_eq!(result, "wt-start feat -c src/foo -c src/bar");
+    }
+
+    #[test]
+    fn template_component_without_flag() {
+        let components = vec!["a".to_string(), "b".to_string()];
+        let result = expand_command_template("{component}", "feat", Some(&components)).unwrap();
+        assert_eq!(result, "a b");
+    }
+
+    #[test]
+    fn template_component_no_components_is_error() {
+        let result = expand_command_template("cmd -c {component}", "feat", None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no components were selected"));
+    }
+
+    #[test]
+    fn template_no_placeholders() {
+        let result = expand_command_template("plain command", "feat", None).unwrap();
+        assert_eq!(result, "plain command");
+    }
+
+    #[test]
+    fn template_branch_and_component() {
+        let components = vec!["lib".to_string()];
+        let result = expand_command_template(
+            "wt-start {branch} --comp {component} --verbose",
+            "fix",
+            Some(&components),
+        )
+        .unwrap();
+        assert_eq!(result, "wt-start fix --comp lib --verbose");
     }
 }
