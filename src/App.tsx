@@ -275,9 +275,15 @@ function App() {
     refetchInterval: 3_000,
   });
 
-  const { data: groups, refetch: refetchGroups } = useQuery<Group[]>({
+  const {
+    data: groups,
+    isLoading: groupsLoading,
+    error: groupsError,
+    refetch: refetchGroups,
+  } = useQuery<Group[]>({
     queryKey: queryKeys.groups,
     queryFn: () => invoke("get_groups"),
+    refetchInterval: 10_000,
   });
 
   const { data: liveTmuxSessions } = useQuery<string[]>({
@@ -515,6 +521,10 @@ function App() {
   return (
     <div className={`app-layout ${isResizing ? "is-resizing" : ""}`}>
       <Sidebar
+        groups={groups}
+        groupsLoading={groupsLoading}
+        groupsError={groupsError}
+        onRetryGroups={() => refetchGroups()}
         selectedGroupPath={effectiveGroup?.path ?? null}
         needsActionActive={needsActionFilter}
         onSelectGroup={(g) => {
