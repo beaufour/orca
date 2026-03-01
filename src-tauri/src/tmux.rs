@@ -20,49 +20,12 @@ pub fn paste_to_tmux_pane(
         text.len(),
         submit
     );
-    let status = new_command("tmux")
-        .args(["set-buffer", "-b", "_orca", "--", &text])
-        .status()
-        .map_err(|e| format!("Failed to set tmux buffer: {e}"))?;
-
-    if !status.success() {
-        return Err("tmux set-buffer failed".to_string());
-    }
-
-    let output = new_command("tmux")
-        .args([
-            "paste-buffer",
-            "-t",
-            &tmux_session,
-            "-b",
-            "_orca",
-            "-p",
-            "-d",
-        ])
-        .output()
-        .map_err(|e| format!("Failed to paste tmux buffer: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("tmux paste-buffer failed: {}", stderr.trim()));
-    }
 
     if submit.unwrap_or(false) {
-        // Brief pause so the TUI processes the pasted text before submitting
-        std::thread::sleep(std::time::Duration::from_millis(200));
-
-        let enter_output = new_command("tmux")
-            .args(["send-keys", "-l", "-t", &tmux_session, "\r"])
-            .output()
-            .map_err(|e| format!("Failed to send Enter via tmux: {e}"))?;
-
-        if !enter_output.status.success() {
-            let stderr = String::from_utf8_lossy(&enter_output.stderr);
-            return Err(format!("tmux send-keys (Enter) failed: {}", stderr.trim()));
-        }
+        paste_and_submit(&tmux_session, &text)
+    } else {
+        bracketed_paste(&tmux_session, &text)
     }
-
-    Ok(())
 }
 
 /// Scroll a tmux pane up or down by entering copy mode.
@@ -141,12 +104,76 @@ pub fn is_waiting_for_input(tmux_session: &str) -> bool {
     waiting
 }
 
+/// Paste text into a tmux pane using bracketed paste mode.
+///
+/// Uses `tmux set-buffer` + `paste-buffer -p` so the text arrives as a
+/// single bracketed paste event rather than individual keystrokes.
+fn bracketed_paste(tmux_session: &str, text: &str) -> Result<(), String> {
+    let status = new_command("tmux")
+        .args(["set-buffer", "-b", "_orca", "--", text])
+        .status()
+        .map_err(|e| format!("Failed to set tmux buffer: {e}"))?;
+
+    if !status.success() {
+        return Err("tmux set-buffer failed".to_string());
+    }
+
+    let output = new_command("tmux")
+        .args([
+            "paste-buffer",
+            "-t",
+            tmux_session,
+            "-b",
+            "_orca",
+            "-p",
+            "-d",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to paste tmux buffer: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tmux paste-buffer failed: {}", stderr.trim()));
+    }
+
+    Ok(())
+}
+
+/// Paste text into a tmux pane using bracketed paste, then send Enter to submit.
+///
+/// Uses `tmux set-buffer` + `paste-buffer -p` for reliable delivery, then
+/// sends a literal CR to submit. This is the canonical way to send a prompt
+/// to a Claude Code (or similar) session.
+pub(crate) fn paste_and_submit(tmux_session: &str, text: &str) -> Result<(), String> {
+    log::info!(
+        "paste_and_submit: tmux_session={tmux_session}, text_len={}",
+        text.len(),
+    );
+
+    bracketed_paste(tmux_session, text)?;
+
+    // Brief pause so the TUI processes the pasted text before submitting
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    let enter_output = new_command("tmux")
+        .args(["send-keys", "-l", "-t", tmux_session, "\r"])
+        .output()
+        .map_err(|e| format!("Failed to send Enter via tmux: {e}"))?;
+
+    if !enter_output.status.success() {
+        let stderr = String::from_utf8_lossy(&enter_output.stderr);
+        return Err(format!("tmux send-keys (Enter) failed: {}", stderr.trim()));
+    }
+
+    Ok(())
+}
+
 /// Check if pane text contains a Claude Code input prompt.
 ///
 /// Detects two patterns:
 /// 1. Permission prompt: text contains "Do you want to proceed?"
 /// 2. General input prompt: last non-empty line is or ends with `❯` or `>`
-fn pane_shows_input_prompt(text: &str) -> bool {
+pub(crate) fn pane_shows_input_prompt(text: &str) -> bool {
     if text.contains("Do you want to proceed?") {
         return true;
     }

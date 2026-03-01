@@ -1153,11 +1153,10 @@ fn send_prompt_to_session(session_id: &str, prompt: &str, tool: &str) -> Result<
     let delay = std::time::Duration::from_millis(300);
     let mut session_ready = false;
 
-    // First, wait for the tmux session to be created and for the AI to start rendering
-    // Opencode is slower to start, so we use more attempts with shorter delays
+    // Wait for the tmux session to exist and for the tool's input prompt to
+    // be ready.  For Claude we look for the actual input prompt (❯ / >);
+    // for Opencode we look for its own prompt indicator.
     for attempt in 0..max_attempts {
-        // Use capture-pane: if the session doesn't exist it fails,
-        // if it does we can check whether the AI has started rendering.
         let capture = new_command("tmux")
             .args(["capture-pane", "-t", &tmux_name, "-p"])
             .output();
@@ -1165,20 +1164,18 @@ fn send_prompt_to_session(session_id: &str, prompt: &str, tool: &str) -> Result<
             Ok(output) if output.status.success() => {
                 let content = String::from_utf8_lossy(&output.stdout);
 
-                // For Opencode, wait for the prompt indicator
                 if tool == "opencode" && is_opencode_ready(&content) {
                     log::debug!(
-                        "Opencode ready (prompt detected) in tmux session '{tmux_name}' after {} attempts",
+                        "Opencode ready in tmux session '{tmux_name}' after {} attempts",
                         attempt + 1
                     );
                     session_ready = true;
                     break;
                 }
 
-                // For Claude and other tools, wait for any non-whitespace content
-                if tool != "opencode" && content.chars().any(|c| !c.is_whitespace()) {
+                if tool != "opencode" && crate::tmux::pane_shows_input_prompt(&content) {
                     log::debug!(
-                        "{tool} rendering in tmux session '{tmux_name}' after {} attempts",
+                        "{tool} input prompt ready in tmux session '{tmux_name}' after {} attempts",
                         attempt + 1
                     );
                     session_ready = true;
@@ -1194,43 +1191,14 @@ fn send_prompt_to_session(session_id: &str, prompt: &str, tool: &str) -> Result<
 
     if !session_ready {
         return Err(format!(
-            "{tool} not ready in tmux session '{tmux_name}' after {}s",
+            "{tool} input prompt not ready in tmux session '{tmux_name}' after {}s",
             max_attempts as u64 * delay.as_millis() as u64 / 1000
         ));
     }
 
-    // Brief pause so the TUI processes the text before we submit
-    std::thread::sleep(std::time::Duration::from_millis(150));
-
-    // Send the prompt text first (literal mode to avoid key name interpretation)
-    log::info!("tmux send-keys -l -t {tmux_name} -- <prompt>");
-    let text_output = new_command("tmux")
-        .args(["send-keys", "-l", "-t", &tmux_name, "--", prompt])
-        .output()
-        .map_err(|e| format!("Failed to send prompt text via tmux: {e}"))?;
-
-    if !text_output.status.success() {
-        let stderr = String::from_utf8_lossy(&text_output.stderr);
-        return Err(format!("tmux send-keys (text) failed: {}", stderr.trim()));
-    }
-
-    // Brief pause so the TUI processes the text before we submit
-    std::thread::sleep(std::time::Duration::from_millis(200));
-
-    // Send Enter separately to submit the prompt.
-    // Use literal CR (\r) instead of the "Enter" key name to avoid issues
-    // with tmux extended-keys sending enhanced sequences that the TUI may
-    // not interpret as submit.
-    log::info!("tmux send-keys -l -t {tmux_name} CR");
-    let output = new_command("tmux")
-        .args(["send-keys", "-l", "-t", &tmux_name, "\r"])
-        .output()
-        .map_err(|e| format!("Failed to send Enter via tmux: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("tmux send-keys (Enter) failed: {}", stderr.trim()));
-    }
+    // Use bracketed paste + Enter — same mechanism as paste_to_tmux_pane
+    // with submit=true, which is known to work reliably.
+    crate::tmux::paste_and_submit(&tmux_name, prompt)?;
 
     log::debug!("Prompt sent successfully to tmux session '{tmux_name}'");
     Ok(())
