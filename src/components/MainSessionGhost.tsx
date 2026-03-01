@@ -1,18 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
+import type { CreateSessionParams } from "../hooks/useSessionCreation";
 import { queryKeys } from "../queryKeys";
-
-interface CreateSessionParams {
-  projectPath: string;
-  group: string;
-  title: string;
-  tool?: string;
-  worktreeBranch?: string | null;
-  newBranch?: boolean;
-  start?: boolean;
-  prompt?: string | null;
-}
 
 interface MainSessionGhostProps {
   repoPath: string;

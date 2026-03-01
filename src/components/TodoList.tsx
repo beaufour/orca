@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Group, Session, GitHubIssue } from "../types";
-import type { PendingCreation } from "../hooks/useSessionCreation";
+import type { PendingCreation, CreateSessionParams } from "../hooks/useSessionCreation";
 import { extractIssueNumber, issueToSlug } from "../utils";
 import { queryKeys } from "../queryKeys";
 import { TodoCard } from "./TodoCard";
@@ -10,17 +10,6 @@ import { SessionCard } from "./SessionCard";
 import { SessionList } from "./SessionList";
 import { PendingSessionCard } from "./PendingSessionCard";
 import { IssueModal } from "./IssueModal";
-
-interface CreateSessionParams {
-  projectPath: string;
-  group: string;
-  title: string;
-  tool?: string;
-  worktreeBranch?: string | null;
-  newBranch?: boolean;
-  start?: boolean;
-  prompt?: string | null;
-}
 
 interface TodoListProps {
   group: Group;

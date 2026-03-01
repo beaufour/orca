@@ -12,7 +12,7 @@ export interface PendingCreation {
   error?: string;
 }
 
-interface CreateSessionParams {
+export interface CreateSessionParams {
   projectPath: string;
   group: string;
   title: string;
