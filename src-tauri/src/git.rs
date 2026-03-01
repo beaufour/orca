@@ -224,11 +224,25 @@ fn get_default_branch_inner(repo_path: &str) -> Result<String, String> {
         }
     }
 
-    // Fallback: check if "main" or "master" branches exist
+    // Fallback: check if local "main" or "master" branches exist
     if let Ok((_, true)) = run_git_status(repo_path, &["rev-parse", "--verify", "main"]) {
         return Ok("main".to_string());
     }
     if let Ok((_, true)) = run_git_status(repo_path, &["rev-parse", "--verify", "master"]) {
+        return Ok("master".to_string());
+    }
+
+    // Fallback: check remote tracking branches (for bare repos before worktree creation)
+    if let Ok((_, true)) = run_git_status(
+        repo_path,
+        &["rev-parse", "--verify", "refs/remotes/origin/main"],
+    ) {
+        return Ok("main".to_string());
+    }
+    if let Ok((_, true)) = run_git_status(
+        repo_path,
+        &["rev-parse", "--verify", "refs/remotes/origin/master"],
+    ) {
         return Ok("master".to_string());
     }
 
@@ -440,35 +454,6 @@ pub async fn abort_merge(worktree_path: String) -> Result<(), String> {
     .await
 }
 
-/// Detect the default branch from a bare repo by checking origin refs.
-fn detect_default_branch(bare_path: &str) -> Result<String, String> {
-    // Try symbolic-ref of origin/HEAD first (expected to fail if origin/HEAD is not set)
-    if let Ok((output, true)) =
-        run_git_status(bare_path, &["symbolic-ref", "refs/remotes/origin/HEAD"])
-    {
-        let trimmed = output.trim();
-        if let Some(branch) = trimmed.strip_prefix("refs/remotes/origin/") {
-            return Ok(branch.to_string());
-        }
-    }
-
-    // Fallback: check if remote tracking branches exist for main or master
-    if let Ok((_, true)) = run_git_status(
-        bare_path,
-        &["rev-parse", "--verify", "refs/remotes/origin/main"],
-    ) {
-        return Ok("main".to_string());
-    }
-    if let Ok((_, true)) = run_git_status(
-        bare_path,
-        &["rev-parse", "--verify", "refs/remotes/origin/master"],
-    ) {
-        return Ok("master".to_string());
-    }
-
-    Ok("main".to_string())
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushResult {
     pub success: bool,
@@ -642,7 +627,7 @@ fn clone_bare_worktree_inner(
     run_git(project_str, &["fetch", "origin"])?;
 
     // Detect default branch
-    let default_branch = detect_default_branch(project_str)?;
+    let default_branch = get_default_branch_inner(project_str)?;
     log::info!("Detected default branch: {default_branch}");
 
     // Create worktree for default branch
