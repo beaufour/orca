@@ -1190,7 +1190,7 @@ fn send_prompt_to_session(session_id: &str, prompt: &str, tool: &str) -> Result<
     if !session_ready {
         return Err(format!(
             "{tool} not ready in tmux session '{tmux_name}' after {}s",
-            max_attempts as u64 * 400 / 1000
+            max_attempts as u64 * delay.as_millis() as u64 / 1000
         ));
     }
 
