@@ -282,6 +282,10 @@ fn create_bare_worktree(
     crate::command::run_cmd("git", effective_path, &git_args)
         .map_err(|e| format!("Failed to create worktree: {e}"))?;
 
+    // Run setup-worktree.sh if it exists at the repo root
+    let root_str = bare_root.to_string_lossy().to_string();
+    crate::git::run_setup_worktree_script(&root_str, &wt_str);
+
     Ok(Some((
         wt_str,
         effective_path.to_string(),
@@ -1273,52 +1277,8 @@ fn find_worktree_in_bare(bare_path: &str) -> Result<String, String> {
     Err(format!("No worktrees found in bare repo at {bare_path}"))
 }
 
-/// Find the worktree for the default branch (main/master) in a bare repo.
-/// `any_worktree` should be a path inside the repo (used to run git commands).
 fn find_default_branch_worktree(any_worktree: &str) -> Result<String, String> {
-    let output = new_command("git")
-        .current_dir(any_worktree)
-        .args(["worktree", "list", "--porcelain"])
-        .output()
-        .map_err(|e| format!("Failed to list worktrees: {e}"))?;
-
-    if !output.status.success() {
-        return Err("Failed to list worktrees".to_string());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let worktrees = crate::git::parse_worktree_list(&stdout);
-
-    // Determine default branch name
-    let default_branch = new_command("git")
-        .current_dir(any_worktree)
-        .args(["symbolic-ref", "refs/remotes/origin/HEAD"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| {
-            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            s.strip_prefix("refs/remotes/origin/").map(str::to_string)
-        })
-        .unwrap_or_else(|| "main".to_string());
-
-    // Find the worktree on the default branch
-    if let Some(wt) = worktrees.iter().find(|w| w.branch == default_branch) {
-        return Ok(wt.path.clone());
-    }
-    // Fallback: try "master" if default was "main" or vice versa
-    let fallback = if default_branch == "main" {
-        "master"
-    } else {
-        "main"
-    };
-    if let Some(wt) = worktrees.iter().find(|w| w.branch == fallback) {
-        return Ok(wt.path.clone());
-    }
-
-    Err(format!(
-        "No worktree found for default branch '{default_branch}'"
-    ))
+    crate::git::find_default_branch_worktree(any_worktree)
 }
 
 #[tauri::command]

@@ -117,6 +117,10 @@ pub async fn add_worktree(repo_path: String, branch: String) -> Result<String, S
             &["worktree", "add", &worktree_str, "-b", &branch],
         )?;
 
+        // Run setup-worktree.sh if it exists at the repo root
+        let root = worktree_dir.to_string_lossy().to_string();
+        run_setup_worktree_script(&root, &worktree_str);
+
         Ok(worktree_str)
     })
     .await
@@ -801,6 +805,86 @@ fn find_repo_root(path: &str) -> Result<String, String> {
     run_git(&cwd, &["rev-parse", "--git-common-dir"])
         .map_err(|_| format!("Not a git repository: {cwd}"))?;
     Ok(cwd)
+}
+
+/// If a `setup-worktree.sh` script exists at the repo root, run it with
+/// the path to the default (main/master) branch worktree as its argument.
+/// This lets repos automate new-worktree initialization (installing deps,
+/// copying dot-files, etc.).
+pub fn run_setup_worktree_script(repo_root: &str, new_worktree_path: &str) {
+    let root = Path::new(repo_root);
+    let script = root.join("setup-worktree.sh");
+    if !script.is_file() {
+        return;
+    }
+
+    // Find the default branch worktree to pass as argument
+    let Ok(main_path) = find_default_branch_worktree(repo_root) else {
+        log::warn!("setup-worktree.sh exists but could not determine default branch worktree");
+        return;
+    };
+
+    let script_str = script.to_string_lossy();
+    log::info!("Running setup-worktree.sh in {new_worktree_path} with main_path={main_path}");
+
+    match new_command("sh")
+        .args([script_str.as_ref(), &main_path])
+        .current_dir(new_worktree_path)
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            log::info!("setup-worktree.sh succeeded: {}", stdout.trim());
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            log::error!(
+                "setup-worktree.sh failed (exit {}): {}",
+                output.status,
+                stderr.trim()
+            );
+        }
+        Err(e) => {
+            log::error!("Failed to run setup-worktree.sh: {e}");
+        }
+    }
+}
+
+/// Find the worktree for the default branch (main/master).
+/// `repo_path` should be a path inside the repo (used to run git commands).
+pub fn find_default_branch_worktree(repo_path: &str) -> Result<String, String> {
+    let output = run_git(repo_path, &["worktree", "list", "--porcelain"])?;
+    let worktrees = parse_worktree_list(&output);
+
+    // Determine default branch name from origin/HEAD, falling back to main/master
+    let default_branch = new_command("git")
+        .current_dir(repo_path)
+        .args(["symbolic-ref", "refs/remotes/origin/HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            s.strip_prefix("refs/remotes/origin/").map(str::to_string)
+        })
+        .unwrap_or_else(|| "main".to_string());
+
+    if let Some(wt) = worktrees.iter().find(|w| w.branch == default_branch) {
+        return Ok(wt.path.clone());
+    }
+    // Fallback: try "master" if default was "main" or vice versa
+    let fallback = if default_branch == "main" {
+        "master"
+    } else {
+        "main"
+    };
+    if let Some(wt) = worktrees.iter().find(|w| w.branch == fallback) {
+        return Ok(wt.path.clone());
+    }
+
+    Err(format!(
+        "No worktree found for default branch '{default_branch}'"
+    ))
 }
 
 /// Walk up from `path` looking for a directory containing `.bare/`.
