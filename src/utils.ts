@@ -1,3 +1,4 @@
+import type React from "react";
 import type { AttentionStatus } from "./types";
 
 export const ATTENTION_CONFIG: Record<AttentionStatus, { label: string; className: string }> = {
@@ -169,6 +170,18 @@ export function validateBranchName(name: string): string | null {
   // eslint-disable-next-line no-control-regex
   if (/[\x00-\x1f\x7f]/.test(name)) return "Contains control characters";
   return null;
+}
+
+/** Convert a hex color (without '#') to CSS properties for a tinted label. */
+export function labelStyle(color: string): React.CSSProperties {
+  const r = parseInt(color.slice(0, 2), 16);
+  const g = parseInt(color.slice(2, 4), 16);
+  const b = parseInt(color.slice(4, 6), 16);
+  return {
+    backgroundColor: `rgba(${r}, ${g}, ${b}, 0.2)`,
+    color: `#${color}`,
+    borderColor: `rgba(${r}, ${g}, ${b}, 0.4)`,
+  };
 }
 
 export const SCROLL_SPEED_KEY = "orca-scroll-speed";
