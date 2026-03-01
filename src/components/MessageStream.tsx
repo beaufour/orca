@@ -77,12 +77,18 @@ export function MessageStream({
             })
               .then((msgs) => setMessages(msgs))
               .catch((err) => console.error("Failed to refresh messages:", err));
-          } else if ((data as { session_id?: string }).session_id === session.id) {
+          } else if (
+            "session_id" in data &&
+            data.session_id === session.id &&
+            "id" in data &&
+            "role" in data
+          ) {
             setMessages((prev) => [...prev, data as unknown as RemoteMessage]);
           }
         } else if (event_type === "status" && isClaude && data) {
-          const status = (data as { status?: string }).status;
-          if (status) setAgentStatus(status);
+          if ("status" in data && typeof data.status === "string") {
+            setAgentStatus(data.status);
+          }
         }
       },
     );
