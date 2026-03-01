@@ -267,10 +267,11 @@ pub async fn oc_respond_to_permission(
 #[tauri::command]
 pub async fn oc_subscribe_events(
     app: tauri::AppHandle,
+    handles: tauri::State<'_, remote_common::SseHandles>,
     server_url: String,
     password: String,
 ) -> Result<(), String> {
     let client = build_client(&password)?;
     let url = format!("{}/event", remote_common::normalize_url(&server_url));
-    remote_common::subscribe_sse(&app, &client, &url, "oc-event").await
+    remote_common::subscribe_sse(&app, &handles, &client, &url, "oc-event").await
 }

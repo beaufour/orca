@@ -179,6 +179,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(SentryEnabled(sentry_flag))
         .manage(pty::PtyManager::default())
+        .manage(remote_common::SseHandles::default())
         .setup(|app| {
             let handle = app.handle();
 

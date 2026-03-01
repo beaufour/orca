@@ -131,10 +131,11 @@ pub async fn cr_get_status(server_url: String, token: String) -> Result<CrStatus
 #[tauri::command]
 pub async fn cr_subscribe_events(
     app: tauri::AppHandle,
+    handles: tauri::State<'_, remote_common::SseHandles>,
     server_url: String,
     token: String,
 ) -> Result<(), String> {
     let client = build_client(&token)?;
     let url = format!("{}/events", remote_common::normalize_url(&server_url));
-    remote_common::subscribe_sse(&app, &client, &url, "cr-event").await
+    remote_common::subscribe_sse(&app, &handles, &client, &url, "cr-event").await
 }

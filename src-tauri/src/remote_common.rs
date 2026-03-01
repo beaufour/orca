@@ -1,8 +1,27 @@
 use futures::StreamExt;
 use reqwest::header::HeaderMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::Duration;
 use tauri::Emitter;
+
+/// Managed state that tracks active SSE stream tasks so they can be
+/// aborted when a new subscription replaces an old one.
+#[derive(Default)]
+pub struct SseHandles {
+    handles: Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>,
+}
+
+impl SseHandles {
+    /// Store a handle for `key`, aborting any previous handle under the same key.
+    pub fn insert(&self, key: String, handle: tauri::async_runtime::JoinHandle<()>) {
+        let mut map = self.handles.lock().expect("SseHandles lock poisoned");
+        if let Some(old) = map.insert(key, handle) {
+            old.abort();
+        }
+    }
+}
 
 /// SSE event emitted to frontend (shared by all remote backends).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,8 +73,11 @@ pub fn parse_sse_event(text: &str) -> Option<SseEvent> {
 /// Connect to an SSE endpoint and emit parsed events to the Tauri frontend.
 ///
 /// `event_name` is the Tauri event name (e.g. "cr-event" or "oc-event").
+/// Any previous SSE stream for the same `event_name` is aborted before
+/// starting the new one.
 pub async fn subscribe_sse(
     app: &tauri::AppHandle,
+    handles: &SseHandles,
     client: &reqwest::Client,
     url: &str,
     event_name: &str,
@@ -74,9 +96,9 @@ pub async fn subscribe_sse(
     }
 
     let app_handle = app.clone();
-    let event_name = event_name.to_string();
+    let event_name_owned = event_name.to_string();
     let url_for_log = url.to_string();
-    tauri::async_runtime::spawn(async move {
+    let handle = tauri::async_runtime::spawn(async move {
         let mut stream = resp.bytes_stream();
         let mut buffer = String::new();
 
@@ -90,7 +112,7 @@ pub async fn subscribe_sse(
                         buffer = buffer[end + 2..].to_string();
 
                         if let Some(event) = parse_sse_event(&event_text) {
-                            let _ = app_handle.emit(&event_name, &event);
+                            let _ = app_handle.emit(&event_name_owned, &event);
                         }
                     }
                 }
@@ -103,6 +125,8 @@ pub async fn subscribe_sse(
 
         log::info!("SSE stream ended for {url_for_log}");
     });
+
+    handles.insert(event_name.to_string(), handle);
 
     Ok(())
 }
