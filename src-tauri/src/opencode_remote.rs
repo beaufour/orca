@@ -1,7 +1,6 @@
-use futures::StreamExt;
+use crate::remote_common;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
-use tauri::Emitter;
 
 fn build_client(password: &str) -> Result<reqwest::Client, String> {
     let credentials = base64::Engine::encode(
@@ -14,14 +13,7 @@ fn build_client(password: &str) -> Result<reqwest::Client, String> {
         HeaderValue::from_str(&format!("Basic {credentials}"))
             .map_err(|e| format!("Invalid auth header: {e}"))?,
     );
-    reqwest::Client::builder()
-        .default_headers(headers)
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {e}"))
-}
-
-fn normalize_url(server_url: &str) -> String {
-    server_url.trim_end_matches('/').to_string()
+    remote_common::build_client(headers)
 }
 
 // --- Types matching OpenCode REST API ---
@@ -60,9 +52,6 @@ pub struct OcMessage {
     pub session_id: String,
 }
 
-// Note: OcPermission is returned by oc_respond_to_permission but parsed client-side
-// from SSE events, so it uses serde Deserialize.
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OcCreateSessionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,14 +70,6 @@ pub struct OcPermissionAction {
     pub action: String, // "allow" or "deny"
 }
 
-// --- SSE Event ---
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OcSseEvent {
-    pub event_type: String,
-    pub data: serde_json::Value,
-}
-
 // --- Tauri Commands ---
 
 #[tauri::command]
@@ -97,7 +78,7 @@ pub async fn oc_list_sessions(
     password: String,
 ) -> Result<Vec<OcSession>, String> {
     let client = build_client(&password)?;
-    let url = format!("{}/session", normalize_url(&server_url));
+    let url = format!("{}/session", remote_common::normalize_url(&server_url));
     let resp = client
         .get(&url)
         .send()
@@ -123,7 +104,7 @@ pub async fn oc_create_session(
     initial_message: Option<String>,
 ) -> Result<OcSession, String> {
     let client = build_client(&password)?;
-    let base = normalize_url(&server_url);
+    let base = remote_common::normalize_url(&server_url);
 
     let body = OcCreateSessionRequest {
         title,
@@ -177,7 +158,10 @@ pub async fn oc_delete_session(
     session_id: String,
 ) -> Result<(), String> {
     let client = build_client(&password)?;
-    let url = format!("{}/session/{session_id}", normalize_url(&server_url));
+    let url = format!(
+        "{}/session/{session_id}",
+        remote_common::normalize_url(&server_url)
+    );
     let resp = client
         .delete(&url)
         .send()
@@ -203,7 +187,7 @@ pub async fn oc_send_message(
     let client = build_client(&password)?;
     let url = format!(
         "{}/session/{session_id}/message",
-        normalize_url(&server_url)
+        remote_common::normalize_url(&server_url)
     );
     let body = OcSendMessageRequest { message };
     let resp = client
@@ -231,7 +215,7 @@ pub async fn oc_get_messages(
     let client = build_client(&password)?;
     let url = format!(
         "{}/session/{session_id}/message",
-        normalize_url(&server_url)
+        remote_common::normalize_url(&server_url)
     );
     let resp = client
         .get(&url)
@@ -261,7 +245,7 @@ pub async fn oc_respond_to_permission(
     let client = build_client(&password)?;
     let url = format!(
         "{}/session/{session_id}/permissions/{permission_id}",
-        normalize_url(&server_url)
+        remote_common::normalize_url(&server_url)
     );
     let body = OcPermissionAction { action };
     let resp = client
@@ -287,76 +271,6 @@ pub async fn oc_subscribe_events(
     password: String,
 ) -> Result<(), String> {
     let client = build_client(&password)?;
-    let url = format!("{}/event", normalize_url(&server_url));
-
-    let resp = client
-        .get(&url)
-        .header("Accept", "text/event-stream")
-        .send()
-        .await
-        .map_err(|e| format!("SSE connection failed: {e}"))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("SSE server returned {status}: {body}"));
-    }
-
-    // Spawn a background task to read the SSE stream
-    let app_handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let mut stream = resp.bytes_stream();
-        let mut buffer = String::new();
-
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(bytes) => {
-                    buffer.push_str(&String::from_utf8_lossy(&bytes));
-
-                    // Parse SSE events from buffer
-                    while let Some(end) = buffer.find("\n\n") {
-                        let event_text = buffer[..end].to_string();
-                        buffer = buffer[end + 2..].to_string();
-
-                        if let Some(event) = parse_sse_event(&event_text) {
-                            let _ = app_handle.emit("oc-event", &event);
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::error!("SSE stream error: {e}");
-                    break;
-                }
-            }
-        }
-
-        log::info!("SSE stream ended for {}", normalize_url(&server_url));
-    });
-
-    Ok(())
-}
-
-fn parse_sse_event(text: &str) -> Option<OcSseEvent> {
-    let mut event_type = String::from("message");
-    let mut data_lines = Vec::new();
-
-    for line in text.lines() {
-        if let Some(rest) = line.strip_prefix("event:") {
-            event_type = rest.trim().to_string();
-        } else if let Some(rest) = line.strip_prefix("data:") {
-            data_lines.push(rest.trim().to_string());
-        }
-    }
-
-    if data_lines.is_empty() {
-        return None;
-    }
-
-    let data_str = data_lines.join("\n");
-    let data: serde_json::Value = match serde_json::from_str(&data_str) {
-        Ok(v) => v,
-        Err(_) => serde_json::Value::String(data_str),
-    };
-
-    Some(OcSseEvent { event_type, data })
+    let url = format!("{}/event", remote_common::normalize_url(&server_url));
+    remote_common::subscribe_sse(&app, &client, &url, "oc-event").await
 }

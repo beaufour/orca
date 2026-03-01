@@ -8,6 +8,7 @@ mod models;
 mod opencode_remote;
 mod orca_db;
 mod pty;
+mod remote_common;
 mod tmux;
 
 use crate::command::new_command;
