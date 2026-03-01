@@ -282,6 +282,10 @@ fn create_bare_worktree(
     crate::command::run_cmd("git", effective_path, &git_args)
         .map_err(|e| format!("Failed to create worktree: {e}"))?;
 
+    // Run setup-worktree.sh if it exists at the repo root
+    let root_str = bare_root.to_string_lossy().to_string();
+    crate::git::run_setup_worktree_script(&root_str, &wt_str);
+
     Ok(Some((
         wt_str,
         effective_path.to_string(),
