@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import {
   useQuery,
   useMutation,
@@ -166,7 +166,7 @@ export function usePrWorkflowActions({
   }, [removingSessionId, invalidateAll]);
 
   // PR status polling
-  useQuery<PrInfo>({
+  const { data: prStatusData } = useQuery<PrInfo>({
     queryKey: ["prStatus", repoPath, session.worktree_branch],
     queryFn: () =>
       invoke("check_pr_status", {
@@ -175,34 +175,43 @@ export function usePrWorkflowActions({
       }),
     refetchInterval: 30_000,
     enabled: enabled && prState === "pr_open",
-    select: (data) => {
-      if (data.state === "MERGED" && prState === "pr_open") {
-        setPrState("pr_merged");
-        setPrInfo(data);
-        // Persist merged state
-        invoke("store_session_pr_info", {
-          sessionId: session.id,
-          prUrl: data.url,
-          prNumber: data.number,
-          prState: "MERGED",
-        }).catch((err) => console.warn("Failed to store PR merged state:", err));
-        // Best-effort update main
-        invoke<PushResult>("update_main_branch", {
-          repoPath,
-          mainBranch: defaultBranch ?? "main",
-        })
-          .then((result) => {
-            if (!result.success) {
-              setMainUpdateWarning(result.message);
-            }
-          })
-          .catch((err) => {
-            setMainUpdateWarning(String(err));
-          });
-      }
-      return data;
-    },
   });
+
+  // React to PR merge — runs when polling detects MERGED state
+  const handledMergeRef = useRef(false);
+  useEffect(() => {
+    if (!prStatusData || prStatusData.state !== "MERGED" || prState !== "pr_open") {
+      handledMergeRef.current = false;
+      return;
+    }
+    if (handledMergeRef.current) return;
+    handledMergeRef.current = true;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting to polled external data
+    setPrState("pr_merged");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPrInfo(prStatusData);
+    // Persist merged state
+    invoke("store_session_pr_info", {
+      sessionId: session.id,
+      prUrl: prStatusData.url,
+      prNumber: prStatusData.number,
+      prState: "MERGED",
+    }).catch((err) => console.warn("Failed to store PR merged state:", err));
+    // Best-effort update main
+    invoke<PushResult>("update_main_branch", {
+      repoPath,
+      mainBranch: defaultBranch ?? "main",
+    })
+      .then((result) => {
+        if (!result.success) {
+          setMainUpdateWarning(result.message);
+        }
+      })
+      .catch((err) => {
+        setMainUpdateWarning(String(err));
+      });
+  }, [prStatusData, prState, session.id, repoPath, defaultBranch]);
 
   // Remove session mutation (background)
   const removeMutation = useMutation({
