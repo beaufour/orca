@@ -469,16 +469,6 @@ fn detect_default_branch(bare_path: &str) -> Result<String, String> {
     Ok("main".to_string())
 }
 
-/// Expand `~/` prefix to the user's home directory.
-fn expand_home(path: &str) -> Result<String, String> {
-    if let Some(rest) = path.strip_prefix("~/") {
-        let home = dirs::home_dir().ok_or("Could not determine home directory")?;
-        Ok(home.join(rest).to_string_lossy().to_string())
-    } else {
-        Ok(path.to_string())
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushResult {
     pub success: bool,
@@ -580,7 +570,9 @@ pub async fn clone_bare_worktree_repo(
             return Err("Project name cannot contain path separators".to_string());
         }
 
-        let parent = expand_home(parent_dir.trim())?;
+        let parent = expand_tilde(parent_dir.trim())
+            .to_string_lossy()
+            .to_string();
         let parent_path = Path::new(&parent);
         if !parent_path.is_dir() {
             return Err(format!("Parent directory does not exist: {parent}"));
@@ -664,7 +656,7 @@ fn clone_bare_worktree_inner(
 #[tauri::command]
 pub async fn init_bare_repo(directory: String) -> Result<String, String> {
     spawn_git(move || {
-        let expanded = expand_home(directory.trim())?;
+        let expanded = expand_tilde(directory.trim()).to_string_lossy().to_string();
         let project_path = Path::new(&expanded);
 
         // Create directory if it doesn't exist
