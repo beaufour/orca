@@ -11,6 +11,7 @@ export const queryKeys = {
   summary: (sessionId: string) => ["summary", sessionId] as const,
   issues: (repoPath: string) => ["issues", repoPath] as const,
   githubUsername: (repoPath: string) => ["githubUsername", repoPath] as const,
+  prStatus: (repoPath: string, branch: string) => ["prStatus", repoPath, branch] as const,
   globalRemoteUrl: ["globalRemoteUrl"] as const,
   globalRemoteToken: ["globalRemoteToken"] as const,
 };

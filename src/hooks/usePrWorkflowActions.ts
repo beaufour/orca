@@ -9,6 +9,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { Session, WorktreeStatus, PrInfo, RebaseResult, PushResult } from "../types";
+import { queryKeys } from "../queryKeys";
 import { trackEvent } from "../analytics";
 
 export type PrState =
@@ -112,7 +113,7 @@ export function usePrWorkflowActions({
     session.worktree_branch !== defaultBranch;
 
   const { data: worktreeStatus, isFetching: statusLoading } = useQuery<WorktreeStatus>({
-    queryKey: ["worktreeStatus", session.worktree_path],
+    queryKey: queryKeys.worktreeStatus(session.worktree_path ?? ""),
     queryFn: () =>
       invoke("check_worktree_status", {
         repoPath,
@@ -131,8 +132,8 @@ export function usePrWorkflowActions({
   const hasRemoveWarnings = removeWarnings.length > 0;
 
   const invalidateAll = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["worktrees", repoPath] });
-    queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.worktrees(repoPath) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
     for (const key of extraInvalidateKeys ?? []) {
       queryClient.invalidateQueries({ queryKey: key as readonly unknown[] });
     }
@@ -167,7 +168,7 @@ export function usePrWorkflowActions({
 
   // PR status polling
   const { data: prStatusData } = useQuery<PrInfo>({
-    queryKey: ["prStatus", repoPath, session.worktree_branch],
+    queryKey: queryKeys.prStatus(repoPath, session.worktree_branch),
     queryFn: () =>
       invoke("check_pr_status", {
         repoPath,
@@ -380,7 +381,7 @@ export function usePrWorkflowActions({
     },
     onSuccess: async (sessionId) => {
       setPrState(prInfo ? "pr_open" : "idle");
-      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
       if (onSelectSession) {
         const sessions = await invoke<Session[]>("get_sessions", {
           groupPath: session.group_path,
