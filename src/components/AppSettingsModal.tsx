@@ -6,6 +6,7 @@ import { storageGet, storageSet, SCROLL_SPEED_KEY, SCROLL_SPEED_DEFAULT } from "
 import { setAnalyticsEnabled } from "../analytics";
 import { setSentryEnabled } from "../sentry";
 import { queryKeys } from "../queryKeys";
+import { Modal } from "./Modal";
 
 interface AppSettingsModalProps {
   onClose: () => void;
@@ -80,93 +81,91 @@ export function AppSettingsModal({ onClose }: AppSettingsModalProps) {
   };
 
   return (
-    <div className="modal-backdrop" onClick={handleClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <h3>App Settings</h3>
+    <Modal onClose={handleClose}>
+      <h3>App Settings</h3>
 
-        <div className="app-settings-field">
-          <label className="app-settings-label">
-            Scroll Speed
-            <span className="app-settings-value">{scrollSpeed.toFixed(1)}</span>
-          </label>
-          <input
-            type="range"
-            className="app-settings-range"
-            min="0.1"
-            max="10.0"
-            step="0.1"
-            value={scrollSpeed}
-            onChange={(e) => handleScrollSpeedChange(parseFloat(e.target.value))}
-          />
-          <div className="app-settings-range-labels">
-            <span>Slow</span>
-            <span>Fast</span>
-          </div>
-        </div>
-
-        <div className="app-settings-field">
-          <label className="settings-toggle">
-            <input
-              type="checkbox"
-              checked={analyticsEnabled}
-              onChange={(e) => handleAnalyticsToggle(e.target.checked)}
-            />
-            <span className="settings-toggle-label">
-              Help improve Orca by sharing anonymous usage data and crash reports
-            </span>
-          </label>
-          <p className="settings-toggle-description">
-            Anonymous usage statistics and crash reports to help improve Orca. No personal data is
-            sent.{" "}
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                openUrl("https://posthog.com/privacy");
-              }}
-            >
-              Learn more
-            </a>
-          </p>
-        </div>
-
-        <div className="app-settings-field">
-          <label className="app-settings-label">Remote Server</label>
-          <p className="settings-toggle-description" style={{ marginTop: 0 }}>
-            Global URL and auth token for remote backends (OpenCode Remote, Claude Remote). Can be
-            overridden per-group.
-          </p>
-          <label className="modal-label">Server URL</label>
-          <input
-            className="wt-input"
-            type="text"
-            placeholder="https://agent-remote.example.workers.dev"
-            value={remoteServerUrl}
-            onChange={(e) => setRemoteServerUrl(e.target.value)}
-            spellCheck={false}
-          />
-          <label className="modal-label" style={{ marginTop: 8 }}>
-            Auth Token
-          </label>
-          <input
-            className="wt-input"
-            type="password"
-            placeholder="Enter token"
-            value={remoteAuthToken}
-            onChange={(e) => setRemoteAuthToken(e.target.value)}
-            spellCheck={false}
-          />
-        </div>
-
-        <div className="modal-actions">
-          <button className="wt-btn" onClick={handleReset}>
-            Reset to defaults
-          </button>
-          <button className="wt-btn wt-btn-add" onClick={handleClose}>
-            Done
-          </button>
+      <div className="app-settings-field">
+        <label className="app-settings-label">
+          Scroll Speed
+          <span className="app-settings-value">{scrollSpeed.toFixed(1)}</span>
+        </label>
+        <input
+          type="range"
+          className="app-settings-range"
+          min="0.1"
+          max="10.0"
+          step="0.1"
+          value={scrollSpeed}
+          onChange={(e) => handleScrollSpeedChange(parseFloat(e.target.value))}
+        />
+        <div className="app-settings-range-labels">
+          <span>Slow</span>
+          <span>Fast</span>
         </div>
       </div>
-    </div>
+
+      <div className="app-settings-field">
+        <label className="settings-toggle">
+          <input
+            type="checkbox"
+            checked={analyticsEnabled}
+            onChange={(e) => handleAnalyticsToggle(e.target.checked)}
+          />
+          <span className="settings-toggle-label">
+            Help improve Orca by sharing anonymous usage data and crash reports
+          </span>
+        </label>
+        <p className="settings-toggle-description">
+          Anonymous usage statistics and crash reports to help improve Orca. No personal data is
+          sent.{" "}
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              openUrl("https://posthog.com/privacy");
+            }}
+          >
+            Learn more
+          </a>
+        </p>
+      </div>
+
+      <div className="app-settings-field">
+        <label className="app-settings-label">Remote Server</label>
+        <p className="settings-toggle-description" style={{ marginTop: 0 }}>
+          Global URL and auth token for remote backends (OpenCode Remote, Claude Remote). Can be
+          overridden per-group.
+        </p>
+        <label className="modal-label">Server URL</label>
+        <input
+          className="wt-input"
+          type="text"
+          placeholder="https://agent-remote.example.workers.dev"
+          value={remoteServerUrl}
+          onChange={(e) => setRemoteServerUrl(e.target.value)}
+          spellCheck={false}
+        />
+        <label className="modal-label" style={{ marginTop: 8 }}>
+          Auth Token
+        </label>
+        <input
+          className="wt-input"
+          type="password"
+          placeholder="Enter token"
+          value={remoteAuthToken}
+          onChange={(e) => setRemoteAuthToken(e.target.value)}
+          spellCheck={false}
+        />
+      </div>
+
+      <div className="modal-actions">
+        <button className="wt-btn" onClick={handleReset}>
+          Reset to defaults
+        </button>
+        <button className="wt-btn wt-btn-add" onClick={handleClose}>
+          Done
+        </button>
+      </div>
+    </Modal>
   );
 }
