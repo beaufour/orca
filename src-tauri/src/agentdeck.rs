@@ -1257,24 +1257,12 @@ fn find_worktree_in_bare(bare_path: &str) -> Result<String, String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     log::debug!("git worktree list succeeded: {}", stdout.trim());
-    let mut found_bare = false;
 
-    for line in stdout.lines() {
-        if line == "bare" {
-            found_bare = true;
-            continue;
-        }
-        if let Some(path) = line.strip_prefix("worktree ") {
-            if found_bare {
-                // This is the first non-bare worktree
-                return Ok(path.to_string());
-            }
-            // Reset bare flag for next entry
-            found_bare = false;
-        }
-    }
-
-    Err(format!("No worktrees found in bare repo at {bare_path}"))
+    let worktrees = crate::git::parse_worktree_list(&stdout);
+    worktrees
+        .first()
+        .map(|w| w.path.clone())
+        .ok_or_else(|| format!("No worktrees found in bare repo at {bare_path}"))
 }
 
 fn find_default_branch_worktree(any_worktree: &str) -> Result<String, String> {
