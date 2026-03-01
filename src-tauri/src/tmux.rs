@@ -73,6 +73,11 @@ pub fn scroll_tmux_pane(tmux_session: String, direction: String, lines: u32) -> 
     log::debug!(
         "scroll_tmux_pane: tmux_session={tmux_session}, direction={direction}, lines={lines}"
     );
+    if direction != "up" && direction != "down" {
+        return Err(format!(
+            "Invalid scroll direction: '{direction}' (expected 'up' or 'down')"
+        ));
+    }
     if direction == "up" {
         // Enter copy mode with auto-exit at bottom (-e)
         if let Err(e) = new_command("tmux")
