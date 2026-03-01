@@ -1,6 +1,7 @@
 use rusqlite::Connection;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 /// Settings for a group, stored in Orca's own DB.
 #[derive(Debug, Clone)]
@@ -16,22 +17,25 @@ pub struct GroupSettings {
 }
 
 /// Orca's own SQLite database for data that shouldn't be stored in agent-deck's DB.
+///
+/// Uses a persistent connection behind an `Arc<Mutex>` so all Tauri command
+/// handlers share a single connection instead of opening one per call.
 #[derive(Clone)]
 pub struct OrcaDb {
-    db_path: PathBuf,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl OrcaDb {
     /// Initialize Orca's database: create directory, open DB, create tables,
-    /// and run one-time migration from agent-deck's DB.
+    /// run schema migrations, and run one-time data migration from agent-deck's DB.
     pub fn init(app_data_dir: &Path) -> Result<Self, String> {
         std::fs::create_dir_all(app_data_dir)
             .map_err(|e| format!("Failed to create app data dir: {e}"))?;
 
         let db_path = app_data_dir.join("orca.db");
-        let orca_db = Self { db_path };
+        let conn = Connection::open(&db_path)
+            .map_err(|e| format!("Failed to open Orca DB at {}: {e}", db_path.display()))?;
 
-        let conn = orca_db.open()?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS group_settings (
                 group_path            TEXT PRIMARY KEY,
@@ -60,22 +64,35 @@ impl OrcaDb {
         )
         .map_err(|e| format!("Failed to create Orca DB tables: {e}"))?;
 
-        orca_db.run_migration_v1(&conn)?;
+        // Run all column migrations once at init, not per-query.
+        Self::ensure_merge_workflow_column(&conn)?;
+        Self::ensure_worktree_columns(&conn)?;
+        Self::ensure_backend_columns(&conn)?;
+        Self::ensure_dismissed_column(&conn)?;
+
+        let orca_db = Self {
+            conn: Arc::new(Mutex::new(conn)),
+        };
+
+        // Data migration from agent-deck DB (uses the locked connection)
+        {
+            let conn = orca_db
+                .conn
+                .lock()
+                .map_err(|e| format!("Lock error: {e}"))?;
+            orca_db.run_migration_v1(&conn)?;
+        }
 
         Ok(orca_db)
     }
 
-    fn open(&self) -> Result<Connection, String> {
-        Connection::open(&self.db_path)
-            .map_err(|e| format!("Failed to open Orca DB at {}: {e}", self.db_path.display()))
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>, String> {
+        self.conn.lock().map_err(|e| format!("Lock error: {e}"))
     }
 
     /// Bulk read all group settings for merging into get_groups().
     pub fn get_all_group_settings(&self) -> Result<HashMap<String, GroupSettings>, String> {
-        let conn = self.open()?;
-        Self::ensure_merge_workflow_column(&conn)?;
-        Self::ensure_worktree_columns(&conn)?;
-        Self::ensure_backend_columns(&conn)?;
+        let conn = self.lock()?;
         let mut stmt = conn
             .prepare(
                 "SELECT group_path, github_issues_enabled, merge_workflow, \
@@ -125,10 +142,7 @@ impl OrcaDb {
         server_url: Option<&str>,
         server_password: Option<&str>,
     ) -> Result<(), String> {
-        let conn = self.open()?;
-        Self::ensure_merge_workflow_column(&conn)?;
-        Self::ensure_worktree_columns(&conn)?;
-        Self::ensure_backend_columns(&conn)?;
+        let conn = self.lock()?;
         conn.execute(
             "INSERT INTO group_settings (group_path, github_issues_enabled, merge_workflow, \
              worktree_command, component_depth, backend, server_url, server_password) \
@@ -156,8 +170,7 @@ impl OrcaDb {
         &self,
         group_path: &str,
     ) -> Result<Option<(String, u32)>, String> {
-        let conn = self.open()?;
-        Self::ensure_worktree_columns(&conn)?;
+        let conn = self.lock()?;
         let result = conn.query_row(
             "SELECT worktree_command, component_depth FROM group_settings WHERE group_path = ?1",
             [group_path],
@@ -224,8 +237,7 @@ impl OrcaDb {
 
     /// Get the server password for a group (kept separate from Group struct for security).
     pub fn get_server_password(&self, group_path: &str) -> Result<Option<String>, String> {
-        let conn = self.open()?;
-        Self::ensure_backend_columns(&conn)?;
+        let conn = self.lock()?;
         let result = conn.query_row(
             "SELECT server_password FROM group_settings WHERE group_path = ?1",
             [group_path],
@@ -271,7 +283,7 @@ impl OrcaDb {
 
     /// Bulk read all session prompts for merging into get_sessions().
     pub fn get_all_prompts(&self) -> Result<HashMap<String, String>, String> {
-        let conn = self.open()?;
+        let conn = self.lock()?;
         let mut stmt = conn
             .prepare("SELECT session_id, prompt FROM session_data WHERE prompt IS NOT NULL")
             .map_err(|e| e.to_string())?;
@@ -291,7 +303,7 @@ impl OrcaDb {
 
     /// Store a prompt for a session (upsert).
     pub fn store_prompt(&self, session_id: &str, prompt: &str) -> Result<(), String> {
-        let conn = self.open()?;
+        let conn = self.lock()?;
         conn.execute(
             "INSERT INTO session_data (session_id, prompt) VALUES (?1, ?2) \
              ON CONFLICT(session_id) DO UPDATE SET prompt = ?2",
@@ -307,7 +319,7 @@ impl OrcaDb {
         group_path: &str,
         session_ids: &[String],
     ) -> Result<(), String> {
-        let conn = self.open()?;
+        let conn = self.lock()?;
         conn.execute(
             "DELETE FROM group_settings WHERE group_path = ?1",
             [group_path],
@@ -323,7 +335,7 @@ impl OrcaDb {
 
     /// Clean up session data when a session is removed.
     pub fn delete_session_data(&self, session_id: &str) -> Result<(), String> {
-        let conn = self.open()?;
+        let conn = self.lock()?;
         conn.execute(
             "DELETE FROM session_data WHERE session_id = ?1",
             [session_id],
@@ -353,8 +365,7 @@ impl OrcaDb {
 
     /// Get all dismissed session IDs.
     pub fn get_dismissed_ids(&self) -> Result<Vec<String>, String> {
-        let conn = self.open()?;
-        Self::ensure_dismissed_column(&conn)?;
+        let conn = self.lock()?;
         let mut stmt = conn
             .prepare("SELECT session_id FROM session_data WHERE dismissed = 1")
             .map_err(|e| e.to_string())?;
@@ -370,8 +381,7 @@ impl OrcaDb {
 
     /// Set or clear the dismissed flag for a session (upsert).
     pub fn set_dismissed(&self, session_id: &str, dismissed: bool) -> Result<(), String> {
-        let conn = self.open()?;
-        Self::ensure_dismissed_column(&conn)?;
+        let conn = self.lock()?;
         conn.execute(
             "INSERT INTO session_data (session_id, dismissed) VALUES (?1, ?2) \
              ON CONFLICT(session_id) DO UPDATE SET dismissed = ?2",
@@ -383,8 +393,7 @@ impl OrcaDb {
 
     // ── Private metadata helpers ───────────────────────────────────
 
-    fn get_metadata(&self, key: &str) -> Result<Option<String>, String> {
-        let conn = self.open()?;
+    fn get_metadata_inner(conn: &Connection, key: &str) -> Result<Option<String>, String> {
         let result = conn.query_row("SELECT value FROM metadata WHERE key = ?1", [key], |row| {
             row.get::<_, String>(0)
         });
@@ -395,8 +404,7 @@ impl OrcaDb {
         }
     }
 
-    fn set_metadata(&self, key: &str, value: &str) -> Result<(), String> {
-        let conn = self.open()?;
+    fn set_metadata_inner(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
         conn.execute(
             "INSERT INTO metadata (key, value) VALUES (?1, ?2) \
              ON CONFLICT(key) DO UPDATE SET value = ?2",
@@ -406,8 +414,7 @@ impl OrcaDb {
         Ok(())
     }
 
-    fn delete_metadata(&self, key: &str) -> Result<(), String> {
-        let conn = self.open()?;
+    fn delete_metadata_inner(conn: &Connection, key: &str) -> Result<(), String> {
         conn.execute("DELETE FROM metadata WHERE key = ?1", [key])
             .map_err(|e| format!("Failed to delete metadata '{key}': {e}"))?;
         Ok(())
@@ -417,35 +424,45 @@ impl OrcaDb {
 
     /// Check if analytics is enabled (defaults to false).
     pub fn get_analytics_enabled(&self) -> Result<bool, String> {
-        Ok(self.get_metadata("analytics_enabled")?.as_deref() == Some("true"))
+        let conn = self.lock()?;
+        Ok(Self::get_metadata_inner(&conn, "analytics_enabled")?.as_deref() == Some("true"))
     }
 
     /// Set whether analytics is enabled.
     pub fn set_analytics_enabled(&self, enabled: bool) -> Result<(), String> {
-        self.set_metadata("analytics_enabled", if enabled { "true" } else { "false" })
+        let conn = self.lock()?;
+        Self::set_metadata_inner(
+            &conn,
+            "analytics_enabled",
+            if enabled { "true" } else { "false" },
+        )
     }
 
     // ── Global remote server settings ────────────────────────────────
 
     pub fn get_remote_server_url(&self) -> Result<Option<String>, String> {
-        self.get_metadata("remote_server_url")
+        let conn = self.lock()?;
+        Self::get_metadata_inner(&conn, "remote_server_url")
     }
 
     pub fn set_remote_server_url(&self, url: Option<&str>) -> Result<(), String> {
+        let conn = self.lock()?;
         match url.filter(|u| !u.is_empty()) {
-            Some(u) => self.set_metadata("remote_server_url", u),
-            None => self.delete_metadata("remote_server_url"),
+            Some(u) => Self::set_metadata_inner(&conn, "remote_server_url", u),
+            None => Self::delete_metadata_inner(&conn, "remote_server_url"),
         }
     }
 
     pub fn get_remote_auth_token(&self) -> Result<Option<String>, String> {
-        self.get_metadata("remote_auth_token")
+        let conn = self.lock()?;
+        Self::get_metadata_inner(&conn, "remote_auth_token")
     }
 
     pub fn set_remote_auth_token(&self, token: Option<&str>) -> Result<(), String> {
+        let conn = self.lock()?;
         match token.filter(|t| !t.is_empty()) {
-            Some(t) => self.set_metadata("remote_auth_token", t),
-            None => self.delete_metadata("remote_auth_token"),
+            Some(t) => Self::set_metadata_inner(&conn, "remote_auth_token", t),
+            None => Self::delete_metadata_inner(&conn, "remote_auth_token"),
         }
     }
 
@@ -456,8 +473,7 @@ impl OrcaDb {
         &self,
         group_path: &str,
     ) -> Result<(Option<String>, Option<String>), String> {
-        let conn = self.open()?;
-        Self::ensure_backend_columns(&conn)?;
+        let conn = self.lock()?;
 
         // Per-group values
         let (group_url, group_token) = match conn.query_row(
@@ -475,8 +491,8 @@ impl OrcaDb {
             Err(e) => return Err(format!("Failed to get group credentials: {e}")),
         };
 
-        let global_url = self.get_remote_server_url()?;
-        let global_token = self.get_remote_auth_token()?;
+        let global_url = Self::get_metadata_inner(&conn, "remote_server_url")?;
+        let global_token = Self::get_metadata_inner(&conn, "remote_auth_token")?;
 
         let url = group_url.filter(|u| !u.is_empty()).or(global_url);
         let token = group_token.filter(|t| !t.is_empty()).or(global_token);
@@ -603,7 +619,7 @@ impl OrcaDb {
     }
 }
 
-fn agent_deck_db_path() -> PathBuf {
+fn agent_deck_db_path() -> std::path::PathBuf {
     let home = dirs::home_dir().expect("could not find home directory");
     home.join(".agent-deck/profiles/default/state.db")
 }
@@ -626,12 +642,9 @@ mod tests {
     fn test_init_creates_tables() {
         let (db, _tmp) = setup();
 
-        // Verify we can open the DB and query each table without error
-        let conn = db.open().expect("open failed");
+        let conn = db.lock().expect("lock failed");
 
-        // Tables should exist and be queryable (may contain migrated data
-        // if an agent-deck DB exists on this machine, so we don't check
-        // exact counts -- just that the tables are accessible).
+        // Tables should exist and be queryable
         let count: i32 = conn
             .query_row("SELECT COUNT(*) FROM group_settings", [], |r| r.get(0))
             .expect("group_settings table missing");
