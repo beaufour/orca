@@ -74,6 +74,17 @@ function App() {
   const [remotePassword, setRemotePassword] = useState<string>("");
   const [remoteServerUrl, setRemoteServerUrl] = useState<string>("");
 
+  // Prevent action buttons from stealing focus from the terminal prompt
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest(".wt-btn")) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   // Load dismissed IDs from DB on startup
   useEffect(() => {
     invoke<string[]>("get_dismissed_ids")
