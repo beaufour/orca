@@ -135,30 +135,30 @@ pub fn is_waiting_for_input(tmux_session: &str) -> bool {
     };
 
     let text = String::from_utf8_lossy(&output.stdout);
+    let waiting = pane_shows_input_prompt(&text);
 
-    // Permission prompt
+    log::debug!("is_waiting_for_input: tmux_session={tmux_session}, result={waiting}");
+    waiting
+}
+
+/// Check if pane text contains a Claude Code input prompt.
+///
+/// Detects two patterns:
+/// 1. Permission prompt: text contains "Do you want to proceed?"
+/// 2. General input prompt: last non-empty line is or ends with `❯` or `>`
+fn pane_shows_input_prompt(text: &str) -> bool {
     if text.contains("Do you want to proceed?") {
-        log::debug!(
-            "is_waiting_for_input: tmux_session={tmux_session}, result=true (permission prompt)"
-        );
         return true;
     }
 
-    // Claude Code's general input prompt — check last non-empty line for ❯ or >
-    let waiting = text
-        .lines()
+    text.lines()
         .rev()
         .find(|line| !line.trim().is_empty())
         .map(|line| {
             let trimmed = line.trim();
             trimmed == "❯" || trimmed == ">" || trimmed.ends_with(" ❯") || trimmed.ends_with(" >")
         })
-        .unwrap_or(false);
-
-    log::debug!(
-        "is_waiting_for_input: tmux_session={tmux_session}, result={waiting} (general prompt)"
-    );
-    waiting
+        .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -191,4 +191,52 @@ pub fn list_tmux_sessions() -> Result<Vec<String>, String> {
 
     log::debug!("tmux list-sessions: {} sessions found", sessions.len());
     Ok(sessions)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prompt_permission_prompt() {
+        let text = "Some output\nDo you want to proceed?\n(Y)es / (N)o";
+        assert!(pane_shows_input_prompt(text));
+    }
+
+    #[test]
+    fn prompt_bare_arrow() {
+        assert!(pane_shows_input_prompt("❯"));
+        assert!(pane_shows_input_prompt(">"));
+    }
+
+    #[test]
+    fn prompt_arrow_with_prefix() {
+        assert!(pane_shows_input_prompt("claude ❯"));
+        assert!(pane_shows_input_prompt("project >"));
+    }
+
+    #[test]
+    fn prompt_arrow_with_trailing_whitespace() {
+        assert!(pane_shows_input_prompt("❯  \n\n"));
+        assert!(pane_shows_input_prompt("some output\n  ❯  \n  \n"));
+    }
+
+    #[test]
+    fn prompt_not_detected_for_regular_output() {
+        assert!(!pane_shows_input_prompt("Building project..."));
+        assert!(!pane_shows_input_prompt("test result: ok. 5 passed"));
+    }
+
+    #[test]
+    fn prompt_empty_text() {
+        assert!(!pane_shows_input_prompt(""));
+        assert!(!pane_shows_input_prompt("  \n  \n  "));
+    }
+
+    #[test]
+    fn prompt_arrow_not_at_end_of_line() {
+        // ❯ in the middle of a line should not match
+        assert!(!pane_shows_input_prompt("foo ❯ bar"));
+        assert!(!pane_shows_input_prompt("value > threshold"));
+    }
 }
