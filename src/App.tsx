@@ -355,6 +355,52 @@ function App() {
   const terminalOpen = selectedSession !== null || remoteSession !== null;
   const isRemoteView = remoteSession !== null;
 
+  const handleCreateRemoteSession = useCallback(
+    async (title: string, prompt: string | null) => {
+      if (!effectiveGroup) return;
+      try {
+        const [resolvedUrl, resolvedToken] = await invoke<[string | null, string | null]>(
+          "get_resolved_credentials",
+          { groupPath: effectiveGroup.path },
+        );
+        if (!resolvedUrl) return;
+        if (effectiveGroup.backend === "claude-remote") {
+          const syntheticSession: RemoteSession = {
+            id: `cr-${Date.now()}`,
+            title: title || "Claude Remote",
+            status: "stable",
+            summary: null,
+            created_at: Date.now(),
+            last_accessed: Date.now(),
+          };
+          setRemoteSession(syntheticSession);
+          setRemotePassword(resolvedToken ?? "");
+          setRemoteServerUrl(resolvedUrl);
+          if (prompt) {
+            invoke("cr_send_message", {
+              serverUrl: resolvedUrl,
+              token: resolvedToken ?? "",
+              content: prompt,
+            }).catch((err) => console.error("Failed to send initial message:", err));
+          }
+        } else {
+          const session = await invoke<RemoteSession>("oc_create_session", {
+            serverUrl: resolvedUrl,
+            password: resolvedToken ?? "",
+            title,
+            initialMessage: prompt,
+          });
+          setRemoteSession(session);
+          setRemotePassword(resolvedToken ?? "");
+          setRemoteServerUrl(resolvedUrl);
+        }
+      } catch (err) {
+        console.error("Failed to create remote session:", err);
+      }
+    },
+    [effectiveGroup],
+  );
+
   // Wrap setFocusedIndex to also clear confirming remove state
   const updateFocusedIndex: typeof setFocusedIndex = useCallback((value) => {
     setFocusedIndex(value);
@@ -538,46 +584,7 @@ function App() {
                   pendingCreations={pendingCreations}
                   onDismissPending={dismissPending}
                   createSession={createSession}
-                  onCreateRemoteSession={async (title, prompt) => {
-                    try {
-                      const [resolvedUrl, resolvedToken] = await invoke<
-                        [string | null, string | null]
-                      >("get_resolved_credentials", { groupPath: effectiveGroup.path });
-                      if (!resolvedUrl) return;
-                      if (effectiveGroup.backend === "claude-remote") {
-                        const syntheticSession: RemoteSession = {
-                          id: `cr-${Date.now()}`,
-                          title: title || "Claude Remote",
-                          status: "stable",
-                          summary: null,
-                          created_at: Date.now(),
-                          last_accessed: Date.now(),
-                        };
-                        setRemoteSession(syntheticSession);
-                        setRemotePassword(resolvedToken ?? "");
-                        setRemoteServerUrl(resolvedUrl);
-                        if (prompt) {
-                          invoke("cr_send_message", {
-                            serverUrl: resolvedUrl,
-                            token: resolvedToken ?? "",
-                            content: prompt,
-                          }).catch((err) => console.error("Failed to send initial message:", err));
-                        }
-                      } else {
-                        const session = await invoke<RemoteSession>("oc_create_session", {
-                          serverUrl: resolvedUrl,
-                          password: resolvedToken ?? "",
-                          title,
-                          initialMessage: prompt,
-                        });
-                        setRemoteSession(session);
-                        setRemotePassword(resolvedToken ?? "");
-                        setRemoteServerUrl(resolvedUrl);
-                      }
-                    } catch (err) {
-                      console.error("Failed to create remote session:", err);
-                    }
-                  }}
+                  onCreateRemoteSession={handleCreateRemoteSession}
                   dismissedIds={dismissedIds}
                   onDismiss={handleDismiss}
                   onUndismiss={handleUndismiss}
@@ -621,46 +628,7 @@ function App() {
                 backend={effectiveGroup.backend}
                 createSession={createSession}
                 pendingCreations={pendingCreations}
-                onCreateRemoteSession={async (title, prompt) => {
-                  try {
-                    const [resolvedUrl, resolvedToken] = await invoke<
-                      [string | null, string | null]
-                    >("get_resolved_credentials", { groupPath: effectiveGroup.path });
-                    if (!resolvedUrl) return;
-                    if (effectiveGroup.backend === "claude-remote") {
-                      const syntheticSession: RemoteSession = {
-                        id: `cr-${Date.now()}`,
-                        title: title || "Claude Remote",
-                        status: "stable",
-                        summary: null,
-                        created_at: Date.now(),
-                        last_accessed: Date.now(),
-                      };
-                      setRemoteSession(syntheticSession);
-                      setRemotePassword(resolvedToken ?? "");
-                      setRemoteServerUrl(resolvedUrl);
-                      if (prompt) {
-                        invoke("cr_send_message", {
-                          serverUrl: resolvedUrl,
-                          token: resolvedToken ?? "",
-                          content: prompt,
-                        }).catch((err) => console.error("Failed to send initial message:", err));
-                      }
-                    } else {
-                      const session = await invoke<RemoteSession>("oc_create_session", {
-                        serverUrl: resolvedUrl,
-                        password: resolvedToken ?? "",
-                        title,
-                        initialMessage: prompt,
-                      });
-                      setRemoteSession(session);
-                      setRemotePassword(resolvedToken ?? "");
-                      setRemoteServerUrl(resolvedUrl);
-                    }
-                  } catch (err) {
-                    console.error("Failed to create remote session:", err);
-                  }
-                }}
+                onCreateRemoteSession={handleCreateRemoteSession}
               />
             )}
           </>
