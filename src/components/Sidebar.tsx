@@ -45,7 +45,7 @@ export function Sidebar({
 
   const openTerminal = useCallback((e: React.MouseEvent, path: string) => {
     e.stopPropagation();
-    invoke("open_in_terminal", { path });
+    invoke("open_in_terminal", { path }).catch(console.error);
   }, []);
 
   const { data: attentionSessions } = useQuery<Session[]>({

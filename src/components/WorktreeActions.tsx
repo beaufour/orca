@@ -240,7 +240,7 @@ export function WorktreeActions({
             className="wt-btn wt-btn-action"
             onClick={(e) => {
               e.stopPropagation();
-              invoke("open_in_terminal", { path: projectPath });
+              invoke("open_in_terminal", { path: projectPath }).catch(console.error);
             }}
             disabled={isPending}
             title={`Open iTerm in ${projectPath}`}
