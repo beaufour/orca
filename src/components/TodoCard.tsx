@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { GitHubIssue, Session, SessionSummary, AttentionStatus } from "../types";
-import { ATTENTION_CONFIG, fallbackAttention, formatTime } from "../utils";
+import { ATTENTION_CONFIG, fallbackAttention, formatTime, labelStyle } from "../utils";
 import { queryKeys } from "../queryKeys";
 import { useWorktreeActions } from "../hooks/useWorktreeActions";
 import { usePrWorkflowActions } from "../hooks/usePrWorkflowActions";
@@ -25,18 +25,6 @@ interface TodoCardProps {
   isDismissed?: boolean;
   onDismiss?: () => void;
   onUndismiss?: () => void;
-}
-
-function labelStyle(color: string): React.CSSProperties {
-  // color is hex without '#'
-  const r = parseInt(color.slice(0, 2), 16);
-  const g = parseInt(color.slice(2, 4), 16);
-  const b = parseInt(color.slice(4, 6), 16);
-  return {
-    backgroundColor: `rgba(${r}, ${g}, ${b}, 0.2)`,
-    color: `#${color}`,
-    borderColor: `rgba(${r}, ${g}, ${b}, 0.4)`,
-  };
 }
 
 function IssueLabels({ labels }: { labels: GitHubIssue["labels"] }) {

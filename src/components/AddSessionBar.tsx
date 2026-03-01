@@ -2,23 +2,11 @@ import { useState, useImperativeHandle, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session } from "../types";
-import type { PendingCreation } from "../hooks/useSessionCreation";
+import type { PendingCreation, CreateSessionParams } from "../hooks/useSessionCreation";
 import { isMainSession, validateBranchName } from "../utils";
 
 export interface AddSessionBarHandle {
   toggleForm: () => void;
-}
-
-interface CreateSessionParams {
-  projectPath: string;
-  group: string;
-  title: string;
-  tool?: string;
-  worktreeBranch?: string | null;
-  newBranch?: boolean;
-  start?: boolean;
-  prompt?: string | null;
-  components?: string[];
 }
 
 interface AddSessionBarProps {

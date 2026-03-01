@@ -6,6 +6,10 @@ import { queryKeys } from "../queryKeys";
 import logoSrc from "../assets/logo.png";
 
 interface SidebarProps {
+  groups: Group[] | undefined;
+  groupsLoading: boolean;
+  groupsError: Error | null;
+  onRetryGroups: () => void;
   selectedGroupPath: string | null;
   needsActionActive: boolean;
   onSelectGroup: (group: Group | null) => void;
@@ -20,6 +24,10 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+  groups,
+  groupsLoading,
+  groupsError,
+  onRetryGroups,
   selectedGroupPath,
   needsActionActive,
   onSelectGroup,
@@ -32,20 +40,9 @@ export function Sidebar({
   width,
   dismissedIds,
 }: SidebarProps) {
-  const {
-    data: groups,
-    isLoading,
-    error,
-    refetch,
-  } = useQuery<Group[]>({
-    queryKey: queryKeys.groups,
-    queryFn: () => invoke("get_groups"),
-    refetchInterval: 10_000,
-  });
-
   const openTerminal = useCallback((e: React.MouseEvent, path: string) => {
     e.stopPropagation();
-    invoke("open_in_terminal", { path });
+    invoke("open_in_terminal", { path }).catch(console.error);
   }, []);
 
   const { data: attentionSessions } = useQuery<Session[]>({
@@ -98,15 +95,15 @@ export function Sidebar({
           >
             All Sessions
           </button>
-          {isLoading && (
+          {groupsLoading && (
             <div className="sidebar-loading loading-row">
               <span className="spinner" /> Loading groups...
             </div>
           )}
-          {error && (
+          {groupsError && (
             <div className="sidebar-error error-row">
               Failed to load groups
-              <button className="retry-btn" onClick={() => refetch()}>
+              <button className="retry-btn" onClick={onRetryGroups}>
                 Retry
               </button>
             </div>

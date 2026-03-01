@@ -353,7 +353,9 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
           </button>
           <button
             className="wt-btn wt-btn-action"
-            onClick={() => invoke("open_in_terminal", { path: session.project_path })}
+            onClick={() =>
+              invoke("open_in_terminal", { path: session.project_path }).catch(console.error)
+            }
             title={`Open iTerm in ${session.project_path}`}
           >
             Term
@@ -399,7 +401,9 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         )}
         <button
           className="wt-btn wt-btn-action"
-          onClick={() => invoke("open_in_terminal", { path: session.project_path })}
+          onClick={() =>
+            invoke("open_in_terminal", { path: session.project_path }).catch(console.error)
+          }
           title={`Open iTerm in ${session.project_path}`}
         >
           Term

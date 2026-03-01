@@ -271,18 +271,25 @@ export function useWorktreeActions({
       // Wait for session-created event to get the session ID
       const sessionId = await new Promise<string>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error("Session creation timed out")), 60_000);
+        let unlistenCreated: (() => void) | null = null;
+        let unlistenFailed: (() => void) | null = null;
+        const cleanup = () => {
+          clearTimeout(timeout);
+          unlistenCreated?.();
+          unlistenFailed?.();
+        };
         listen<{ creation_id: string; session_id: string }>("session-created", (event) => {
           if (event.payload.creation_id === creationId) {
-            clearTimeout(timeout);
+            cleanup();
             resolve(event.payload.session_id);
           }
-        });
+        }).then((fn) => (unlistenCreated = fn));
         listen<{ creation_id: string; error: string }>("session-creation-failed", (event) => {
           if (event.payload.creation_id === creationId) {
-            clearTimeout(timeout);
+            cleanup();
             reject(new Error(event.payload.error));
           }
-        });
+        }).then((fn) => (unlistenFailed = fn));
       });
       return sessionId;
     },

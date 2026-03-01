@@ -1,20 +1,9 @@
 import type { Session } from "../types";
-import type { PendingCreation } from "../hooks/useSessionCreation";
+import type { PendingCreation, CreateSessionParams } from "../hooks/useSessionCreation";
 import { isMainSession } from "../utils";
 import { SessionCard } from "./SessionCard";
 import { MainSessionGhost } from "./MainSessionGhost";
 import { PendingSessionCard } from "./PendingSessionCard";
-
-interface CreateSessionParams {
-  projectPath: string;
-  group: string;
-  title: string;
-  tool?: string;
-  worktreeBranch?: string | null;
-  newBranch?: boolean;
-  start?: boolean;
-  prompt?: string | null;
-}
 
 interface SessionListProps {
   sessions: Session[] | undefined;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import {
   useQuery,
   useMutation,
@@ -9,6 +9,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { Session, WorktreeStatus, PrInfo, RebaseResult, PushResult } from "../types";
+import { queryKeys } from "../queryKeys";
 import { trackEvent } from "../analytics";
 
 export type PrState =
@@ -112,7 +113,7 @@ export function usePrWorkflowActions({
     session.worktree_branch !== defaultBranch;
 
   const { data: worktreeStatus, isFetching: statusLoading } = useQuery<WorktreeStatus>({
-    queryKey: ["worktreeStatus", session.worktree_path],
+    queryKey: queryKeys.worktreeStatus(session.worktree_path ?? ""),
     queryFn: () =>
       invoke("check_worktree_status", {
         repoPath,
@@ -131,8 +132,8 @@ export function usePrWorkflowActions({
   const hasRemoveWarnings = removeWarnings.length > 0;
 
   const invalidateAll = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["worktrees", repoPath] });
-    queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.worktrees(repoPath) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
     for (const key of extraInvalidateKeys ?? []) {
       queryClient.invalidateQueries({ queryKey: key as readonly unknown[] });
     }
@@ -166,8 +167,8 @@ export function usePrWorkflowActions({
   }, [removingSessionId, invalidateAll]);
 
   // PR status polling
-  useQuery<PrInfo>({
-    queryKey: ["prStatus", repoPath, session.worktree_branch],
+  const { data: prStatusData } = useQuery<PrInfo>({
+    queryKey: queryKeys.prStatus(repoPath, session.worktree_branch),
     queryFn: () =>
       invoke("check_pr_status", {
         repoPath,
@@ -175,34 +176,42 @@ export function usePrWorkflowActions({
       }),
     refetchInterval: 30_000,
     enabled: enabled && prState === "pr_open",
-    select: (data) => {
-      if (data.state === "MERGED" && prState === "pr_open") {
-        setPrState("pr_merged");
-        setPrInfo(data);
-        // Persist merged state
-        invoke("store_session_pr_info", {
-          sessionId: session.id,
-          prUrl: data.url,
-          prNumber: data.number,
-          prState: "MERGED",
-        }).catch((err) => console.warn("Failed to store PR merged state:", err));
-        // Best-effort update main
-        invoke<PushResult>("update_main_branch", {
-          repoPath,
-          mainBranch: defaultBranch ?? "main",
-        })
-          .then((result) => {
-            if (!result.success) {
-              setMainUpdateWarning(result.message);
-            }
-          })
-          .catch((err) => {
-            setMainUpdateWarning(String(err));
-          });
-      }
-      return data;
-    },
   });
+
+  // React to PR merge — runs when polling detects MERGED state
+  const handledMergeRef = useRef(false);
+  useEffect(() => {
+    if (!prStatusData || prStatusData.state !== "MERGED" || prState !== "pr_open") {
+      handledMergeRef.current = false;
+      return;
+    }
+    if (handledMergeRef.current) return;
+    handledMergeRef.current = true;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting to polled external data
+    setPrState("pr_merged");
+    setPrInfo(prStatusData);
+    // Persist merged state
+    invoke("store_session_pr_info", {
+      sessionId: session.id,
+      prUrl: prStatusData.url,
+      prNumber: prStatusData.number,
+      prState: "MERGED",
+    }).catch((err) => console.warn("Failed to store PR merged state:", err));
+    // Best-effort update main
+    invoke<PushResult>("update_main_branch", {
+      repoPath,
+      mainBranch: defaultBranch ?? "main",
+    })
+      .then((result) => {
+        if (!result.success) {
+          setMainUpdateWarning(result.message);
+        }
+      })
+      .catch((err) => {
+        setMainUpdateWarning(String(err));
+      });
+  }, [prStatusData, prState, session.id, repoPath, defaultBranch]);
 
   // Remove session mutation (background)
   const removeMutation = useMutation({
@@ -348,24 +357,31 @@ export function usePrWorkflowActions({
       // Wait for session-created event to get the session ID
       const sessionId = await new Promise<string>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error("Session creation timed out")), 60_000);
+        let unlistenCreated: (() => void) | null = null;
+        let unlistenFailed: (() => void) | null = null;
+        const cleanup = () => {
+          clearTimeout(timeout);
+          unlistenCreated?.();
+          unlistenFailed?.();
+        };
         listen<{ creation_id: string; session_id: string }>("session-created", (event) => {
           if (event.payload.creation_id === creationId) {
-            clearTimeout(timeout);
+            cleanup();
             resolve(event.payload.session_id);
           }
-        });
+        }).then((fn) => (unlistenCreated = fn));
         listen<{ creation_id: string; error: string }>("session-creation-failed", (event) => {
           if (event.payload.creation_id === creationId) {
-            clearTimeout(timeout);
+            cleanup();
             reject(new Error(event.payload.error));
           }
-        });
+        }).then((fn) => (unlistenFailed = fn));
       });
       return sessionId;
     },
     onSuccess: async (sessionId) => {
       setPrState(prInfo ? "pr_open" : "idle");
-      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
       if (onSelectSession) {
         const sessions = await invoke<Session[]>("get_sessions", {
           groupPath: session.group_path,

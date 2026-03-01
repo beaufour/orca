@@ -2,25 +2,14 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Group, Session, GitHubIssue } from "../types";
-import type { PendingCreation } from "../hooks/useSessionCreation";
-import { extractIssueNumber, issueToSlug } from "../utils";
+import type { PendingCreation, CreateSessionParams } from "../hooks/useSessionCreation";
+import { extractIssueNumber, issueToSlug, labelStyle } from "../utils";
 import { queryKeys } from "../queryKeys";
 import { TodoCard } from "./TodoCard";
 import { SessionCard } from "./SessionCard";
 import { SessionList } from "./SessionList";
 import { PendingSessionCard } from "./PendingSessionCard";
 import { IssueModal } from "./IssueModal";
-
-interface CreateSessionParams {
-  projectPath: string;
-  group: string;
-  title: string;
-  tool?: string;
-  worktreeBranch?: string | null;
-  newBranch?: boolean;
-  start?: boolean;
-  prompt?: string | null;
-}
 
 interface TodoListProps {
   group: Group;
@@ -40,17 +29,6 @@ interface TodoListProps {
   dismissedIds?: Set<string>;
   onDismiss?: (sessionId: string) => void;
   onUndismiss?: (sessionId: string) => void;
-}
-
-function labelStyle(color: string): React.CSSProperties {
-  const r = parseInt(color.slice(0, 2), 16);
-  const g = parseInt(color.slice(2, 4), 16);
-  const b = parseInt(color.slice(4, 6), 16);
-  return {
-    backgroundColor: `rgba(${r}, ${g}, ${b}, 0.2)`,
-    color: `#${color}`,
-    borderColor: `rgba(${r}, ${g}, ${b}, 0.4)`,
-  };
 }
 
 type AssigneeFilter = "all" | "unassigned" | "mine";

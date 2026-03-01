@@ -21,9 +21,11 @@ interface LineSelection {
   endLine: number | null;
 }
 
-let nextCommentId = 1;
+const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+const MOD_KEY = isMac ? "\u2318" : "Ctrl";
 
 export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
+  const nextCommentId = useRef(1);
   const { data, isLoading, error } = useQuery<string>({
     queryKey: queryKeys.branchDiff(session.id),
     queryFn: () =>
@@ -52,6 +54,12 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
       onClose();
     }
   }, [comments.length, onClose]);
+
+  const cancelComment = () => {
+    setSelection(null);
+    setActiveCommentInput(null);
+    setCommentText("");
+  };
 
   useEscapeKey(() => {
     if (confirmingClose) {
@@ -120,7 +128,7 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
     setComments((prev) => [
       ...prev,
       {
-        id: nextCommentId++,
+        id: nextCommentId.current++,
         filePath: selection.filePath,
         hunkIndex: selection.hunkIndex,
         startLine: start,
@@ -130,12 +138,6 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
       },
     ]);
 
-    setSelection(null);
-    setActiveCommentInput(null);
-    setCommentText("");
-  };
-
-  const cancelComment = () => {
     setSelection(null);
     setActiveCommentInput(null);
     setCommentText("");
@@ -364,8 +366,7 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
                                     Delete
                                   </button>
                                   <span className="diff-comment-shortcut-hint">
-                                    {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl"}+Enter
-                                    to save
+                                    {MOD_KEY}+Enter to save
                                   </span>
                                 </div>
                               </div>
@@ -420,8 +421,7 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
                                 Cancel
                               </button>
                               <span className="diff-comment-shortcut-hint">
-                                {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl"}+Enter to
-                                submit
+                                {MOD_KEY}+Enter to submit
                               </span>
                             </div>
                           </div>
