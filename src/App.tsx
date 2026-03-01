@@ -548,9 +548,9 @@ function App() {
               backend={effectiveGroup.backend as "opencode-remote" | "claude-remote"}
               onClose={handleCloseTerminal}
             />
-          ) : (
-            <TerminalView session={effectiveSession!} onClose={handleCloseTerminal} />
-          )
+          ) : effectiveSession ? (
+            <TerminalView session={effectiveSession} onClose={handleCloseTerminal} />
+          ) : null
         ) : (
           <>
             <main className="main-content">
