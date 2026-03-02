@@ -11,28 +11,43 @@ Agent-remote now exposes two backends:
 
 Orca currently supports "opencode-remote" as a backend type. A new "claude-remote" backend type is needed for the AgentAPI protocol.
 
+## Authentication
+
+Agent-remote uses two-level authentication:
+
+1. **Cloudflare Access (primary)** — protects all routes at the edge. After login, requests carry a JWT via the `Cf-Access-Jwt-Assertion` header or `CF_Authorization` cookie. The worker verifies this against the CF Access JWKS endpoint.
+2. **Bearer token (fallback for dev)** — `Authorization: Bearer <AUTH_TOKEN>` checked against the `AUTH_TOKEN` env var. Only used when CF Access JWT is absent.
+
+Orca must send the token as `Authorization: Bearer <token>`. If the server is behind Cloudflare Access and the token isn't a valid CF Access JWT, the request will be intercepted and an HTML login page returned instead of JSON.
+
 ## AgentAPI Protocol
 
 AgentAPI wraps the Claude Code CLI and exposes these endpoints:
 
 ### `GET /messages`
 
-Returns all conversation messages as a JSON array.
+Returns all conversation messages wrapped in an object.
 
 ```json
-[
-  {
-    "role": "user",
-    "content": "Hello",
-    "timestamp": "2025-01-01T00:00:00Z"
-  },
-  {
-    "role": "assistant",
-    "content": "Hi! How can I help?",
-    "timestamp": "2025-01-01T00:00:01Z"
-  }
-]
+{
+  "messages": [
+    {
+      "id": 1,
+      "role": "user",
+      "content": "Hello",
+      "time": "2025-01-01T00:00:00Z"
+    },
+    {
+      "id": 2,
+      "role": "agent",
+      "content": "Hi! How can I help?",
+      "time": "2025-01-01T00:00:01Z"
+    }
+  ]
+}
 ```
+
+Note: role is `"agent"` (not `"assistant"`), timestamp field is `"time"`, and `id` is an integer representing message order.
 
 ### `POST /message`
 
@@ -40,9 +55,12 @@ Send a message to the agent. Body:
 
 ```json
 {
-  "content": "Fix the bug in auth.ts"
+  "content": "Fix the bug in auth.ts",
+  "type": "user"
 }
 ```
+
+The `type` field can be `"user"` (logged in conversation history) or `"raw"` (written directly to terminal).
 
 ### `GET /status`
 
@@ -60,8 +78,9 @@ Possible values: `"stable"` (waiting for input), `"running"` (processing).
 
 SSE stream of real-time updates. Event types:
 
-- `message` — new or updated message
-- `status` — agent status change
+- `message_update` — new or updated message
+- `status_change` — agent status change
+- `screen_update` — terminal screen content changed
 
 ## Key Differences from OpenCode Remote
 
@@ -100,9 +119,10 @@ Create a new API client module for the AgentAPI protocol:
 
 AgentAPI messages have a simpler structure than OpenCode's. The message renderer needs to handle:
 
-- Plain text content from `role: "assistant"`
+- Agent messages from `role: "agent"` (mapped to `"assistant"` in Orca)
 - User messages from `role: "user"`
 - No tool-call metadata (AgentAPI abstracts this away)
+- Content is plain text formatted as it appears in the agent's terminal (80 chars/line by default)
 
 ### 4. UI Changes
 
