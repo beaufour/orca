@@ -352,7 +352,9 @@ export function AddSessionBar({
                     : "title (defaults to prompt)"
               }
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) =>
+                setTitle(isRemote ? e.target.value.replace(/ /g, "-") : e.target.value)
+              }
               autoFocus={isRemote || mode === "plain"}
             />
           </div>
