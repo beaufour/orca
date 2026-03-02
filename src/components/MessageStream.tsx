@@ -145,13 +145,13 @@ export function MessageStream({
   return (
     <div className="message-stream">
       <div className="message-stream-header">
-        <button className="wt-btn" onClick={onClose} title="Close (Esc)">
-          Back
-        </button>
         <span className="message-stream-title">{session.title || session.id}</span>
         <span className={`message-stream-status status-${isClaude ? agentStatus : session.status}`}>
           {isClaude ? agentStatus : session.status}
         </span>
+        <button className="terminal-close" onClick={onClose} title="Close (Esc)">
+          Close
+        </button>
       </div>
 
       <div className="message-stream-body">
