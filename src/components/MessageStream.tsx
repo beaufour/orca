@@ -27,19 +27,21 @@ export function MessageStream({
   const [error, setError] = useState<string | null>(null);
   const [agentStatus, setAgentStatus] = useState<string>(session.status);
   const [elapsed, setElapsed] = useState(0);
+  const [promptSent, setPromptSent] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isClaude = backend === "claude-remote";
 
-  // Elapsed timer for cold-start loading indicator
+  // Elapsed timer for loading indicator (cold start or waiting for response)
+  const showWaiting = loading || (isClaude && promptSent && messages.length === 0);
   useEffect(() => {
-    if (!loading || !isClaude) {
+    if (!showWaiting || !isClaude) {
       setElapsed(0);
       return;
     }
     const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(interval);
-  }, [loading, isClaude]);
+  }, [showWaiting, isClaude]);
 
   // Load message history
   useEffect(() => {
@@ -77,6 +79,7 @@ export function MessageStream({
   // Send initial prompt on mount (claude-remote)
   useEffect(() => {
     if (!isClaude || !initialPrompt) return;
+    setPromptSent(true);
     invoke("cr_send_message", {
       serverUrl,
       token: serverPassword,
@@ -139,6 +142,7 @@ export function MessageStream({
 
     setSending(true);
     setInput("");
+    setPromptSent(true);
     try {
       if (isClaude) {
         await invoke("cr_send_message", {
@@ -185,20 +189,26 @@ export function MessageStream({
       </div>
 
       <div className="message-stream-body">
-        {loading &&
+        {showWaiting &&
           (isClaude ? (
             <div className="message-stream-loading">
-              <span className="spinner" /> Starting remote container... ({elapsed}s)
-              {elapsed >= 15 && (
+              <span className="spinner" />{" "}
+              {loading
+                ? `Starting remote container... (${elapsed}s)`
+                : `Waiting for response... (${elapsed}s)`}
+              {loading && elapsed >= 15 && (
                 <div className="message-stream-loading-hint">
                   Cold starts can take a few minutes
                 </div>
               )}
             </div>
-          ) : (
+          ) : loading ? (
             <div className="message-stream-loading">Loading messages...</div>
-          ))}
+          ) : null)}
         {error && <div className="wt-error">{error}</div>}
+        {!loading && !showWaiting && messages.length === 0 && !error && (
+          <div className="message-stream-empty">Send a message to start</div>
+        )}
         {!loading &&
           messages.map((msg, i) => (
             <div

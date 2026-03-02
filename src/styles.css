@@ -2221,6 +2221,13 @@ body {
   opacity: 0.7;
 }
 
+.message-stream-empty {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 48px 24px;
+  font-size: 14px;
+}
+
 .message-bubble {
   padding: 10px 14px;
   border-radius: 8px;
