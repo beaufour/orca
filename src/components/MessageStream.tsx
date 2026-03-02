@@ -84,7 +84,10 @@ export function MessageStream({
       eventName,
       (event) => {
         const { event_type, data } = event.payload;
-        if (event_type === "message" && data) {
+        // AgentAPI uses "message_update"/"status_change"; OpenCode uses "message"/"status"
+        const isMessageEvent = event_type === "message_update" || event_type === "message";
+        const isStatusEvent = event_type === "status_change" || event_type === "status";
+        if (isMessageEvent && data) {
           if (isClaude) {
             // For claude-remote, re-fetch all messages (handles both new and updated)
             invoke<RemoteMessage[]>("cr_get_messages", {
@@ -101,7 +104,7 @@ export function MessageStream({
           ) {
             setMessages((prev) => [...prev, data as unknown as RemoteMessage]);
           }
-        } else if (event_type === "status" && isClaude && data) {
+        } else if (isStatusEvent && isClaude && data) {
           if ("status" in data && typeof data.status === "string") {
             setAgentStatus(data.status);
           }
