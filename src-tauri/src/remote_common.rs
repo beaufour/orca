@@ -35,11 +35,11 @@ pub fn normalize_url(server_url: &str) -> String {
     server_url.trim_end_matches('/').to_string()
 }
 
-/// Build a reqwest client with the given default headers and a 30-second timeout.
-pub fn build_client(headers: HeaderMap) -> Result<reqwest::Client, String> {
+/// Build a reqwest client with the given default headers and timeout.
+pub fn build_client(headers: HeaderMap, timeout: Duration) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .default_headers(headers)
-        .timeout(Duration::from_secs(30))
+        .timeout(timeout)
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {e}"))
 }

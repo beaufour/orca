@@ -74,6 +74,7 @@ function App() {
   const [remotePassword, setRemotePassword] = useState<string>("");
   const [remoteServerUrl, setRemoteServerUrl] = useState<string>("");
   const [remoteInitialPrompt, setRemoteInitialPrompt] = useState<string | null>(null);
+  const [messageStreamOpen, setMessageStreamOpen] = useState(false);
 
   // Prevent action buttons from stealing focus from the terminal prompt
   useEffect(() => {
@@ -359,8 +360,8 @@ function App() {
   const { sidebarWidth, sidebarCollapsed, setSidebarCollapsed, isResizing, handleMouseDown } =
     useSidebarResize();
 
-  const terminalOpen = selectedSession !== null || remoteSession !== null;
-  const isRemoteView = remoteSession !== null;
+  const terminalOpen = selectedSession !== null || (remoteSession !== null && messageStreamOpen);
+  const isRemoteView = remoteSession !== null && messageStreamOpen;
 
   const handleCreateRemoteSession = useCallback(
     async (title: string, prompt: string | null) => {
@@ -384,6 +385,7 @@ function App() {
           setRemotePassword(resolvedToken ?? "");
           setRemoteServerUrl(resolvedUrl);
           setRemoteInitialPrompt(prompt || null);
+          setMessageStreamOpen(true);
         } else {
           const session = await invoke<RemoteSession>("oc_create_session", {
             serverUrl: resolvedUrl,
@@ -394,6 +396,7 @@ function App() {
           setRemoteSession(session);
           setRemotePassword(resolvedToken ?? "");
           setRemoteServerUrl(resolvedUrl);
+          setMessageStreamOpen(true);
         }
       } catch (err) {
         console.error("Failed to create remote session:", err);
@@ -435,7 +438,7 @@ function App() {
       }
     }
     setSelectedSession(null);
-    setRemoteSession(null);
+    setMessageStreamOpen(false);
     setRemoteInitialPrompt(null);
   }, [selectedSession, filteredSessions, updateFocusedIndex]);
 
@@ -526,12 +529,16 @@ function App() {
         onSelectGroup={(g) => {
           setSelectedGroup(g);
           setSelectedSession(null);
+          setRemoteSession(null);
+          setMessageStreamOpen(false);
           setNeedsActionFilter(false);
           updateFocusedIndex(0);
         }}
         onSelectNeedsAction={() => {
           setSelectedGroup(null);
           setSelectedSession(null);
+          setRemoteSession(null);
+          setMessageStreamOpen(false);
           setNeedsActionFilter(true);
           updateFocusedIndex(0);
         }}
@@ -561,6 +568,18 @@ function App() {
         ) : (
           <>
             <main className="main-content">
+              {remoteSession && !messageStreamOpen && (
+                <div
+                  className="session-card remote-session-card"
+                  onClick={() => setMessageStreamOpen(true)}
+                >
+                  <div className="session-card-header">
+                    <span className="session-title">{remoteSession.title || remoteSession.id}</span>
+                    <span className="session-status status-running">remote</span>
+                  </div>
+                  <div className="session-summary">Click to reconnect</div>
+                </div>
+              )}
               {searchVisible && (
                 <div className="search-bar">
                   <input
@@ -674,6 +693,8 @@ function App() {
             setSettingsGroup(null);
             setSelectedGroup(null);
             setSelectedSession(null);
+            setRemoteSession(null);
+            setMessageStreamOpen(false);
             setNeedsActionFilter(false);
           }}
         />

@@ -1,6 +1,7 @@
 use crate::remote_common;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 fn build_client(token: &str) -> Result<reqwest::Client, String> {
     let mut headers = HeaderMap::new();
@@ -9,7 +10,8 @@ fn build_client(token: &str) -> Result<reqwest::Client, String> {
         HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|e| format!("Invalid auth header: {e}"))?,
     );
-    remote_common::build_client(headers)
+    // Container cold starts can take up to 5 minutes
+    remote_common::build_client(headers, Duration::from_secs(300))
 }
 
 // --- Types matching AgentAPI ---
@@ -131,7 +133,7 @@ pub async fn cr_send_message(
 ) -> Result<(), String> {
     let client = build_client(&token)?;
     let url = format!("{}/message", remote_common::normalize_url(&server_url));
-    let body = serde_json::json!({ "content": content });
+    let body = serde_json::json!({ "content": content, "type": "user" });
     let resp = client
         .post(&url)
         .json(&body)

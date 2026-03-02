@@ -26,9 +26,20 @@ export function MessageStream({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agentStatus, setAgentStatus] = useState<string>(session.status);
+  const [elapsed, setElapsed] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isClaude = backend === "claude-remote";
+
+  // Elapsed timer for cold-start loading indicator
+  useEffect(() => {
+    if (!loading || !isClaude) {
+      setElapsed(0);
+      return;
+    }
+    const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(interval);
+  }, [loading, isClaude]);
 
   // Load message history
   useEffect(() => {
@@ -174,7 +185,19 @@ export function MessageStream({
       </div>
 
       <div className="message-stream-body">
-        {loading && <div className="message-stream-loading">Loading messages...</div>}
+        {loading &&
+          (isClaude ? (
+            <div className="message-stream-loading">
+              <span className="spinner" /> Starting remote container... ({elapsed}s)
+              {elapsed >= 15 && (
+                <div className="message-stream-loading-hint">
+                  Cold starts can take a few minutes
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="message-stream-loading">Loading messages...</div>
+          ))}
         {error && <div className="wt-error">{error}</div>}
         {!loading &&
           messages.map((msg, i) => (
@@ -205,13 +228,13 @@ export function MessageStream({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           rows={3}
-          disabled={sending}
+          disabled={sending || loading}
           autoFocus
         />
         <button
           className="wt-btn wt-btn-add"
           onClick={handleSend}
-          disabled={!input.trim() || sending}
+          disabled={!input.trim() || sending || loading}
         >
           {sending ? "Sending..." : "Send"}
         </button>

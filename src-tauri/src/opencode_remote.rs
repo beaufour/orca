@@ -1,6 +1,7 @@
 use crate::remote_common;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 fn build_client(password: &str) -> Result<reqwest::Client, String> {
     let credentials = base64::Engine::encode(
@@ -13,7 +14,7 @@ fn build_client(password: &str) -> Result<reqwest::Client, String> {
         HeaderValue::from_str(&format!("Basic {credentials}"))
             .map_err(|e| format!("Invalid auth header: {e}"))?,
     );
-    remote_common::build_client(headers)
+    remote_common::build_client(headers, Duration::from_secs(30))
 }
 
 // --- Types matching OpenCode REST API ---
