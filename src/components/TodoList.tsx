@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Group, Session, GitHubIssue } from "../types";
 import type { PendingCreation, CreateSessionParams } from "../hooks/useSessionCreation";
-import { extractIssueNumber, issueToSlug, labelStyle } from "../utils";
+import { extractIssueNumber, isMainSession, issueToSlug, labelStyle } from "../utils";
 import { queryKeys } from "../queryKeys";
 import { TodoCard } from "./TodoCard";
 import { SessionCard } from "./SessionCard";
@@ -58,6 +58,7 @@ export function TodoList({
   } | null>(null);
   const [labelFilter, setLabelFilter] = useState<Set<string>>(new Set());
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
+  const [dismissedExpanded, setDismissedExpanded] = useState(false);
 
   const {
     data: issues,
@@ -238,57 +239,70 @@ export function TodoList({
     );
   }
 
+  // Split sessions: main always active, rest split by dismissed status
+  const activeSessions = allSessions.filter(
+    (item) => isMainSession(item.session.worktree_branch) || !dismissedIds?.has(item.session.id),
+  );
+  const dismissedSessions = allSessions.filter(
+    (item) => !isMainSession(item.session.worktree_branch) && dismissedIds?.has(item.session.id),
+  );
+
+  const renderSessionItem = (item: SessionItem, index: number) =>
+    item.type === "linked" ? (
+      <TodoCard
+        key={item.session.id}
+        issue={item.issue}
+        session={item.session}
+        repoPath={group.default_path}
+        onSelectSession={onSelectSession}
+        liveTmuxSessions={liveTmuxSessions}
+        isFocused={index === focusedIndex}
+        mergeWorkflow={group.merge_workflow}
+        isDismissed={dismissedIds?.has(item.session.id)}
+        onDismiss={onDismiss ? () => onDismiss(item.session.id) : undefined}
+        onUndismiss={onUndismiss ? () => onUndismiss(item.session.id) : undefined}
+      />
+    ) : (
+      <SessionCard
+        key={item.session.id}
+        session={item.session}
+        onClick={() => onSelectSession(item.session)}
+        onSelectSession={onSelectSession}
+        isFocused={index === focusedIndex}
+        confirmingRemove={
+          confirmingRemoveId != null ? item.session.id === confirmingRemoveId : undefined
+        }
+        onConfirmingRemoveChange={
+          onConfirmingRemoveChange
+            ? (c) => onConfirmingRemoveChange(c ? item.session.id : null)
+            : undefined
+        }
+        tmuxAlive={
+          !item.session.tmux_session || liveTmuxSessions?.has(item.session.tmux_session) !== false
+        }
+        isDismissed={dismissedIds?.has(item.session.id)}
+        onDismiss={onDismiss ? () => onDismiss(item.session.id) : undefined}
+        onUndismiss={onUndismiss ? () => onUndismiss(item.session.id) : undefined}
+        mergeWorkflow={group.merge_workflow}
+      />
+    );
+
   return (
     <div className="todo-list">
       {/* Sessions */}
-      {(allSessions.length > 0 || groupPending.length > 0) && (
+      {(activeSessions.length > 0 || groupPending.length > 0) && (
         <div className="todo-section">
           <div className="todo-section-header">
             <span>Sessions</span>
-            <span className="todo-section-count">{allSessions.length + groupPending.length}</span>
+            <span className="todo-section-count">
+              {activeSessions.length + groupPending.length}
+            </span>
           </div>
           <div className="session-grid">
-            {allSessions.map((item, index) =>
-              item.type === "linked" ? (
-                <TodoCard
-                  key={item.session.id}
-                  issue={item.issue}
-                  session={item.session}
-                  repoPath={group.default_path}
-                  onSelectSession={onSelectSession}
-                  liveTmuxSessions={liveTmuxSessions}
-                  isFocused={index === focusedIndex}
-                  mergeWorkflow={group.merge_workflow}
-                  isDismissed={dismissedIds?.has(item.session.id)}
-                  onDismiss={onDismiss ? () => onDismiss(item.session.id) : undefined}
-                  onUndismiss={onUndismiss ? () => onUndismiss(item.session.id) : undefined}
-                />
-              ) : (
-                <SessionCard
-                  key={item.session.id}
-                  session={item.session}
-                  onClick={() => onSelectSession(item.session)}
-                  onSelectSession={onSelectSession}
-                  isFocused={index === focusedIndex}
-                  confirmingRemove={
-                    confirmingRemoveId != null ? item.session.id === confirmingRemoveId : undefined
-                  }
-                  onConfirmingRemoveChange={
-                    onConfirmingRemoveChange
-                      ? (c) => onConfirmingRemoveChange(c ? item.session.id : null)
-                      : undefined
-                  }
-                  tmuxAlive={
-                    !item.session.tmux_session ||
-                    liveTmuxSessions?.has(item.session.tmux_session) !== false
-                  }
-                  isDismissed={dismissedIds?.has(item.session.id)}
-                  onDismiss={onDismiss ? () => onDismiss(item.session.id) : undefined}
-                  onUndismiss={onUndismiss ? () => onUndismiss(item.session.id) : undefined}
-                  mergeWorkflow={group.merge_workflow}
-                />
-              ),
-            )}
+            {activeSessions.map((item) => {
+              const origIndex = allSessions.indexOf(item);
+              return renderSessionItem(item, origIndex);
+            })}
             {groupPending.map((pending) => (
               <PendingSessionCard
                 key={pending.creationId}
@@ -297,6 +311,28 @@ export function TodoList({
               />
             ))}
           </div>
+          {dismissedSessions.length > 0 && (
+            <div className="dismissed-section">
+              <button
+                className="dismissed-section-header"
+                onClick={() => setDismissedExpanded((v) => !v)}
+              >
+                <span className="dismissed-section-chevron">
+                  {dismissedExpanded ? "\u25BE" : "\u25B8"}
+                </span>
+                <span>Dismissed</span>
+                <span className="dismissed-section-count">{dismissedSessions.length}</span>
+              </button>
+              {dismissedExpanded && (
+                <div className="session-grid">
+                  {dismissedSessions.map((item) => {
+                    const origIndex = allSessions.indexOf(item);
+                    return renderSessionItem(item, origIndex);
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

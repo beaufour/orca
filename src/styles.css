@@ -343,6 +343,46 @@ body {
   gap: 12px;
 }
 
+/* Dismissed section */
+.dismissed-section {
+  margin-top: 16px;
+}
+
+.dismissed-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 2px;
+  margin-bottom: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.dismissed-section-header:hover {
+  color: var(--text-secondary);
+}
+
+.dismissed-section-chevron {
+  font-size: 12px;
+  width: 12px;
+}
+
+.dismissed-section-count {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  padding: 1px 7px;
+  border-radius: 8px;
+  margin-left: 2px;
+}
+
 /* Session card */
 .session-card {
   background: var(--bg-card);
