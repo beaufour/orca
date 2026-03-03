@@ -2296,6 +2296,114 @@ body {
   min-height: 60px;
 }
 
+/* Debug panel */
+.debug-active {
+  color: var(--accent) !important;
+}
+
+.debug-panel {
+  border-top: 1px solid var(--border);
+  background: var(--bg-primary);
+  max-height: 250px;
+  display: flex;
+  flex-direction: column;
+}
+
+.debug-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.debug-clear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+.debug-clear:hover {
+  color: var(--text-primary);
+}
+
+.debug-panel-body {
+  overflow-y: auto;
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.debug-empty {
+  color: var(--text-muted);
+  padding: 8px;
+  text-align: center;
+}
+
+.debug-entry {
+  padding: 2px 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.debug-time {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.debug-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.debug-badge-send {
+  background: var(--status-running);
+  color: var(--bg-primary);
+}
+
+.debug-badge-recv {
+  background: var(--status-idle);
+  color: var(--bg-primary);
+}
+
+.debug-badge-event {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+
+.debug-badge-error {
+  background: var(--status-error);
+  color: var(--bg-primary);
+}
+
+.debug-label {
+  color: var(--text-primary);
+}
+
+.debug-detail {
+  width: 100%;
+  margin: 2px 0 4px 0;
+  padding: 4px 8px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 10px;
+}
+
 /* App Settings sidebar button */
 .sidebar-app-settings {
   margin-top: auto;

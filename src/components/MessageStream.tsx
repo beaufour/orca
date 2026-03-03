@@ -3,6 +3,22 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { RemoteMessage, RemoteSession } from "../types";
 
+interface DebugEntry {
+  time: string;
+  direction: "send" | "recv" | "event" | "error";
+  label: string;
+  detail?: string;
+}
+
+function timestamp(): string {
+  const d = new Date();
+  return (
+    d.toLocaleTimeString("en-US", { hour12: false }) +
+    "." +
+    String(d.getMilliseconds()).padStart(3, "0")
+  );
+}
+
 interface MessageStreamProps {
   session: RemoteSession;
   serverUrl: string;
@@ -27,9 +43,30 @@ export function MessageStream({
   const [error, setError] = useState<string | null>(null);
   const [agentStatus, setAgentStatus] = useState<string>(session.status);
   const [elapsed, setElapsed] = useState(0);
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugLog, setDebugLog] = useState<DebugEntry[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const debugEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isClaude = backend === "claude-remote";
+
+  const addDebug = useCallback(
+    (direction: DebugEntry["direction"], label: string, detail?: string) => {
+      setDebugLog((prev) => [...prev, { time: timestamp(), direction, label, detail }]);
+    },
+    [],
+  );
+
+  // Log mount info
+  useEffect(() => {
+    addDebug(
+      "event",
+      "MessageStream mounted",
+      `backend=${backend}\nserverUrl=${serverUrl}\ntoken=${serverPassword ? serverPassword.slice(0, 8) + "..." : "(empty)"}\nsession=${JSON.stringify(session, null, 2)}\ninitialPrompt=${initialPrompt ?? "(none)"}`,
+    );
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Session isn't ready until the agent prompt appears
   const waitingForAgent = isClaude && messages.length === 0 && !error;
@@ -48,46 +85,57 @@ export function MessageStream({
   // Load message history
   useEffect(() => {
     setLoading(true);
-    const promise = isClaude
-      ? invoke<RemoteMessage[]>("cr_get_messages", {
-          serverUrl,
-          token: serverPassword,
-        })
-      : invoke<RemoteMessage[]>("oc_get_messages", {
-          serverUrl,
-          password: serverPassword,
-          sessionId: session.id,
-        });
+    const cmd = isClaude ? "cr_get_messages" : "oc_get_messages";
+    const params = isClaude
+      ? { serverUrl, token: serverPassword }
+      : { serverUrl, password: serverPassword, sessionId: session.id };
+    addDebug("send", `${cmd}`, JSON.stringify(params, null, 2));
+
+    const promise = invoke<RemoteMessage[]>(cmd, params);
 
     promise
       .then((msgs) => {
+        addDebug("recv", `${cmd} OK`, `${msgs.length} message(s)`);
         setMessages(msgs);
         setLoading(false);
       })
       .catch((err) => {
+        addDebug("error", `${cmd} FAILED`, String(err));
         setError(String(err));
         setLoading(false);
       });
-  }, [session.id, serverUrl, serverPassword, isClaude]);
+  }, [session.id, serverUrl, serverPassword, isClaude, addDebug]);
 
   // Start SSE subscription for claude-remote
   useEffect(() => {
     if (!isClaude) return;
-    invoke("cr_subscribe_events", { serverUrl, token: serverPassword }).catch((err) =>
-      console.error("Failed to subscribe to SSE:", err),
-    );
-  }, [isClaude, serverUrl, serverPassword]);
+    addDebug("send", "cr_subscribe_events", `url=${serverUrl}`);
+    invoke("cr_subscribe_events", { serverUrl, token: serverPassword })
+      .then(() => addDebug("recv", "cr_subscribe_events OK"))
+      .catch((err) => {
+        addDebug("error", "cr_subscribe_events FAILED", String(err));
+        console.error("Failed to subscribe to SSE:", err);
+      });
+  }, [isClaude, serverUrl, serverPassword, addDebug]);
 
   // Send initial prompt on mount (claude-remote)
   useEffect(() => {
     if (!isClaude || !initialPrompt) return;
+    addDebug(
+      "send",
+      "cr_send_message (initial)",
+      `content="${initialPrompt.slice(0, 100)}${initialPrompt.length > 100 ? "..." : ""}"`,
+    );
     invoke("cr_send_message", {
       serverUrl,
       token: serverPassword,
       content: initialPrompt,
-    }).catch((err) => {
-      setError(`Failed to send initial message: ${String(err)}`);
-    });
+    })
+      .then(() => addDebug("recv", "cr_send_message (initial) OK"))
+      .catch((err) => {
+        addDebug("error", "cr_send_message (initial) FAILED", String(err));
+        setError(`Failed to send initial message: ${String(err)}`);
+      });
     // Only run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -99,18 +147,26 @@ export function MessageStream({
       eventName,
       (event) => {
         const { event_type, data } = event.payload;
+        addDebug("event", `SSE ${event_type}`, JSON.stringify(data).slice(0, 200));
         // AgentAPI uses "message_update"/"status_change"; OpenCode uses "message"/"status"
         const isMessageEvent = event_type === "message_update" || event_type === "message";
         const isStatusEvent = event_type === "status_change" || event_type === "status";
         if (isMessageEvent && data) {
           if (isClaude) {
             // For claude-remote, re-fetch all messages (handles both new and updated)
+            addDebug("send", "cr_get_messages (SSE refresh)");
             invoke<RemoteMessage[]>("cr_get_messages", {
               serverUrl,
               token: serverPassword,
             })
-              .then((msgs) => setMessages(msgs))
-              .catch((err) => console.error("Failed to refresh messages:", err));
+              .then((msgs) => {
+                addDebug("recv", "cr_get_messages (SSE refresh) OK", `${msgs.length} message(s)`);
+                setMessages(msgs);
+              })
+              .catch((err) => {
+                addDebug("error", "cr_get_messages (SSE refresh) FAILED", String(err));
+                console.error("Failed to refresh messages:", err);
+              });
           } else if (
             "session_id" in data &&
             data.session_id === session.id &&
@@ -130,12 +186,19 @@ export function MessageStream({
     return () => {
       unlisten.then((fn) => fn()).catch(() => {});
     };
-  }, [session.id, isClaude, serverUrl, serverPassword]);
+  }, [session.id, isClaude, serverUrl, serverPassword, addDebug]);
 
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Auto-scroll debug panel
+  useEffect(() => {
+    if (debugMode) {
+      debugEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [debugLog, debugMode]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -143,6 +206,8 @@ export function MessageStream({
 
     setSending(true);
     setInput("");
+    const cmd = isClaude ? "cr_send_message" : "oc_send_message";
+    addDebug("send", cmd, `content="${text.slice(0, 100)}${text.length > 100 ? "..." : ""}"`);
     try {
       if (isClaude) {
         await invoke("cr_send_message", {
@@ -158,13 +223,15 @@ export function MessageStream({
           message: text,
         });
       }
+      addDebug("recv", `${cmd} OK`);
     } catch (err) {
+      addDebug("error", `${cmd} FAILED`, String(err));
       setError(String(err));
     } finally {
       setSending(false);
       textareaRef.current?.focus();
     }
-  }, [input, sending, serverUrl, serverPassword, session.id, isClaude]);
+  }, [input, sending, serverUrl, serverPassword, session.id, isClaude, addDebug]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && e.metaKey) {
@@ -183,6 +250,13 @@ export function MessageStream({
         <span className={`message-stream-status status-${isClaude ? agentStatus : session.status}`}>
           {isClaude ? agentStatus : session.status}
         </span>
+        <button
+          className={`terminal-close ${debugMode ? "debug-active" : ""}`}
+          onClick={() => setDebugMode((d) => !d)}
+          title="Toggle debug log"
+        >
+          Debug
+        </button>
         <button className="terminal-close" onClick={onClose} title="Close (Esc)">
           Close
         </button>
@@ -225,6 +299,37 @@ export function MessageStream({
           ))}
         <div ref={messagesEndRef} />
       </div>
+
+      {debugMode && (
+        <div className="debug-panel">
+          <div className="debug-panel-header">
+            <span>Debug Log ({debugLog.length} entries)</span>
+            <button className="debug-clear" onClick={() => setDebugLog([])}>
+              Clear
+            </button>
+          </div>
+          <div className="debug-panel-body">
+            {debugLog.length === 0 && <div className="debug-empty">No entries yet</div>}
+            {debugLog.map((entry, i) => (
+              <div key={i} className={`debug-entry debug-${entry.direction}`}>
+                <span className="debug-time">{entry.time}</span>
+                <span className={`debug-badge debug-badge-${entry.direction}`}>
+                  {entry.direction === "send"
+                    ? "REQ"
+                    : entry.direction === "recv"
+                      ? "RES"
+                      : entry.direction === "event"
+                        ? "SSE"
+                        : "ERR"}
+                </span>
+                <span className="debug-label">{entry.label}</span>
+                {entry.detail && <pre className="debug-detail">{entry.detail}</pre>}
+              </div>
+            ))}
+            <div ref={debugEndRef} />
+          </div>
+        </div>
+      )}
 
       <div className="message-stream-input">
         <textarea
