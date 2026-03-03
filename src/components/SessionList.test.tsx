@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
 import { SessionList } from "./SessionList";
 import type { Session } from "../types";
+import type { PendingCreation } from "../hooks/useSessionCreation";
 
 afterEach(cleanup);
 
@@ -223,5 +224,108 @@ describe("SessionList", () => {
     // Collapse
     fireEvent.click(screen.getByText("Dismissed"));
     expect(screen.queryByTestId("session-s2")).not.toBeInTheDocument();
+  });
+
+  it("shows MainSessionGhost when group has no main session", () => {
+    const sessions = [makeSession({ id: "s1", worktree_branch: "feature-a" })];
+
+    render(
+      <SessionList
+        sessions={sessions}
+        onSelectSession={noop}
+        selectedSessionId={null}
+        groupPath="/group"
+        repoPath="/repo"
+      />,
+    );
+
+    expect(screen.getByTestId("main-ghost")).toBeInTheDocument();
+  });
+
+  it("does not show MainSessionGhost when main session exists", () => {
+    const sessions = [
+      makeSession({ id: "s1", worktree_branch: "main" }),
+      makeSession({ id: "s2", worktree_branch: "feature-a" }),
+    ];
+
+    render(
+      <SessionList
+        sessions={sessions}
+        onSelectSession={noop}
+        selectedSessionId={null}
+        groupPath="/group"
+        repoPath="/repo"
+      />,
+    );
+
+    expect(screen.queryByTestId("main-ghost")).not.toBeInTheDocument();
+  });
+
+  it("renders pending session cards", () => {
+    const sessions = [makeSession({ id: "s1", worktree_branch: "feature-a" })];
+    const pending = new Map<string, PendingCreation>([
+      [
+        "p1",
+        {
+          creationId: "p1",
+          title: "New session",
+          groupPath: "/group",
+          startedAt: Date.now(),
+        },
+      ],
+    ]);
+
+    render(
+      <SessionList
+        sessions={sessions}
+        onSelectSession={noop}
+        selectedSessionId={null}
+        groupPath="/group"
+        pendingCreations={pending}
+      />,
+    );
+
+    expect(screen.getByTestId("pending")).toBeInTheDocument();
+  });
+
+  it("filters pending creations to current group", () => {
+    const sessions = [makeSession({ id: "s1", worktree_branch: "feature-a" })];
+    const pending = new Map<string, PendingCreation>([
+      [
+        "p1",
+        {
+          creationId: "p1",
+          title: "Other group",
+          groupPath: "/other-group",
+          startedAt: Date.now(),
+        },
+      ],
+    ]);
+
+    render(
+      <SessionList
+        sessions={sessions}
+        onSelectSession={noop}
+        selectedSessionId={null}
+        groupPath="/group"
+        pendingCreations={pending}
+      />,
+    );
+
+    expect(screen.queryByTestId("pending")).not.toBeInTheDocument();
+  });
+
+  it("shows error without retry button when onRetry not provided", () => {
+    render(
+      <SessionList
+        sessions={undefined}
+        onSelectSession={noop}
+        selectedSessionId={null}
+        error={new Error("Oops")}
+      />,
+    );
+
+    expect(screen.getByText(/Oops/)).toBeInTheDocument();
+    expect(screen.queryByText("Retry")).not.toBeInTheDocument();
   });
 });
