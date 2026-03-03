@@ -61,6 +61,13 @@ Orca reads agent-deck's SQLite DB (read-only) for session/group data, parses Cla
 - `src/App.tsx` - Main app layout and state
 - `src/components/SessionCard.tsx` - Session card with status, summary, worktree actions
 
+## Testing
+
+- **Always add tests for new features.** Every new feature or significant behavior change must include corresponding tests. Coverage thresholds are enforced in CI and locally via `npm run check`.
+- Frontend tests use Vitest + React Testing Library (`src/**/*.test.{ts,tsx}`)
+- Rust tests live alongside the source (`#[cfg(test)]` modules)
+- Run `npm run test:coverage` to verify coverage thresholds before pushing
+
 ## Conventions
 
 - Dark theme with CSS custom properties (see `src/styles.css` `:root`)
