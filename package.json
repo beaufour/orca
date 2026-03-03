@@ -19,7 +19,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "check": "npx tsc --noEmit && npm run lint && npm run format:check && npm run rustfmt:check && npm run clippy && npm run test && npm run test:rust",
+    "check": "npx tsc --noEmit && npm run lint && npm run format:check && npm run rustfmt:check && npm run clippy && npm run test:coverage && npm run test:rust",
     "fix": "npm run lint:fix && npm run format && npm run rustfmt"
   },
   "devDependencies": {
