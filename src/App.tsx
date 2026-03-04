@@ -373,8 +373,14 @@ function App() {
         );
         if (!resolvedUrl) return;
         if (effectiveGroup.backend === "claude-remote") {
+          // Generate a unique project ID for this session.
+          // agent-remote creates containers lazily when the first request
+          // hits /claude/<projectId>/*.
+          const projectId = `orca-${Date.now()}`;
+          const baseUrl = resolvedUrl.replace(/\/+$/, "");
+          const sessionUrl = `${baseUrl}/claude/${projectId}`;
           const syntheticSession: RemoteSession = {
-            id: `cr-${Date.now()}`,
+            id: projectId,
             title: title || "Claude Remote",
             status: "stable",
             summary: null,
@@ -383,7 +389,7 @@ function App() {
           };
           setRemoteSession(syntheticSession);
           setRemotePassword(resolvedToken ?? "");
-          setRemoteServerUrl(resolvedUrl);
+          setRemoteServerUrl(sessionUrl);
           setRemoteInitialPrompt(prompt || null);
           setMessageStreamOpen(true);
         } else {

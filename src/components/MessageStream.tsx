@@ -106,16 +106,33 @@ export function MessageStream({
       });
   }, [session.id, serverUrl, serverPassword, isClaude, addDebug]);
 
-  // Start SSE subscription for claude-remote
+  // Start SSE subscription for claude-remote (with retry on failure)
   useEffect(() => {
     if (!isClaude) return;
-    addDebug("send", "cr_subscribe_events", `url=${serverUrl}`);
-    invoke("cr_subscribe_events", { serverUrl, token: serverPassword })
-      .then(() => addDebug("recv", "cr_subscribe_events OK"))
-      .catch((err) => {
-        addDebug("error", "cr_subscribe_events FAILED", String(err));
-        console.error("Failed to subscribe to SSE:", err);
-      });
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout>;
+
+    const trySubscribe = (attempt: number) => {
+      if (cancelled) return;
+      addDebug("send", `cr_subscribe_events${attempt > 1 ? ` (attempt ${attempt})` : ""}`);
+      invoke("cr_subscribe_events", { serverUrl, token: serverPassword })
+        .then(() => addDebug("recv", "cr_subscribe_events OK"))
+        .catch((err) => {
+          addDebug("error", "cr_subscribe_events FAILED", String(err));
+          // Retry with backoff (3s, 6s, 12s, max 30s) — container may still be starting
+          if (!cancelled) {
+            const delay = Math.min(3000 * Math.pow(2, attempt - 1), 30000);
+            addDebug("event", `SSE retry in ${delay / 1000}s`);
+            retryTimer = setTimeout(() => trySubscribe(attempt + 1), delay);
+          }
+        });
+    };
+
+    trySubscribe(1);
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+    };
   }, [isClaude, serverUrl, serverPassword, addDebug]);
 
   // Send initial prompt on mount (claude-remote)
@@ -140,12 +157,16 @@ export function MessageStream({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Track whether SSE is connected (to enable/disable polling fallback)
+  const sseConnectedRef = useRef(false);
+
   // Listen to SSE events
   useEffect(() => {
     const eventName = isClaude ? "cr-event" : "oc-event";
     const unlisten = listen<{ event_type: string; data: Record<string, unknown> }>(
       eventName,
       (event) => {
+        sseConnectedRef.current = true;
         const { event_type, data } = event.payload;
         addDebug("event", `SSE ${event_type}`, JSON.stringify(data).slice(0, 200));
         // AgentAPI uses "message_update"/"status_change"; OpenCode uses "message"/"status"
@@ -187,6 +208,26 @@ export function MessageStream({
       unlisten.then((fn) => fn()).catch(() => {});
     };
   }, [session.id, isClaude, serverUrl, serverPassword, addDebug]);
+
+  // Poll messages as fallback while SSE is not connected (claude-remote only)
+  useEffect(() => {
+    if (!isClaude) return;
+    const interval = setInterval(() => {
+      if (sseConnectedRef.current) return; // SSE is handling updates
+      invoke<RemoteMessage[]>("cr_get_messages", {
+        serverUrl,
+        token: serverPassword,
+      })
+        .then((msgs) => {
+          if (msgs.length > 0) {
+            addDebug("recv", "poll OK", `${msgs.length} message(s)`);
+            setMessages(msgs);
+          }
+        })
+        .catch(() => {}); // Silently ignore poll failures
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isClaude, serverUrl, serverPassword, addDebug]);
 
   // Auto-scroll to bottom
   useEffect(() => {
