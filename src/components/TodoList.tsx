@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import type { Group, Session, GitHubIssue } from "../types";
+import type { Group, Session, GitHubIssue, RemoteSession } from "../types";
 import type { PendingCreation, CreateSessionParams } from "../hooks/useSessionCreation";
 import { extractIssueNumber, isMainSession, issueToSlug, labelStyle } from "../utils";
 import { queryKeys } from "../queryKeys";
@@ -9,6 +9,7 @@ import { TodoCard } from "./TodoCard";
 import { SessionCard } from "./SessionCard";
 import { SessionList } from "./SessionList";
 import { PendingSessionCard } from "./PendingSessionCard";
+import { RemoteSessionCard } from "./RemoteSessionCard";
 import { IssueModal } from "./IssueModal";
 
 interface TodoListProps {
@@ -26,6 +27,8 @@ interface TodoListProps {
   onDismissPending?: (creationId: string) => void;
   createSession?: (params: CreateSessionParams) => void;
   onCreateRemoteSession?: (title: string, prompt: string | null) => void;
+  remoteSession?: RemoteSession | null;
+  onReconnectRemote?: () => void;
   dismissedIds?: Set<string>;
   onDismiss?: (sessionId: string) => void;
   onUndismiss?: (sessionId: string) => void;
@@ -48,6 +51,8 @@ export function TodoList({
   onDismissPending,
   createSession,
   onCreateRemoteSession,
+  remoteSession,
+  onReconnectRemote,
   dismissedIds,
   onDismiss,
   onUndismiss,
@@ -290,7 +295,7 @@ export function TodoList({
   return (
     <div className="todo-list">
       {/* Sessions */}
-      {(activeSessions.length > 0 || groupPending.length > 0) && (
+      {(activeSessions.length > 0 || groupPending.length > 0 || remoteSession) && (
         <div className="todo-section">
           <div className="todo-section-header">
             <span>Sessions</span>
@@ -303,6 +308,9 @@ export function TodoList({
               const origIndex = allSessions.indexOf(item);
               return renderSessionItem(item, origIndex);
             })}
+            {remoteSession && onReconnectRemote && (
+              <RemoteSessionCard session={remoteSession} onClick={onReconnectRemote} />
+            )}
             {groupPending.map((pending) => (
               <PendingSessionCard
                 key={pending.creationId}

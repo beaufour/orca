@@ -535,7 +535,6 @@ function App() {
         onSelectGroup={(g) => {
           setSelectedGroup(g);
           setSelectedSession(null);
-          setRemoteSession(null);
           setMessageStreamOpen(false);
           setNeedsActionFilter(false);
           updateFocusedIndex(0);
@@ -543,7 +542,6 @@ function App() {
         onSelectNeedsAction={() => {
           setSelectedGroup(null);
           setSelectedSession(null);
-          setRemoteSession(null);
           setMessageStreamOpen(false);
           setNeedsActionFilter(true);
           updateFocusedIndex(0);
@@ -605,6 +603,8 @@ function App() {
                   onDismissPending={dismissPending}
                   createSession={createSession}
                   onCreateRemoteSession={handleCreateRemoteSession}
+                  remoteSession={!messageStreamOpen ? remoteSession : null}
+                  onReconnectRemote={() => setMessageStreamOpen(true)}
                   dismissedIds={dismissedIds}
                   onDismiss={handleDismiss}
                   onUndismiss={handleUndismiss}
