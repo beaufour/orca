@@ -2143,36 +2143,11 @@ body {
   font-family: "SF Mono", "Menlo", monospace;
 }
 
-/* ===== MessageStream (Remote OpenCode) ===== */
-.message-stream {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  background: var(--bg);
-  border-left: 3px solid var(--accent);
-  box-shadow: inset 3px 0 12px rgba(74, 158, 255, 0.08);
-}
+/* ===== MessageStream — Terminal-style remote view ===== */
 
-.message-stream-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
-  background: rgba(74, 158, 255, 0.08);
-  border-bottom: 1px solid var(--border);
-}
+/* Reuses .terminal-view, .terminal-header, .terminal-title, .terminal-close */
 
-.message-stream-title {
-  font-weight: 600;
-  color: var(--text);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.message-stream-status {
+.terminal-status-badge {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
@@ -2180,29 +2155,59 @@ body {
   text-transform: uppercase;
 }
 
-.message-stream-status.status-idle {
+.terminal-status-badge.status-stable {
   color: var(--status-idle);
-  background: rgba(63, 185, 80, 0.12);
 }
 
-.message-stream-status.status-running {
+.terminal-status-badge.status-running {
   color: var(--accent);
-  background: rgba(74, 158, 255, 0.12);
 }
 
-.message-stream-body {
+.term-output {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  padding: 8px 12px;
+  font-family: "SF Mono", Menlo, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c9d1d9;
+  cursor: text;
 }
 
-.message-stream-loading {
-  color: var(--text-muted);
-  text-align: center;
-  padding: 24px;
+.term-msg {
+  margin-bottom: 8px;
+}
+
+.term-msg-user {
+  color: #c9d1d9;
+}
+
+.term-msg-user .term-prompt {
+  color: #3fb950;
+  font-weight: 700;
+}
+
+.term-msg-agent pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #c9d1d9;
+}
+
+.term-msg-system {
+  color: #6e7681;
+  font-style: italic;
+}
+
+.term-msg-system pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.term-loading {
+  color: #6e7681;
+  padding: 16px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2215,79 +2220,46 @@ body {
   opacity: 0.7;
 }
 
-.message-bubble {
-  padding: 10px 14px;
-  border-radius: 8px;
-  max-width: 85%;
-  word-break: break-word;
+.term-error {
+  color: #ff7b72;
+  padding: 4px 0;
 }
 
-.message-bubble.message-user {
-  align-self: flex-end;
-  background: rgba(74, 158, 255, 0.15);
-  border: 1px solid rgba(74, 158, 255, 0.25);
-}
-
-.message-bubble.message-assistant {
-  align-self: flex-start;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-}
-
-.message-bubble.message-system {
-  align-self: center;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border);
-  font-style: italic;
-  color: var(--text-muted);
-}
-
-.message-role {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-.message-content pre {
-  margin: 0;
-  white-space: pre-wrap;
-  font-family: "SF Mono", "Menlo", monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text);
-}
-
-.message-tool-name {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 6px;
-  font-family: "SF Mono", "Menlo", monospace;
-}
-
-.message-type-tool_use .message-content pre {
-  color: var(--accent);
-}
-
-.message-type-tool_result .message-content pre {
-  color: var(--status-idle);
-}
-
-.message-stream-input {
+.term-input-row {
   display: flex;
-  gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-elevated);
-  align-items: flex-end;
+  align-items: center;
+  padding: 6px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: #0d1117;
+  font-family: "SF Mono", Menlo, "Courier New", monospace;
+  font-size: 13px;
 }
 
-.message-input-textarea {
+.term-input-prompt {
+  color: #3fb950;
+  font-weight: 700;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.term-input {
   flex: 1;
-  resize: none;
-  min-height: 60px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #c9d1d9;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.5;
+  padding: 2px 0;
+}
+
+.term-input:disabled {
+  opacity: 0.5;
+}
+
+.term-input::placeholder {
+  color: #484f58;
 }
 
 /* Debug panel */

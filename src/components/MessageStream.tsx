@@ -47,7 +47,7 @@ export function MessageStream({
   const [debugLog, setDebugLog] = useState<DebugEntry[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const debugEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const isClaude = backend === "claude-remote";
 
   const addDebug = useCallback(
@@ -270,12 +270,12 @@ export function MessageStream({
       setError(String(err));
     } finally {
       setSending(false);
-      textareaRef.current?.focus();
+      inputRef.current?.focus();
     }
   }, [input, sending, serverUrl, serverPassword, session.id, isClaude, addDebug]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && e.metaKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -284,13 +284,40 @@ export function MessageStream({
     }
   };
 
+  // Render a message as terminal-style output
+  const renderMessage = (msg: RemoteMessage, i: number) => {
+    const content =
+      typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content, null, 2);
+    const isUser = msg.role === "user";
+    const isAgent = msg.role === "agent" || msg.role === "assistant";
+
+    return (
+      <div key={msg.id || i} className="term-msg">
+        {isUser ? (
+          <div className="term-msg-user">
+            <span className="term-prompt">&gt; </span>
+            <span>{content}</span>
+          </div>
+        ) : isAgent ? (
+          <div className="term-msg-agent">
+            <pre>{content}</pre>
+          </div>
+        ) : (
+          <div className="term-msg-system">
+            <pre>{content}</pre>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="message-stream">
-      <div className="message-stream-header">
-        <span className="message-stream-title">{session.title || session.id}</span>
-        <span className={`message-stream-status status-${isClaude ? agentStatus : session.status}`}>
-          {isClaude ? agentStatus : session.status}
-        </span>
+    <div className="terminal-view">
+      <div className="terminal-header">
+        <span className="terminal-title">{session.title || session.id}</span>
+        {isClaude && (
+          <span className={`terminal-status-badge status-${agentStatus}`}>{agentStatus}</span>
+        )}
         <button
           className={`terminal-close ${debugMode ? "debug-active" : ""}`}
           onClick={() => setDebugMode((d) => !d)}
@@ -303,10 +330,10 @@ export function MessageStream({
         </button>
       </div>
 
-      <div className="message-stream-body">
+      <div className="term-output" onClick={() => inputRef.current?.focus()}>
         {showWaiting &&
           (isClaude ? (
-            <div className="message-stream-loading">
+            <div className="term-loading">
               <span className="spinner" />{" "}
               {loading
                 ? `Starting remote container... (${elapsed}s)`
@@ -318,26 +345,17 @@ export function MessageStream({
               )}
             </div>
           ) : loading ? (
-            <div className="message-stream-loading">Loading messages...</div>
+            <div className="term-loading">Loading messages...</div>
           ) : null)}
-        {error && <div className="wt-error">{error}</div>}
-        {!loading &&
-          messages.map((msg, i) => (
-            <div
-              key={msg.id || i}
-              className={`message-bubble message-${msg.role || "system"} message-type-${msg.type || "text"}`}
-            >
-              <div className="message-role">{msg.role || "system"}</div>
-              <div className="message-content">
-                {typeof msg.content === "string" ? (
-                  <pre>{msg.content}</pre>
-                ) : (
-                  <pre>{JSON.stringify(msg.content, null, 2)}</pre>
-                )}
-              </div>
-              {msg.tool_name && <div className="message-tool-name">Tool: {msg.tool_name}</div>}
+        {error && <div className="term-error">{error}</div>}
+        {!loading && messages.map(renderMessage)}
+        {sending && (
+          <div className="term-msg">
+            <div className="term-msg-system">
+              <span className="spinner" /> Thinking...
             </div>
-          ))}
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -372,25 +390,18 @@ export function MessageStream({
         </div>
       )}
 
-      <div className="message-stream-input">
-        <textarea
-          ref={textareaRef}
-          className="wt-input message-input-textarea"
-          placeholder="Type a message... (Cmd+Enter to send)"
+      <div className="term-input-row">
+        <span className="term-input-prompt">&gt;</span>
+        <input
+          ref={inputRef}
+          className="term-input"
+          type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          rows={3}
           disabled={sending || showWaiting}
           autoFocus
         />
-        <button
-          className="wt-btn wt-btn-add"
-          onClick={handleSend}
-          disabled={!input.trim() || sending || showWaiting}
-        >
-          {sending ? "Sending..." : "Send"}
-        </button>
       </div>
     </div>
   );
