@@ -29,7 +29,11 @@ interface SessionListProps {
   createSession?: (params: CreateSessionParams) => void;
   mergeWorkflow?: "merge" | "pr";
   remoteSession?: RemoteSession | null;
+  remoteServerUrl?: string;
+  remoteToken?: string;
+  remoteInitialPrompt?: string | null;
   onReconnectRemote?: () => void;
+  onRemoveRemote?: () => void;
 }
 
 function renderSessionCard(
@@ -99,7 +103,11 @@ export function SessionList({
   createSession,
   mergeWorkflow,
   remoteSession,
+  remoteServerUrl,
+  remoteToken,
+  remoteInitialPrompt,
   onReconnectRemote,
+  onRemoveRemote,
 }: SessionListProps) {
   const [dismissedExpanded, setDismissedExpanded] = useState(false);
 
@@ -186,8 +194,15 @@ export function SessionList({
             sessionIndex: indexMap.get(session.id) ?? -1,
           }),
         )}
-        {remoteSession && onReconnectRemote && (
-          <RemoteSessionCard session={remoteSession} onClick={onReconnectRemote} />
+        {remoteSession && onReconnectRemote && onRemoveRemote && remoteServerUrl && (
+          <RemoteSessionCard
+            session={remoteSession}
+            serverUrl={remoteServerUrl}
+            token={remoteToken ?? ""}
+            initialPrompt={remoteInitialPrompt}
+            onClick={onReconnectRemote}
+            onRemove={onRemoveRemote}
+          />
         )}
         {groupPending.map((pending) => (
           <PendingSessionCard

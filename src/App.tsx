@@ -448,6 +448,14 @@ function App() {
     setRemoteInitialPrompt(null);
   }, [selectedSession, filteredSessions, updateFocusedIndex]);
 
+  const handleRemoveRemote = useCallback(() => {
+    setRemoteSession(null);
+    setRemoteServerUrl("");
+    setRemotePassword("");
+    setRemoteInitialPrompt(null);
+    setMessageStreamOpen(false);
+  }, []);
+
   // Derive clamped focused index from session count
   const clampedFocusedIndex = useMemo(() => {
     if (!filteredSessions) return focusedIndex;
@@ -604,7 +612,11 @@ function App() {
                   createSession={createSession}
                   onCreateRemoteSession={handleCreateRemoteSession}
                   remoteSession={!messageStreamOpen ? remoteSession : null}
+                  remoteServerUrl={remoteServerUrl}
+                  remoteToken={remotePassword}
+                  remoteInitialPrompt={remoteInitialPrompt}
                   onReconnectRemote={() => setMessageStreamOpen(true)}
+                  onRemoveRemote={handleRemoveRemote}
                   dismissedIds={dismissedIds}
                   onDismiss={handleDismiss}
                   onUndismiss={handleUndismiss}
@@ -632,7 +644,11 @@ function App() {
                   createSession={createSession}
                   mergeWorkflow={selectedGroup?.merge_workflow}
                   remoteSession={!messageStreamOpen ? remoteSession : null}
+                  remoteServerUrl={remoteServerUrl}
+                  remoteToken={remotePassword}
+                  remoteInitialPrompt={remoteInitialPrompt}
                   onReconnectRemote={() => setMessageStreamOpen(true)}
+                  onRemoveRemote={handleRemoveRemote}
                 />
               )}
             </main>

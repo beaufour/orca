@@ -28,7 +28,11 @@ interface TodoListProps {
   createSession?: (params: CreateSessionParams) => void;
   onCreateRemoteSession?: (title: string, prompt: string | null) => void;
   remoteSession?: RemoteSession | null;
+  remoteServerUrl?: string;
+  remoteToken?: string;
+  remoteInitialPrompt?: string | null;
   onReconnectRemote?: () => void;
+  onRemoveRemote?: () => void;
   dismissedIds?: Set<string>;
   onDismiss?: (sessionId: string) => void;
   onUndismiss?: (sessionId: string) => void;
@@ -52,7 +56,11 @@ export function TodoList({
   createSession,
   onCreateRemoteSession,
   remoteSession,
+  remoteServerUrl,
+  remoteToken,
+  remoteInitialPrompt,
   onReconnectRemote,
+  onRemoveRemote,
   dismissedIds,
   onDismiss,
   onUndismiss,
@@ -308,8 +316,15 @@ export function TodoList({
               const origIndex = allSessions.indexOf(item);
               return renderSessionItem(item, origIndex);
             })}
-            {remoteSession && onReconnectRemote && (
-              <RemoteSessionCard session={remoteSession} onClick={onReconnectRemote} />
+            {remoteSession && onReconnectRemote && onRemoveRemote && remoteServerUrl && (
+              <RemoteSessionCard
+                session={remoteSession}
+                serverUrl={remoteServerUrl}
+                token={remoteToken ?? ""}
+                initialPrompt={remoteInitialPrompt}
+                onClick={onReconnectRemote}
+                onRemove={onRemoveRemote}
+              />
             )}
             {groupPending.map((pending) => (
               <PendingSessionCard
