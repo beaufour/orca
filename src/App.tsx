@@ -574,18 +574,6 @@ function App() {
         ) : (
           <>
             <main className="main-content">
-              {remoteSession && !messageStreamOpen && (
-                <div
-                  className="session-card remote-session-card"
-                  onClick={() => setMessageStreamOpen(true)}
-                >
-                  <div className="session-card-header">
-                    <span className="session-title">{remoteSession.title || remoteSession.id}</span>
-                    <span className="session-status status-running">remote</span>
-                  </div>
-                  <div className="session-summary">Click to reconnect</div>
-                </div>
-              )}
               {searchVisible && (
                 <div className="search-bar">
                   <input
@@ -643,6 +631,8 @@ function App() {
                   onDismissPending={dismissPending}
                   createSession={createSession}
                   mergeWorkflow={selectedGroup?.merge_workflow}
+                  remoteSession={!messageStreamOpen ? remoteSession : null}
+                  onReconnectRemote={() => setMessageStreamOpen(true)}
                 />
               )}
             </main>

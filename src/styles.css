@@ -431,12 +431,6 @@ body {
   background: var(--bg-hover);
 }
 
-.remote-session-card {
-  border-left: 3px solid var(--accent);
-  cursor: pointer;
-  margin: 8px 12px;
-}
-
 .session-badges {
   display: flex;
   gap: 4px;

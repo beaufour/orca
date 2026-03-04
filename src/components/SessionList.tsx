@@ -1,10 +1,11 @@
 import { useState } from "react";
-import type { Session } from "../types";
+import type { Session, RemoteSession } from "../types";
 import type { PendingCreation, CreateSessionParams } from "../hooks/useSessionCreation";
 import { isMainSession } from "../utils";
 import { SessionCard } from "./SessionCard";
 import { MainSessionGhost } from "./MainSessionGhost";
 import { PendingSessionCard } from "./PendingSessionCard";
+import { RemoteSessionCard } from "./RemoteSessionCard";
 
 interface SessionListProps {
   sessions: Session[] | undefined;
@@ -27,6 +28,8 @@ interface SessionListProps {
   onDismissPending?: (creationId: string) => void;
   createSession?: (params: CreateSessionParams) => void;
   mergeWorkflow?: "merge" | "pr";
+  remoteSession?: RemoteSession | null;
+  onReconnectRemote?: () => void;
 }
 
 function renderSessionCard(
@@ -95,6 +98,8 @@ export function SessionList({
   onDismissPending,
   createSession,
   mergeWorkflow,
+  remoteSession,
+  onReconnectRemote,
 }: SessionListProps) {
   const [dismissedExpanded, setDismissedExpanded] = useState(false);
 
@@ -128,7 +133,7 @@ export function SessionList({
     ? Array.from(pendingCreations.values()).filter((p) => !groupPath || p.groupPath === groupPath)
     : [];
 
-  if (sessions.length === 0 && groupPending.length === 0) {
+  if (sessions.length === 0 && groupPending.length === 0 && !remoteSession) {
     return <div className="session-list-empty">No sessions found</div>;
   }
 
@@ -180,6 +185,9 @@ export function SessionList({
             ...cardProps,
             sessionIndex: indexMap.get(session.id) ?? -1,
           }),
+        )}
+        {remoteSession && onReconnectRemote && (
+          <RemoteSessionCard session={remoteSession} onClick={onReconnectRemote} />
         )}
         {groupPending.map((pending) => (
           <PendingSessionCard
