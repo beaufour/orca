@@ -18,7 +18,7 @@ export default defineConfig({
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/**/*.test.{ts,tsx}", "src/vite-env.d.ts", "src/main.tsx"],
       thresholds: {
-        statements: 6,
+        statements: 7,
         branches: 4,
         functions: 6,
         lines: 6,
