@@ -19,8 +19,8 @@ echo "  Clippy..."
 cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 if [ "${SKIP_TESTS:-0}" != "1" ]; then
-  echo "  Vitest..."
-  npx vitest run
+  echo "  Vitest (with coverage)..."
+  npx vitest run --coverage
   echo "  Cargo test..."
   cargo test --manifest-path src-tauri/Cargo.toml
 else
