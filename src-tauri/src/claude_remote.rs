@@ -201,3 +201,140 @@ pub async fn cr_subscribe_events(
     let url = format!("{}/events", remote_common::normalize_url(&server_url));
     remote_common::subscribe_sse(&app, &handles, &client, &url, "cr-event").await
 }
+
+// --- Exec endpoint (container command execution) ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecResult {
+    pub stdout: String,
+    pub stderr: String,
+    #[serde(rename = "exitCode")]
+    pub exit_code: i32,
+}
+
+/// Core HTTP POST to /exec endpoint. Reusable by both cr_exec and cr_get_branch_diff.
+async fn exec_remote(
+    server_url: &str,
+    token: &str,
+    command: &str,
+    cwd: Option<&str>,
+    timeout: Option<u64>,
+) -> Result<ExecResult, String> {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {token}"))
+            .map_err(|e| format!("Invalid auth header: {e}"))?,
+    );
+
+    // Use a longer HTTP timeout than the exec timeout to avoid racing
+    let http_timeout = timeout.unwrap_or(30) + 5;
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .timeout(Duration::from_secs(http_timeout))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+
+    let url = format!("{}/exec", remote_common::normalize_url(server_url));
+    let mut body = serde_json::json!({ "command": command });
+    if let Some(c) = cwd {
+        body["cwd"] = serde_json::Value::String(c.to_string());
+    }
+    if let Some(t) = timeout {
+        body["timeout"] = serde_json::Value::Number(serde_json::Number::from(t * 1000));
+    }
+
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Exec request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Exec endpoint returned {status}: {body}"));
+    }
+
+    resp.json::<ExecResult>()
+        .await
+        .map_err(|e| format!("Failed to parse exec result: {e}"))
+}
+
+#[tauri::command]
+pub async fn cr_exec(
+    server_url: String,
+    token: String,
+    command: String,
+    cwd: Option<String>,
+    timeout: Option<u64>,
+) -> Result<ExecResult, String> {
+    exec_remote(&server_url, &token, &command, cwd.as_deref(), timeout).await
+}
+
+#[tauri::command]
+pub async fn cr_get_branch_diff(server_url: String, token: String) -> Result<String, String> {
+    // Shell script that detects the default branch and runs git diff.
+    // Same logic as the local get_default_branch_inner in git.rs.
+    let script = r#"
+cd /workspace
+BASE=""
+# Try symbolic-ref of origin/HEAD
+REF=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null)
+if [ -n "$REF" ]; then
+  BASE="${REF#refs/remotes/origin/}"
+fi
+# Fallback: check local main/master
+if [ -z "$BASE" ] && git rev-parse --verify main >/dev/null 2>&1; then
+  BASE="main"
+fi
+if [ -z "$BASE" ] && git rev-parse --verify master >/dev/null 2>&1; then
+  BASE="master"
+fi
+# Fallback: check remote tracking branches
+if [ -z "$BASE" ] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+  BASE="origin/main"
+fi
+if [ -z "$BASE" ] && git rev-parse --verify origin/master >/dev/null 2>&1; then
+  BASE="origin/master"
+fi
+if [ -z "$BASE" ]; then
+  echo "Could not determine default branch" >&2
+  exit 1
+fi
+git diff "$BASE"...HEAD
+"#;
+
+    let result = exec_remote(&server_url, &token, script, None, Some(30)).await?;
+    if result.exit_code != 0 {
+        return Err(format!(
+            "git diff failed (exit {}): {}",
+            result.exit_code,
+            result.stderr.trim()
+        ));
+    }
+    Ok(result.stdout)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exec_result_deserializes_camel_case() {
+        let json = r#"{"stdout":"hello\n","stderr":"","exitCode":0}"#;
+        let result: ExecResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.stdout, "hello\n");
+        assert_eq!(result.stderr, "");
+        assert_eq!(result.exit_code, 0);
+    }
+
+    #[test]
+    fn exec_result_nonzero_exit_code() {
+        let json = r#"{"stdout":"","stderr":"not found\n","exitCode":127}"#;
+        let result: ExecResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.exit_code, 127);
+        assert_eq!(result.stderr, "not found\n");
+    }
+}

@@ -404,6 +404,8 @@ pub fn run() {
             claude_remote::cr_get_status,
             claude_remote::cr_delete_container,
             claude_remote::cr_subscribe_events,
+            claude_remote::cr_exec,
+            claude_remote::cr_get_branch_diff,
             read_app_log,
             open_in_terminal,
             get_analytics_enabled,
