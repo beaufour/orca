@@ -172,6 +172,25 @@ pub async fn cr_get_status(server_url: String, token: String) -> Result<CrStatus
 }
 
 #[tauri::command]
+pub async fn cr_delete_container(server_url: String, token: String) -> Result<(), String> {
+    let client = build_client(&token)?;
+    let url = remote_common::normalize_url(&server_url);
+    let resp = client
+        .delete(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Server returned {status}: {body}"));
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn cr_subscribe_events(
     app: tauri::AppHandle,
     handles: tauri::State<'_, remote_common::SseHandles>,

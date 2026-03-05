@@ -453,14 +453,36 @@ function App() {
     setRemoteInitialPrompt(null);
   }, [selectedSession, filteredSessions, updateFocusedIndex]);
 
-  const handleRemoveRemote = useCallback(() => {
+  const handleRemoveRemote = useCallback(async () => {
+    // Tell the server to destroy the container/session before clearing local state
+    try {
+      if (effectiveGroup?.backend === "claude-remote" && remoteServerUrl && remotePassword) {
+        await invoke("cr_delete_container", {
+          serverUrl: remoteServerUrl,
+          token: remotePassword,
+        });
+      } else if (
+        effectiveGroup?.backend === "opencode-remote" &&
+        remoteSession &&
+        remoteServerUrl &&
+        remotePassword
+      ) {
+        await invoke("oc_delete_session", {
+          serverUrl: remoteServerUrl,
+          password: remotePassword,
+          sessionId: remoteSession.id,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to delete remote session/container:", err);
+    }
     setRemoteSession(null);
     setRemoteServerUrl("");
     setRemotePassword("");
     setRemoteBackend("claude-remote");
     setRemoteInitialPrompt(null);
     setMessageStreamOpen(false);
-  }, []);
+  }, [effectiveGroup, remoteServerUrl, remotePassword, remoteSession]);
 
   // Derive clamped focused index from session count
   const clampedFocusedIndex = useMemo(() => {

@@ -357,6 +357,7 @@ pub fn run() {
             claude_remote::cr_get_messages,
             claude_remote::cr_send_message,
             claude_remote::cr_get_status,
+            claude_remote::cr_delete_container,
             claude_remote::cr_subscribe_events,
             read_app_log,
             open_in_terminal,
