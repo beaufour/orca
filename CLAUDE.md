@@ -67,6 +67,7 @@ Orca reads agent-deck's SQLite DB (read-only) for session/group data, parses Cla
 - Frontend tests use Vitest + React Testing Library (`src/**/*.test.{ts,tsx}`)
 - Rust tests live alongside the source (`#[cfg(test)]` modules)
 - Run `npm run test:coverage` to verify coverage thresholds before pushing
+- **Do not adjust test coverage targets** unless the user specifically asks you to
 
 ## Conventions
 
