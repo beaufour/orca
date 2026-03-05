@@ -73,6 +73,9 @@ function App() {
   const [remoteSession, setRemoteSession] = useState<RemoteSession | null>(null);
   const [remotePassword, setRemotePassword] = useState<string>("");
   const [remoteServerUrl, setRemoteServerUrl] = useState<string>("");
+  const [remoteBackend, setRemoteBackend] = useState<"opencode-remote" | "claude-remote">(
+    "claude-remote",
+  );
   const [remoteInitialPrompt, setRemoteInitialPrompt] = useState<string | null>(null);
   const [messageStreamOpen, setMessageStreamOpen] = useState(false);
 
@@ -390,6 +393,7 @@ function App() {
           setRemoteSession(syntheticSession);
           setRemotePassword(resolvedToken ?? "");
           setRemoteServerUrl(sessionUrl);
+          setRemoteBackend("claude-remote");
           setRemoteInitialPrompt(prompt || null);
           setMessageStreamOpen(true);
         } else {
@@ -402,6 +406,7 @@ function App() {
           setRemoteSession(session);
           setRemotePassword(resolvedToken ?? "");
           setRemoteServerUrl(resolvedUrl);
+          setRemoteBackend("opencode-remote");
           setMessageStreamOpen(true);
         }
       } catch (err) {
@@ -452,6 +457,7 @@ function App() {
     setRemoteSession(null);
     setRemoteServerUrl("");
     setRemotePassword("");
+    setRemoteBackend("claude-remote");
     setRemoteInitialPrompt(null);
     setMessageStreamOpen(false);
   }, []);
@@ -565,12 +571,12 @@ function App() {
       <div className="resize-handle" onMouseDown={handleMouseDown} />
       <div className="main-area">
         {terminalOpen ? (
-          isRemoteView && remoteSession && effectiveGroup ? (
+          isRemoteView && remoteSession ? (
             <MessageStream
               session={remoteSession}
               serverUrl={remoteServerUrl}
               serverPassword={remotePassword}
-              backend={effectiveGroup.backend as "opencode-remote" | "claude-remote"}
+              backend={remoteBackend}
               initialPrompt={remoteInitialPrompt}
               onClose={handleCloseTerminal}
             />
