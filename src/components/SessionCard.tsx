@@ -263,8 +263,24 @@ export function SessionCard({
       </div>
       {showDiff && (
         <DiffViewer
-          session={session}
-          tmuxSession={session.tmux_session || null}
+          sessionId={session.id}
+          branchLabel={session.worktree_branch || ""}
+          fetchDiff={() =>
+            invoke<string>("get_branch_diff", {
+              worktreePath: session.worktree_path,
+              branch: session.worktree_branch,
+            })
+          }
+          sendComments={
+            session.tmux_session
+              ? (prompt: string) =>
+                  invoke("paste_to_tmux_pane", {
+                    tmuxSession: session.tmux_session,
+                    text: prompt,
+                    submit: true,
+                  })
+              : null
+          }
           onClose={() => setShowDiff(false)}
         />
       )}

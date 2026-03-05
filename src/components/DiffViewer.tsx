@@ -1,7 +1,5 @@
 import { useCallback, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { invoke } from "@tauri-apps/api/core";
-import type { Session } from "../types";
 import type { DiffComment, DiffHunk } from "../utils";
 import { parseDiff, fileName, fileDir, formatCommentsAsPrompt } from "../utils";
 import { queryKeys } from "../queryKeys";
@@ -9,8 +7,10 @@ import { useEscapeKey } from "../hooks/useEscapeKey";
 import { Modal } from "./Modal";
 
 interface DiffViewerProps {
-  session: Session;
-  tmuxSession: string | null;
+  sessionId: string;
+  branchLabel: string;
+  fetchDiff: () => Promise<string>;
+  sendComments: ((prompt: string) => Promise<void>) | null;
   onClose: () => void;
 }
 
@@ -24,15 +24,17 @@ interface LineSelection {
 const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
 const MOD_KEY = isMac ? "\u2318" : "Ctrl";
 
-export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
+export function DiffViewer({
+  sessionId,
+  branchLabel,
+  fetchDiff,
+  sendComments,
+  onClose,
+}: DiffViewerProps) {
   const nextCommentId = useRef(1);
   const { data, isLoading, error } = useQuery<string>({
-    queryKey: queryKeys.branchDiff(session.id),
-    queryFn: () =>
-      invoke("get_branch_diff", {
-        worktreePath: session.worktree_path,
-        branch: session.worktree_branch,
-      }),
+    queryKey: queryKeys.branchDiff(sessionId),
+    queryFn: fetchDiff,
   });
 
   const [comments, setComments] = useState<DiffComment[]>([]);
@@ -173,14 +175,14 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
     setCommentText("");
   };
 
-  const sendComments = async () => {
-    if (!tmuxSession || comments.length === 0) return;
+  const handleSendComments = async () => {
+    if (!sendComments || comments.length === 0) return;
     const prompt = formatCommentsAsPrompt(comments);
     try {
-      await invoke("paste_to_tmux_pane", { tmuxSession, text: prompt, submit: true });
+      await sendComments(prompt);
       onClose();
     } catch (err) {
-      console.error("Failed to send comments to tmux:", err);
+      console.error("Failed to send comments:", err);
     }
   };
 
@@ -219,7 +221,7 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
     <Modal onClose={guardedClose} className="diff-modal-content">
       <div className="diff-header">
         <div className="diff-header-title">
-          <span>Diff: {session.worktree_branch}</span>
+          <span>Diff: {branchLabel}</span>
           {files.length > 0 && (
             <span className="diff-file-count">
               {files.length} file{files.length !== 1 ? "s" : ""}
@@ -248,8 +250,8 @@ export function DiffViewer({ session, tmuxSession, onClose }: DiffViewerProps) {
             <>
               {comments.length > 0 && (
                 <>
-                  {tmuxSession && (
-                    <button className="wt-btn wt-btn-add" onClick={sendComments}>
+                  {sendComments && (
+                    <button className="wt-btn wt-btn-add" onClick={handleSendComments}>
                       Send {comments.length} comment{comments.length !== 1 ? "s" : ""} to Claude
                     </button>
                   )}
