@@ -71,6 +71,8 @@ export function MessageStream({
   // Session isn't ready until the agent prompt appears
   const waitingForAgent = isClaude && messages.length === 0 && !error;
   const showWaiting = loading || waitingForAgent;
+  // Agent can accept messages only when status is "stable" (waiting for user input)
+  const canSend = isClaude ? agentStatus === "stable" : !showWaiting;
 
   // Elapsed timer while waiting
   useEffect(() => {
@@ -135,9 +137,12 @@ export function MessageStream({
     };
   }, [isClaude, serverUrl, serverPassword, addDebug]);
 
-  // Send initial prompt on mount (claude-remote)
+  // Send initial prompt once agent becomes stable (claude-remote)
+  const initialPromptSent = useRef(false);
   useEffect(() => {
-    if (!isClaude || !initialPrompt) return;
+    if (!isClaude || !initialPrompt || initialPromptSent.current) return;
+    if (agentStatus !== "stable") return;
+    initialPromptSent.current = true;
     addDebug(
       "send",
       "cr_send_message (initial)",
@@ -153,9 +158,7 @@ export function MessageStream({
         addDebug("error", "cr_send_message (initial) FAILED", String(err));
         setError(`Failed to send initial message: ${String(err)}`);
       });
-    // Only run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isClaude, initialPrompt, agentStatus, serverUrl, serverPassword, addDebug]);
 
   // Track whether SSE is connected (to enable/disable polling fallback)
   const sseConnectedRef = useRef(false);
@@ -243,7 +246,7 @@ export function MessageStream({
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || sending) return;
+    if (!text || sending || !canSend) return;
 
     setSending(true);
     setInput("");
@@ -272,7 +275,7 @@ export function MessageStream({
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [input, sending, serverUrl, serverPassword, session.id, isClaude, addDebug]);
+  }, [input, sending, canSend, serverUrl, serverPassword, session.id, isClaude, addDebug]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -316,7 +319,9 @@ export function MessageStream({
       <div className="terminal-header">
         <span className="terminal-title">{session.title || session.id}</span>
         {isClaude && (
-          <span className={`terminal-status-badge status-${agentStatus}`}>{agentStatus}</span>
+          <span className={`terminal-status-badge status-${agentStatus}`}>
+            {agentStatus === "stable" ? "READY" : agentStatus.toUpperCase()}
+          </span>
         )}
         <button
           className={`terminal-close ${debugMode ? "debug-active" : ""}`}
@@ -399,7 +404,8 @@ export function MessageStream({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          disabled={sending || showWaiting}
+          placeholder={!canSend && isClaude ? "Waiting for container to be ready..." : undefined}
+          disabled={sending}
           autoFocus
         />
       </div>
