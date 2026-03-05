@@ -8,6 +8,14 @@ import "./styles.css";
 
 initSentry();
 
+// Disable browser context menu except inside terminal sessions (xterm)
+document.addEventListener("contextmenu", (e) => {
+  const target = e.target as HTMLElement;
+  if (!target.closest(".xterm")) {
+    e.preventDefault();
+  }
+});
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
