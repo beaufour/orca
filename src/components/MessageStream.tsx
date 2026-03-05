@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { RemoteMessage, RemoteSession } from "../types";
+import { DiffViewer } from "./DiffViewer";
 
 interface DebugEntry {
   time: string;
@@ -45,6 +46,7 @@ export function MessageStream({
   const [elapsed, setElapsed] = useState(0);
   const [debugMode, setDebugMode] = useState(false);
   const [debugLog, setDebugLog] = useState<DebugEntry[]>([]);
+  const [showDiff, setShowDiff] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const debugEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -282,7 +284,7 @@ export function MessageStream({
       e.preventDefault();
       handleSend();
     }
-    if (e.key === "Escape") {
+    if (e.key === "Escape" && !showDiff) {
       onClose();
     }
   };
@@ -322,6 +324,11 @@ export function MessageStream({
           <span className={`terminal-status-badge status-${agentStatus}`}>
             {agentStatus === "stable" ? "READY" : agentStatus.toUpperCase()}
           </span>
+        )}
+        {isClaude && (
+          <button className="wt-btn" onClick={() => setShowDiff(true)} title="View branch diff">
+            Diff
+          </button>
         )}
         <button
           className={`terminal-close ${debugMode ? "debug-active" : ""}`}
@@ -409,6 +416,26 @@ export function MessageStream({
           autoFocus
         />
       </div>
+      {showDiff && (
+        <DiffViewer
+          sessionId={`remote-${session.id}`}
+          branchLabel={session.title || session.id}
+          fetchDiff={() =>
+            invoke<string>("cr_get_branch_diff", {
+              serverUrl,
+              token: serverPassword,
+            })
+          }
+          sendComments={(prompt: string) =>
+            invoke("cr_send_message", {
+              serverUrl,
+              token: serverPassword,
+              content: prompt,
+            })
+          }
+          onClose={() => setShowDiff(false)}
+        />
+      )}
     </div>
   );
 }
