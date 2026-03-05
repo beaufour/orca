@@ -396,6 +396,19 @@ function App() {
           setRemoteBackend("claude-remote");
           setRemoteInitialPrompt(prompt || null);
           setMessageStreamOpen(true);
+          // Persist to DB so it survives hot reloads
+          invoke("save_remote_session", {
+            id: projectId,
+            groupPath: effectiveGroup.path,
+            title: syntheticSession.title,
+            serverUrl: sessionUrl,
+            status: syntheticSession.status,
+            summary: null,
+            createdAt: syntheticSession.created_at,
+            lastAccessed: syntheticSession.last_accessed,
+            backend: "claude-remote",
+            token: resolvedToken ?? "",
+          }).catch((err) => console.warn("Failed to persist remote session:", err));
         } else {
           const session = await invoke<RemoteSession>("oc_create_session", {
             serverUrl: resolvedUrl,
@@ -408,6 +421,19 @@ function App() {
           setRemoteServerUrl(resolvedUrl);
           setRemoteBackend("opencode-remote");
           setMessageStreamOpen(true);
+          // Persist to DB so it survives hot reloads
+          invoke("save_remote_session", {
+            id: session.id,
+            groupPath: effectiveGroup.path,
+            title: session.title,
+            serverUrl: resolvedUrl,
+            status: session.status,
+            summary: session.summary ?? null,
+            createdAt: session.created_at,
+            lastAccessed: session.last_accessed,
+            backend: "opencode-remote",
+            token: resolvedToken ?? "",
+          }).catch((err) => console.warn("Failed to persist remote session:", err));
         }
       } catch (err) {
         console.error("Failed to create remote session:", err);
@@ -475,6 +501,12 @@ function App() {
       }
     } catch (err) {
       console.error("Failed to delete remote session/container:", err);
+    }
+    // Also remove from local DB so it doesn't get restored after reload
+    if (remoteSession) {
+      invoke("delete_remote_session", { id: remoteSession.id }).catch((err) =>
+        console.warn("Failed to delete remote session from DB:", err),
+      );
     }
     setRemoteSession(null);
     setRemoteServerUrl("");
@@ -559,6 +591,49 @@ function App() {
     }
   }, [selectedGroup, needsActionFilter]);
 
+  // Restore persisted remote session when group changes (or on mount after hot reload)
+  useEffect(() => {
+    if (!effectiveGroup || effectiveGroup.backend === "local") {
+      return;
+    }
+    // Don't overwrite if we already have a remote session for this group
+    if (remoteSession) return;
+
+    invoke<
+      {
+        id: string;
+        group_path: string;
+        title: string;
+        server_url: string;
+        status: string;
+        summary: string | null;
+        created_at: number;
+        last_accessed: number;
+        backend: string;
+        token: string;
+      }[]
+    >("get_remote_sessions", { groupPath: effectiveGroup.path })
+      .then((rows) => {
+        if (rows.length === 0) return;
+        const row = rows[0];
+        const restored: RemoteSession = {
+          id: row.id,
+          title: row.title,
+          status: row.status,
+          summary: row.summary,
+          created_at: row.created_at,
+          last_accessed: row.last_accessed,
+        };
+        setRemoteSession(restored);
+        setRemoteServerUrl(row.server_url);
+        setRemotePassword(row.token);
+        setRemoteBackend(row.backend as "claude-remote" | "opencode-remote");
+        // Don't auto-open the message stream — just show the reconnect card
+      })
+      .catch((err) => console.warn("Failed to restore remote session:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveGroup?.path, effectiveGroup?.backend]);
+
   return (
     <div className={`app-layout ${isResizing ? "is-resizing" : ""}`}>
       <Sidebar
@@ -571,6 +646,7 @@ function App() {
         onSelectGroup={(g) => {
           setSelectedGroup(g);
           setSelectedSession(null);
+          setRemoteSession(null);
           setMessageStreamOpen(false);
           setNeedsActionFilter(false);
           updateFocusedIndex(0);

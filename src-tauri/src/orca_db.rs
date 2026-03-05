@@ -1,7 +1,23 @@
 use rusqlite::Connection;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+
+/// A remote session row from the `remote_sessions` table.
+#[derive(Debug, Clone, Serialize)]
+pub struct RemoteSessionRow {
+    pub id: String,
+    pub group_path: String,
+    pub title: String,
+    pub server_url: String,
+    pub status: String,
+    pub summary: Option<String>,
+    pub created_at: i64,
+    pub last_accessed: i64,
+    pub backend: String,
+    pub token: String,
+}
 
 /// Settings for a group, stored in Orca's own DB.
 #[derive(Debug, Clone)]
@@ -69,6 +85,7 @@ impl OrcaDb {
         Self::ensure_worktree_columns(&conn)?;
         Self::ensure_backend_columns(&conn)?;
         Self::ensure_dismissed_column(&conn)?;
+        Self::ensure_remote_session_columns(&conn)?;
 
         let orca_db = Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -388,6 +405,117 @@ impl OrcaDb {
             rusqlite::params![session_id, dismissed as i32],
         )
         .map_err(|e| format!("Failed to set dismissed: {e}"))?;
+        Ok(())
+    }
+
+    // ── Remote session persistence ─────────────────────────────
+
+    /// Ensure the remote_sessions table has the backend and token columns
+    /// (added after the initial table creation).
+    fn ensure_remote_session_columns(conn: &Connection) -> Result<(), String> {
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(remote_sessions)")
+            .map_err(|e| e.to_string())?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+
+        if !columns.iter().any(|c| c == "backend") {
+            conn.execute(
+                "ALTER TABLE remote_sessions ADD COLUMN backend TEXT NOT NULL DEFAULT 'claude-remote'",
+                [],
+            )
+            .map_err(|e| format!("Failed to add backend column to remote_sessions: {e}"))?;
+        }
+        if !columns.iter().any(|c| c == "token") {
+            conn.execute(
+                "ALTER TABLE remote_sessions ADD COLUMN token TEXT NOT NULL DEFAULT ''",
+                [],
+            )
+            .map_err(|e| format!("Failed to add token column to remote_sessions: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// Save the active remote session for a group (upsert by id).
+    #[allow(clippy::too_many_arguments)]
+    pub fn save_remote_session(
+        &self,
+        id: &str,
+        group_path: &str,
+        title: &str,
+        server_url: &str,
+        status: &str,
+        summary: Option<&str>,
+        created_at: i64,
+        last_accessed: i64,
+        backend: &str,
+        token: &str,
+    ) -> Result<(), String> {
+        let conn = self.lock()?;
+        conn.execute(
+            "INSERT INTO remote_sessions (id, group_path, title, server_url, status, summary, \
+             created_at, last_accessed, backend, token) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
+             ON CONFLICT(id) DO UPDATE SET group_path = ?2, title = ?3, server_url = ?4, \
+             status = ?5, summary = ?6, created_at = ?7, last_accessed = ?8, backend = ?9, token = ?10",
+            rusqlite::params![
+                id,
+                group_path,
+                title,
+                server_url,
+                status,
+                summary,
+                created_at,
+                last_accessed,
+                backend,
+                token,
+            ],
+        )
+        .map_err(|e| format!("Failed to save remote session: {e}"))?;
+        Ok(())
+    }
+
+    /// Load all remote sessions for a group path.
+    pub fn get_remote_sessions(&self, group_path: &str) -> Result<Vec<RemoteSessionRow>, String> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, group_path, title, server_url, status, summary, \
+                 created_at, last_accessed, backend, token \
+                 FROM remote_sessions WHERE group_path = ?1 ORDER BY created_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([group_path], |row| {
+                Ok(RemoteSessionRow {
+                    id: row.get(0)?,
+                    group_path: row.get(1)?,
+                    title: row.get(2)?,
+                    server_url: row.get(3)?,
+                    status: row.get(4)?,
+                    summary: row.get(5)?,
+                    created_at: row.get(6)?,
+                    last_accessed: row.get(7)?,
+                    backend: row.get(8)?,
+                    token: row.get(9)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(result)
+    }
+
+    /// Delete a remote session by id.
+    pub fn delete_remote_session(&self, id: &str) -> Result<(), String> {
+        let conn = self.lock()?;
+        conn.execute("DELETE FROM remote_sessions WHERE id = ?1", [id])
+            .map_err(|e| format!("Failed to delete remote session: {e}"))?;
         Ok(())
     }
 
@@ -1001,5 +1129,122 @@ mod tests {
             .expect("resolve failed");
         assert_eq!(url.as_deref(), Some("https://global.example.com"));
         assert_eq!(token.as_deref(), Some("global-token"));
+    }
+
+    // ── 19. save + get remote session round-trip ─────────────────────
+
+    #[test]
+    fn test_remote_session_round_trip() {
+        let (db, _tmp) = setup();
+
+        db.save_remote_session(
+            "rs-1",
+            "/repo",
+            "My Session",
+            "https://server.example.com/claude/rs-1",
+            "stable",
+            Some("Working on tests"),
+            1000,
+            2000,
+            "claude-remote",
+            "secret-token",
+        )
+        .expect("save failed");
+
+        let sessions = db.get_remote_sessions("/repo").expect("get failed");
+        assert_eq!(sessions.len(), 1);
+        let s = &sessions[0];
+        assert_eq!(s.id, "rs-1");
+        assert_eq!(s.group_path, "/repo");
+        assert_eq!(s.title, "My Session");
+        assert_eq!(s.server_url, "https://server.example.com/claude/rs-1");
+        assert_eq!(s.status, "stable");
+        assert_eq!(s.summary.as_deref(), Some("Working on tests"));
+        assert_eq!(s.created_at, 1000);
+        assert_eq!(s.last_accessed, 2000);
+        assert_eq!(s.backend, "claude-remote");
+        assert_eq!(s.token, "secret-token");
+    }
+
+    // ── 20. delete remote session ────────────────────────────────────
+
+    #[test]
+    fn test_remote_session_delete() {
+        let (db, _tmp) = setup();
+
+        db.save_remote_session(
+            "rs-1",
+            "/repo",
+            "S1",
+            "url1",
+            "idle",
+            None,
+            0,
+            0,
+            "claude-remote",
+            "",
+        )
+        .expect("save failed");
+        db.save_remote_session(
+            "rs-2",
+            "/repo",
+            "S2",
+            "url2",
+            "idle",
+            None,
+            0,
+            0,
+            "claude-remote",
+            "",
+        )
+        .expect("save failed");
+
+        db.delete_remote_session("rs-1").expect("delete failed");
+
+        let sessions = db.get_remote_sessions("/repo").expect("get failed");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, "rs-2");
+    }
+
+    // ── 21. get remote sessions filters by group ─────────────────────
+
+    #[test]
+    fn test_remote_session_group_filter() {
+        let (db, _tmp) = setup();
+
+        db.save_remote_session(
+            "rs-1",
+            "/repo-a",
+            "S1",
+            "url1",
+            "idle",
+            None,
+            0,
+            0,
+            "claude-remote",
+            "",
+        )
+        .expect("save failed");
+        db.save_remote_session(
+            "rs-2",
+            "/repo-b",
+            "S2",
+            "url2",
+            "idle",
+            None,
+            0,
+            0,
+            "claude-remote",
+            "",
+        )
+        .expect("save failed");
+
+        let a = db.get_remote_sessions("/repo-a").expect("get failed");
+        assert_eq!(a.len(), 1);
+        assert_eq!(a[0].id, "rs-1");
+
+        let b = db.get_remote_sessions("/repo-b").expect("get failed");
+        assert_eq!(b.len(), 1);
+        assert_eq!(b[0].id, "rs-2");
     }
 }

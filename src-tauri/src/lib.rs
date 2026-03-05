@@ -137,6 +137,51 @@ fn get_resolved_credentials(
     orca_db.resolve_server_credentials(group_path)
 }
 
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn save_remote_session(
+    orca_db: tauri::State<'_, orca_db::OrcaDb>,
+    id: &str,
+    group_path: &str,
+    title: &str,
+    server_url: &str,
+    status: &str,
+    summary: Option<&str>,
+    created_at: i64,
+    last_accessed: i64,
+    backend: &str,
+    token: &str,
+) -> Result<(), String> {
+    orca_db.save_remote_session(
+        id,
+        group_path,
+        title,
+        server_url,
+        status,
+        summary,
+        created_at,
+        last_accessed,
+        backend,
+        token,
+    )
+}
+
+#[tauri::command]
+fn get_remote_sessions(
+    orca_db: tauri::State<'_, orca_db::OrcaDb>,
+    group_path: &str,
+) -> Result<Vec<orca_db::RemoteSessionRow>, String> {
+    orca_db.get_remote_sessions(group_path)
+}
+
+#[tauri::command]
+fn delete_remote_session(
+    orca_db: tauri::State<'_, orca_db::OrcaDb>,
+    id: &str,
+) -> Result<(), String> {
+    orca_db.delete_remote_session(id)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     command::init_path();
@@ -368,6 +413,9 @@ pub fn run() {
             get_remote_auth_token,
             set_remote_auth_token,
             get_resolved_credentials,
+            save_remote_session,
+            get_remote_sessions,
+            delete_remote_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
