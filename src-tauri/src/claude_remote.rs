@@ -14,6 +14,26 @@ fn build_client(token: &str) -> Result<reqwest::Client, String> {
     remote_common::build_client(headers, Duration::from_secs(300))
 }
 
+/// Send a request and check for errors, logging the request and response.
+async fn checked_response(
+    resp: Result<reqwest::Response, reqwest::Error>,
+    method: &str,
+    url: &str,
+) -> Result<reqwest::Response, String> {
+    let resp = resp.map_err(|e| {
+        log::error!("[claude-remote] {method} {url} failed: {e}");
+        format!("{method} {url} failed: {e}")
+    })?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        log::error!("[claude-remote] {method} {url} returned {status}: {body}");
+        return Err(format!("{method} {url} returned {status}: {body}"));
+    }
+    log::info!("[claude-remote] {method} {url} -> {}", resp.status());
+    Ok(resp)
+}
+
 // --- Types matching AgentAPI ---
 
 /// Raw message from AgentAPI GET /messages
@@ -51,21 +71,7 @@ pub struct CrStatus {
 pub async fn cr_get_messages(server_url: String, token: String) -> Result<Vec<CrMessage>, String> {
     let client = build_client(&token)?;
     let url = format!("{}/messages", remote_common::normalize_url(&server_url));
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    if resp.status() == reqwest::StatusCode::NOT_FOUND {
-        return Ok(vec![]);
-    }
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Server returned {status}: {body}"));
-    }
+    let resp = checked_response(client.get(&url).send().await, "GET", &url).await?;
 
     let body = resp
         .text()
@@ -134,19 +140,7 @@ pub async fn cr_send_message(
     let client = build_client(&token)?;
     let url = format!("{}/message", remote_common::normalize_url(&server_url));
     let body = serde_json::json!({ "content": content, "type": "user" });
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Server returned {status}: {body}"));
-    }
-
+    checked_response(client.post(&url).json(&body).send().await, "POST", &url).await?;
     Ok(())
 }
 
@@ -154,18 +148,7 @@ pub async fn cr_send_message(
 pub async fn cr_get_status(server_url: String, token: String) -> Result<CrStatus, String> {
     let client = build_client(&token)?;
     let url = format!("{}/status", remote_common::normalize_url(&server_url));
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Server returned {status}: {body}"));
-    }
-
+    let resp = checked_response(client.get(&url).send().await, "GET", &url).await?;
     resp.json::<CrStatus>()
         .await
         .map_err(|e| format!("Failed to parse status: {e}"))
@@ -181,17 +164,7 @@ pub async fn cr_setup_repo(
     let client = build_client(&token)?;
     let url = format!("{}/setup", remote_common::normalize_url(&server_url));
     let body = serde_json::json!({ "repo_url": repo_url, "branch": branch });
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {e}"))?;
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Server returned {status}: {body}"));
-    }
+    checked_response(client.post(&url).json(&body).send().await, "POST", &url).await?;
     Ok(())
 }
 
@@ -199,16 +172,7 @@ pub async fn cr_setup_repo(
 pub async fn cr_delete_container(server_url: String, token: String) -> Result<(), String> {
     let client = build_client(&token)?;
     let url = remote_common::normalize_url(&server_url);
-    let resp = client
-        .delete(&url)
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {e}"))?;
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Server returned {status}: {body}"));
-    }
+    checked_response(client.delete(&url).send().await, "DELETE", &url).await?;
     Ok(())
 }
 
@@ -221,6 +185,7 @@ pub async fn cr_subscribe_events(
 ) -> Result<(), String> {
     let client = build_client(&token)?;
     let url = format!("{}/events", remote_common::normalize_url(&server_url));
+    log::info!("[claude-remote] Subscribing to SSE at {url}");
     remote_common::subscribe_sse(&app, &handles, &client, &url, "cr-event").await
 }
 
