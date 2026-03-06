@@ -380,12 +380,16 @@ function App() {
           const repoUrl = effectiveGroup.repo_url || effectiveGroup.git_remote_url;
           if (repoUrl) {
             const branch = `orca/${slugify(title || "session")}`;
-            await invoke("cr_setup_repo", {
-              serverUrl: resolvedUrl,
-              token: resolvedToken ?? "",
-              repoUrl,
-              branch,
-            });
+            try {
+              await invoke("cr_setup_repo", {
+                serverUrl: resolvedUrl,
+                token: resolvedToken ?? "",
+                repoUrl,
+                branch,
+              });
+            } catch (err) {
+              console.warn("Repo setup failed (non-fatal):", err);
+            }
           }
           // Generate a unique project ID for this session.
           // agent-remote creates containers lazily when the first request
