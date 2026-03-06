@@ -376,13 +376,14 @@ function App() {
         );
         if (!resolvedUrl) return;
         if (effectiveGroup.backend === "claude-remote") {
-          // Setup repo if configured
-          if (effectiveGroup.repo_url) {
+          // Setup repo if configured (explicit repo_url, or auto-detected git remote)
+          const repoUrl = effectiveGroup.repo_url || effectiveGroup.git_remote_url;
+          if (repoUrl) {
             const branch = `orca/${slugify(title || "session")}`;
             await invoke("cr_setup_repo", {
               serverUrl: resolvedUrl,
               token: resolvedToken ?? "",
-              repoUrl: effectiveGroup.repo_url,
+              repoUrl,
               branch,
             });
           }

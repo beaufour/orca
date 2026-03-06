@@ -343,11 +343,14 @@ export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSett
           <input
             className="wt-input"
             type="text"
-            placeholder="git@github.com:owner/repo.git"
+            placeholder={group.git_remote_url ?? "git@github.com:owner/repo.git"}
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
             spellCheck={false}
           />
+          {group.git_remote_url && !repoUrl.trim() && (
+            <span className="settings-hint">Using detected git remote</span>
+          )}
           <p className="settings-toggle-description">
             Clone this repo into the remote container on startup.
           </p>

@@ -12,6 +12,7 @@ export interface Group {
   backend: "local" | "opencode-remote" | "claude-remote";
   server_url: string | null;
   repo_url: string | null;
+  git_remote_url: string | null;
 }
 
 export interface RemoteSession {

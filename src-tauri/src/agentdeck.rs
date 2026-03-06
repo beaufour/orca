@@ -80,6 +80,7 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
                 backend: "local".to_string(),        // populated below
                 server_url: None,                    // populated below
                 repo_url: None,                      // populated below
+                git_remote_url: None,                // computed below
             })
         })
         .map_err(|e| e.to_string())?
@@ -139,7 +140,16 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
                     .output()
                     .map(|o| o.status.success())
                     .unwrap_or(false);
-                if !g.is_git_repo {
+                if g.is_git_repo {
+                    g.git_remote_url = new_command("git")
+                        .current_dir(&expanded)
+                        .args(["remote", "get-url", "origin"])
+                        .output()
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                        .filter(|u| !u.is_empty());
+                } else {
                     log::debug!(
                         "get_groups: not a git repo: '{}' at {}",
                         g.name,
