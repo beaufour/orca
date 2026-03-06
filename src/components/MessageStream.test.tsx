@@ -94,7 +94,7 @@ describe("MessageStream", () => {
 
   it("calls onClose when Close button is clicked", () => {
     const onClose = vi.fn();
-    const { container } = render(
+    render(
       <MessageStream
         session={makeSession()}
         serverUrl="https://example.com"
@@ -104,9 +104,7 @@ describe("MessageStream", () => {
       />,
       { wrapper },
     );
-    // Select the Close button within the message-stream header specifically
-    const closeBtn = container.querySelector(".terminal-close")!;
-    closeBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    fireEvent.click(screen.getByTitle("Close (Esc)"));
     expect(onClose).toHaveBeenCalled();
   });
 });
