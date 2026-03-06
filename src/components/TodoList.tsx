@@ -22,7 +22,7 @@ interface TodoListProps {
   onRetry?: () => void;
   confirmingRemoveId?: string | null;
   onConfirmingRemoveChange?: (sessionId: string | null) => void;
-  focusedIndex?: number;
+  focusedSessionId?: string | null;
   pendingCreations?: Map<string, PendingCreation>;
   onDismissPending?: (creationId: string) => void;
   createSession?: (params: CreateSessionParams) => void;
@@ -50,7 +50,7 @@ export function TodoList({
   onRetry,
   confirmingRemoveId,
   onConfirmingRemoveChange,
-  focusedIndex = -1,
+  focusedSessionId = null,
   pendingCreations,
   onDismissPending,
   createSession,
@@ -140,9 +140,6 @@ export function TodoList({
         items.push({ type: "unlinked", session });
       }
     }
-
-    // Keep input order (already sorted by filteredSessions in App.tsx)
-    // so that focusedIndex matches the visual order.
 
     const todoItems = issues.filter((issue) => !matchedIssueNumbers.has(issue.number));
 
@@ -238,7 +235,7 @@ export function TodoList({
           sessions={sessions}
           onSelectSession={onSelectSession}
           selectedSessionId={null}
-          focusedIndex={focusedIndex}
+          focusedSessionId={focusedSessionId}
           isLoading={sessionsLoading}
           error={sessionsError}
           onRetry={onRetry}
@@ -260,7 +257,7 @@ export function TodoList({
     (item) => !isMainSession(item.session.worktree_branch) && dismissedIds?.has(item.session.id),
   );
 
-  const renderSessionItem = (item: SessionItem, index: number) =>
+  const renderSessionItem = (item: SessionItem) =>
     item.type === "linked" ? (
       <TodoCard
         key={item.session.id}
@@ -269,7 +266,7 @@ export function TodoList({
         repoPath={group.default_path}
         onSelectSession={onSelectSession}
         liveTmuxSessions={liveTmuxSessions}
-        isFocused={index === focusedIndex}
+        isFocused={item.session.id === focusedSessionId}
         mergeWorkflow={group.merge_workflow}
         isDismissed={dismissedIds?.has(item.session.id)}
         onDismiss={onDismiss ? () => onDismiss(item.session.id) : undefined}
@@ -281,7 +278,7 @@ export function TodoList({
         session={item.session}
         onClick={() => onSelectSession(item.session)}
         onSelectSession={onSelectSession}
-        isFocused={index === focusedIndex}
+        isFocused={item.session.id === focusedSessionId}
         confirmingRemove={
           confirmingRemoveId != null ? item.session.id === confirmingRemoveId : undefined
         }
@@ -312,10 +309,7 @@ export function TodoList({
             </span>
           </div>
           <div className="session-grid">
-            {activeSessions.map((item) => {
-              const origIndex = allSessions.indexOf(item);
-              return renderSessionItem(item, origIndex);
-            })}
+            {activeSessions.map((item) => renderSessionItem(item))}
             {remoteSession && onReconnectRemote && onRemoveRemote && remoteServerUrl && (
               <RemoteSessionCard
                 session={remoteSession}
@@ -348,10 +342,7 @@ export function TodoList({
               </button>
               {dismissedExpanded && (
                 <div className="session-grid">
-                  {dismissedSessions.map((item) => {
-                    const origIndex = allSessions.indexOf(item);
-                    return renderSessionItem(item, origIndex);
-                  })}
+                  {dismissedSessions.map((item) => renderSessionItem(item))}
                 </div>
               )}
             </div>

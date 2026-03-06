@@ -12,7 +12,7 @@ interface SessionListProps {
   groupNames?: Record<string, string>;
   onSelectSession: (session: Session) => void;
   selectedSessionId: string | null;
-  focusedIndex?: number;
+  focusedSessionId?: string | null;
   isLoading?: boolean;
   error?: Error | null;
   onRetry?: () => void;
@@ -41,8 +41,7 @@ function renderSessionCard(
   props: {
     groupNames?: Record<string, string>;
     selectedSessionId: string | null;
-    focusedIndex: number;
-    sessionIndex: number;
+    focusedSessionId: string | null;
     onSelectSession: (session: Session) => void;
     confirmingRemoveId?: string | null;
     onConfirmingRemoveChange?: (sessionId: string | null) => void;
@@ -59,7 +58,7 @@ function renderSessionCard(
       session={session}
       groupName={props.groupNames?.[session.group_path]}
       isSelected={session.id === props.selectedSessionId}
-      isFocused={props.sessionIndex === props.focusedIndex}
+      isFocused={session.id === props.focusedSessionId}
       onClick={() => props.onSelectSession(session)}
       onSelectSession={props.onSelectSession}
       confirmingRemove={
@@ -86,7 +85,7 @@ export function SessionList({
   groupNames,
   onSelectSession,
   selectedSessionId,
-  focusedIndex = -1,
+  focusedSessionId = null,
   isLoading,
   error,
   onRetry,
@@ -159,15 +158,10 @@ export function SessionList({
     }
   }
 
-  // Build index map: each session's position in the original flat list for focusedIndex
-  const indexMap = new Map<string, number>();
-  sessions.forEach((s, i) => indexMap.set(s.id, i));
-
   const cardProps = {
     groupNames,
     selectedSessionId,
-    focusedIndex,
-    sessionIndex: -1,
+    focusedSessionId,
     onSelectSession,
     confirmingRemoveId,
     onConfirmingRemoveChange,
@@ -188,12 +182,7 @@ export function SessionList({
             createSession={createSession}
           />
         )}
-        {activeSessions.map((session) =>
-          renderSessionCard(session, {
-            ...cardProps,
-            sessionIndex: indexMap.get(session.id) ?? -1,
-          }),
-        )}
+        {activeSessions.map((session) => renderSessionCard(session, cardProps))}
         {remoteSession && onReconnectRemote && onRemoveRemote && remoteServerUrl && (
           <RemoteSessionCard
             session={remoteSession}
@@ -226,12 +215,7 @@ export function SessionList({
           </button>
           {dismissedExpanded && (
             <div className="session-grid">
-              {dismissedSessions.map((session) =>
-                renderSessionCard(session, {
-                  ...cardProps,
-                  sessionIndex: indexMap.get(session.id) ?? -1,
-                }),
-              )}
+              {dismissedSessions.map((session) => renderSessionCard(session, cardProps))}
             </div>
           )}
         </div>

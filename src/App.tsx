@@ -448,6 +448,14 @@ function App() {
     setConfirmingRemoveId(null);
   }, []);
 
+  // Sessions eligible for keyboard navigation (excludes dismissed)
+  const navigableSessions = useMemo(() => {
+    if (!filteredSessions) return undefined;
+    return filteredSessions.filter(
+      (s) => isMainSession(s.worktree_branch) || !dismissedIds.has(s.id),
+    );
+  }, [filteredSessions, dismissedIds]);
+
   // Wrap session selection to also update keyboard focus index and clear dismiss
   const handleSelectSession = useCallback(
     (session: Session) => {
@@ -457,19 +465,19 @@ function App() {
       if (dismissedIds.has(session.id)) {
         handleUndismiss(session.id);
       }
-      const idx = filteredSessions?.findIndex((s) => s.id === session.id) ?? -1;
+      const idx = navigableSessions?.findIndex((s) => s.id === session.id) ?? -1;
       if (idx >= 0) {
         updateFocusedIndex(idx);
       }
     },
-    [filteredSessions, updateFocusedIndex, dismissedIds, handleUndismiss],
+    [navigableSessions, updateFocusedIndex, dismissedIds, handleUndismiss],
   );
 
   // When closing the terminal, focus the session that was just open
   const handleCloseTerminal = useCallback(() => {
     trackEvent("session_closed");
-    if (selectedSession && filteredSessions) {
-      const idx = filteredSessions.findIndex((s) => s.id === selectedSession.id);
+    if (selectedSession && navigableSessions) {
+      const idx = navigableSessions.findIndex((s) => s.id === selectedSession.id);
       if (idx >= 0) {
         updateFocusedIndex(idx);
       }
@@ -477,7 +485,7 @@ function App() {
     setSelectedSession(null);
     setMessageStreamOpen(false);
     setRemoteInitialPrompt(null);
-  }, [selectedSession, filteredSessions, updateFocusedIndex]);
+  }, [selectedSession, navigableSessions, updateFocusedIndex]);
 
   const handleRemoveRemote = useCallback(async () => {
     // Tell the server to destroy the container/session before clearing local state
@@ -516,20 +524,26 @@ function App() {
     setMessageStreamOpen(false);
   }, [effectiveGroup, remoteServerUrl, remotePassword, remoteSession]);
 
-  // Derive clamped focused index from session count
+  // Derive clamped focused index from navigable session count
   const clampedFocusedIndex = useMemo(() => {
-    if (!filteredSessions) return focusedIndex;
-    if (focusedIndex >= filteredSessions.length) {
-      return Math.max(filteredSessions.length - 1, -1);
+    if (!navigableSessions) return focusedIndex;
+    if (focusedIndex >= navigableSessions.length) {
+      return Math.max(navigableSessions.length - 1, -1);
     }
     return focusedIndex;
-  }, [focusedIndex, filteredSessions]);
+  }, [focusedIndex, navigableSessions]);
+
+  // Derive focused session ID for display components
+  const focusedSessionId = useMemo(() => {
+    if (!navigableSessions || clampedFocusedIndex < 0) return null;
+    return navigableSessions[clampedFocusedIndex]?.id ?? null;
+  }, [navigableSessions, clampedFocusedIndex]);
 
   // Keyboard shortcuts
   useKeyboardShortcuts(
     {
       terminalOpen,
-      filteredSessions,
+      filteredSessions: navigableSessions,
       focusedIndex: clampedFocusedIndex,
       searchVisible,
       showShortcutHelp,
@@ -710,7 +724,7 @@ function App() {
                   onRetry={() => refetchSessions()}
                   confirmingRemoveId={confirmingRemoveId}
                   onConfirmingRemoveChange={setConfirmingRemoveId}
-                  focusedIndex={clampedFocusedIndex}
+                  focusedSessionId={focusedSessionId}
                   pendingCreations={pendingCreations}
                   onDismissPending={dismissPending}
                   createSession={createSession}
@@ -731,7 +745,7 @@ function App() {
                   groupNames={needsActionFilter || !effectiveGroup ? groupNames : undefined}
                   onSelectSession={handleSelectSession}
                   selectedSessionId={null}
-                  focusedIndex={clampedFocusedIndex}
+                  focusedSessionId={focusedSessionId}
                   isLoading={sessionsLoading}
                   error={sessionsError}
                   onRetry={() => refetchSessions()}
