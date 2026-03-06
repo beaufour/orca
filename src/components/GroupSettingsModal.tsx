@@ -20,6 +20,7 @@ export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSett
     group.backend,
   );
   const [serverUrl, setServerUrl] = useState(group.server_url ?? "");
+  const [repoUrl, setRepoUrl] = useState(group.repo_url ?? "");
   const [serverPassword, setServerPassword] = useState("");
   const isRemoteBackend = backend === "opencode-remote" || backend === "claude-remote";
   const [passwordLoaded, setPasswordLoaded] = useState(
@@ -75,6 +76,7 @@ export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSett
         backend: backend,
         serverUrl: serverUrl.trim() || null,
         serverPassword: serverPassword || null,
+        repoUrl: repoUrl.trim() || null,
       }),
     onSuccess: () => {
       queryClient.setQueryData<Group[]>(queryKeys.groups, (old) =>
@@ -88,6 +90,7 @@ export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSett
                 component_depth: componentDepth,
                 backend: backend,
                 server_url: serverUrl.trim() || null,
+                repo_url: repoUrl.trim() || null,
               }
             : g,
         ),
@@ -112,6 +115,7 @@ export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSett
     componentDepth !== group.component_depth ||
     backend !== group.backend ||
     (serverUrl.trim() || null) !== (group.server_url ?? null) ||
+    (repoUrl.trim() || null) !== (group.repo_url ?? null) ||
     (passwordLoaded && serverPassword !== "");
 
   const handleSubmit = () => {
@@ -333,6 +337,20 @@ export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSett
           {globalToken && !serverPassword && passwordLoaded && (
             <span className="settings-hint">Using global default</span>
           )}
+          <label className="modal-label" style={{ marginTop: 8 }}>
+            Repository URL
+          </label>
+          <input
+            className="wt-input"
+            type="text"
+            placeholder="git@github.com:owner/repo.git"
+            value={repoUrl}
+            onChange={(e) => setRepoUrl(e.target.value)}
+            spellCheck={false}
+          />
+          <p className="settings-toggle-description">
+            Clone this repo into the remote container on startup.
+          </p>
           {(serverUrl.trim() || serverPassword) && (
             <button
               className="wt-btn"

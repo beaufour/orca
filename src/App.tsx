@@ -30,7 +30,7 @@ import {
 import { UpdateNotification } from "./components/UpdateNotification";
 import { useSessionCreation } from "./hooks/useSessionCreation";
 import type { Group, Session, RemoteSession } from "./types";
-import { isMainSession, storageGet, storageSet } from "./utils";
+import { isMainSession, slugify, storageGet, storageSet } from "./utils";
 import { queryKeys } from "./queryKeys";
 import { useSidebarResize } from "./hooks/useSidebarResize";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -376,6 +376,16 @@ function App() {
         );
         if (!resolvedUrl) return;
         if (effectiveGroup.backend === "claude-remote") {
+          // Setup repo if configured
+          if (effectiveGroup.repo_url) {
+            const branch = `orca/${slugify(title || "session")}`;
+            await invoke("cr_setup_repo", {
+              serverUrl: resolvedUrl,
+              token: resolvedToken ?? "",
+              repoUrl: effectiveGroup.repo_url,
+              branch,
+            });
+          }
           // Generate a unique project ID for this session.
           // agent-remote creates containers lazily when the first request
           // hits /claude/<projectId>/*.

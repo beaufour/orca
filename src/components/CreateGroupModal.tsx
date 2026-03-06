@@ -30,6 +30,7 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
   const [backend, setBackend] = useState<"local" | "opencode-remote" | "claude-remote">("local");
   const [serverUrl, setServerUrl] = useState("");
   const [serverPassword, setServerPassword] = useState("");
+  const [repoUrl, setRepoUrl] = useState("");
 
   // Global remote settings
   const [globalRemoteUrl, setGlobalRemoteUrl] = useState("");
@@ -100,6 +101,7 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
           backend: backend,
           serverUrl: serverUrl.trim() || null,
           serverPassword: serverPassword || null,
+          repoUrl: repoUrl.trim() || null,
         });
       }
       if (createNewRepo && backend === "local") {
@@ -360,6 +362,19 @@ export function CreateGroupModal({ onClose, onCreated }: CreateGroupModalProps) 
           {globalRemoteToken && !serverPassword && (
             <span className="settings-hint">Using global default</span>
           )}
+          <label className="modal-label">Repository URL</label>
+          <input
+            className="modal-input"
+            type="text"
+            placeholder="git@github.com:owner/repo.git"
+            value={repoUrl}
+            onChange={(e) => setRepoUrl(e.target.value)}
+            onKeyDown={handleKeyDown}
+            spellCheck={false}
+          />
+          <p className="settings-toggle-description">
+            Clone this repo into the remote container on startup.
+          </p>
         </div>
       )}
 

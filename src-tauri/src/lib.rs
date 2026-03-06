@@ -402,6 +402,7 @@ pub fn run() {
             claude_remote::cr_get_messages,
             claude_remote::cr_send_message,
             claude_remote::cr_get_status,
+            claude_remote::cr_setup_repo,
             claude_remote::cr_delete_container,
             claude_remote::cr_subscribe_events,
             claude_remote::cr_exec,

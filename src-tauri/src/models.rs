@@ -42,6 +42,7 @@ pub struct Group {
     pub component_depth: u32,
     pub backend: String,
     pub server_url: Option<String>,
+    pub repo_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

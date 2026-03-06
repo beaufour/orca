@@ -172,6 +172,30 @@ pub async fn cr_get_status(server_url: String, token: String) -> Result<CrStatus
 }
 
 #[tauri::command]
+pub async fn cr_setup_repo(
+    server_url: String,
+    token: String,
+    repo_url: String,
+    branch: String,
+) -> Result<(), String> {
+    let client = build_client(&token)?;
+    let url = format!("{}/setup", remote_common::normalize_url(&server_url));
+    let body = serde_json::json!({ "repo_url": repo_url, "branch": branch });
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Server returned {status}: {body}"));
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn cr_delete_container(server_url: String, token: String) -> Result<(), String> {
     let client = build_client(&token)?;
     let url = remote_common::normalize_url(&server_url);
@@ -180,13 +204,11 @@ pub async fn cr_delete_container(server_url: String, token: String) -> Result<()
         .send()
         .await
         .map_err(|e| format!("Request failed: {e}"))?;
-
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         return Err(format!("Server returned {status}: {body}"));
     }
-
     Ok(())
 }
 

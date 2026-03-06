@@ -12,6 +12,7 @@ import {
   fileDir,
   isMainSession,
   validateBranchName,
+  slugify,
   storageGet,
   storageSet,
 } from "./utils";
@@ -480,5 +481,31 @@ describe("validateBranchName", () => {
     expect(validateBranchName("a*b")).toBe("Contains invalid characters");
     expect(validateBranchName("a[b")).toBe("Contains invalid characters");
     expect(validateBranchName("a\\b")).toBe("Contains invalid characters");
+  });
+});
+
+describe("slugify", () => {
+  it("lowercases and replaces spaces with hyphens", () => {
+    expect(slugify("Fix Login Bug")).toBe("fix-login-bug");
+  });
+
+  it("replaces non-alphanumeric characters with hyphens", () => {
+    expect(slugify("feature: add auth!")).toBe("feature-add-auth");
+  });
+
+  it("collapses multiple hyphens", () => {
+    expect(slugify("a   b---c")).toBe("a-b-c");
+  });
+
+  it("strips leading and trailing hyphens", () => {
+    expect(slugify("--hello--")).toBe("hello");
+  });
+
+  it("handles empty string", () => {
+    expect(slugify("")).toBe("");
+  });
+
+  it("preserves numbers", () => {
+    expect(slugify("v1.2.3 release")).toBe("v1-2-3-release");
   });
 });

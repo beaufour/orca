@@ -184,6 +184,14 @@ export function labelStyle(color: string): React.CSSProperties {
   };
 }
 
+/** Lowercase, replace non-alphanumeric with hyphens, collapse multiples. */
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export const SCROLL_SPEED_KEY = "orca-scroll-speed";
 export const SCROLL_SPEED_DEFAULT = 1.0;
 

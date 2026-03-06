@@ -30,6 +30,7 @@ pub struct GroupSettings {
     pub backend: String,
     pub server_url: Option<String>,
     pub server_password: Option<String>,
+    pub repo_url: Option<String>,
 }
 
 /// Orca's own SQLite database for data that shouldn't be stored in agent-deck's DB.
@@ -84,6 +85,7 @@ impl OrcaDb {
         Self::ensure_merge_workflow_column(&conn)?;
         Self::ensure_worktree_columns(&conn)?;
         Self::ensure_backend_columns(&conn)?;
+        Self::ensure_repo_url_column(&conn)?;
         Self::ensure_dismissed_column(&conn)?;
         Self::ensure_remote_session_columns(&conn)?;
 
@@ -113,8 +115,8 @@ impl OrcaDb {
         let mut stmt = conn
             .prepare(
                 "SELECT group_path, github_issues_enabled, merge_workflow, \
-                 worktree_command, component_depth, backend, server_url, server_password \
-                 FROM group_settings",
+                 worktree_command, component_depth, backend, server_url, server_password, \
+                 repo_url FROM group_settings",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -133,6 +135,7 @@ impl OrcaDb {
                             .unwrap_or_else(|_| "local".to_string()),
                         server_url: row.get::<_, Option<String>>(6)?,
                         server_password: row.get::<_, Option<String>>(7)?,
+                        repo_url: row.get::<_, Option<String>>(8)?,
                     },
                 ))
             })
@@ -158,15 +161,16 @@ impl OrcaDb {
         backend: &str,
         server_url: Option<&str>,
         server_password: Option<&str>,
+        repo_url: Option<&str>,
     ) -> Result<(), String> {
         let conn = self.lock()?;
         conn.execute(
             "INSERT INTO group_settings (group_path, github_issues_enabled, merge_workflow, \
-             worktree_command, component_depth, backend, server_url, server_password) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+             worktree_command, component_depth, backend, server_url, server_password, repo_url) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
              ON CONFLICT(group_path) DO UPDATE SET github_issues_enabled = ?2, \
              merge_workflow = ?3, worktree_command = ?4, component_depth = ?5, \
-             backend = ?6, server_url = ?7, server_password = ?8",
+             backend = ?6, server_url = ?7, server_password = ?8, repo_url = ?9",
             rusqlite::params![
                 group_path,
                 github_issues_enabled as i32,
@@ -176,6 +180,7 @@ impl OrcaDb {
                 backend,
                 server_url,
                 server_password,
+                repo_url,
             ],
         )
         .map_err(|e| format!("Failed to update group settings: {e}"))?;
@@ -294,6 +299,22 @@ impl OrcaDb {
                 [],
             )
             .map_err(|e| format!("Failed to add server_password column: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// Ensure repo_url column exists on group_settings.
+    fn ensure_repo_url_column(conn: &Connection) -> Result<(), String> {
+        let has_column: bool = conn
+            .prepare("PRAGMA table_info(group_settings)")
+            .map_err(|e| e.to_string())?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?
+            .any(|name| name.as_deref() == Ok("repo_url"));
+
+        if !has_column {
+            conn.execute("ALTER TABLE group_settings ADD COLUMN repo_url TEXT", [])
+                .map_err(|e| format!("Failed to add repo_url column: {e}"))?;
         }
         Ok(())
     }
@@ -810,6 +831,7 @@ mod tests {
             "local",
             None,
             None,
+            None,
         )
         .expect("update failed");
 
@@ -834,7 +856,7 @@ mod tests {
             .expect("get baseline failed")
             .len();
 
-        db.update_group_settings("/repo", true, "merge", None, 2, "local", None, None)
+        db.update_group_settings("/repo", true, "merge", None, 2, "local", None, None, None)
             .expect("insert failed");
         db.update_group_settings(
             "/repo",
@@ -843,6 +865,7 @@ mod tests {
             Some("custom-cmd"),
             5,
             "local",
+            None,
             None,
             None,
         )
@@ -885,6 +908,7 @@ mod tests {
             "local",
             None,
             None,
+            None,
         )
         .expect("update failed");
 
@@ -900,8 +924,18 @@ mod tests {
     fn test_worktree_command_empty_string() {
         let (db, _tmp) = setup();
 
-        db.update_group_settings("/repo", true, "merge", Some(""), 2, "local", None, None)
-            .expect("update failed");
+        db.update_group_settings(
+            "/repo",
+            true,
+            "merge",
+            Some(""),
+            2,
+            "local",
+            None,
+            None,
+            None,
+        )
+        .expect("update failed");
 
         let result = db
             .get_group_worktree_command("/repo")
@@ -1073,8 +1107,18 @@ mod tests {
             .expect("set token failed");
 
         // Group has no per-group overrides
-        db.update_group_settings("/repo", true, "merge", None, 2, "claude-remote", None, None)
-            .expect("update failed");
+        db.update_group_settings(
+            "/repo",
+            true,
+            "merge",
+            None,
+            2,
+            "claude-remote",
+            None,
+            None,
+            None,
+        )
+        .expect("update failed");
 
         let (url, token) = db
             .resolve_server_credentials("/repo")
@@ -1103,6 +1147,7 @@ mod tests {
             "claude-remote",
             Some("https://group.example.com"),
             Some("group-token"),
+            None,
         )
         .expect("update failed");
 

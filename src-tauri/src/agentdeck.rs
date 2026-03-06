@@ -79,6 +79,7 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
                 component_depth: 2,                  // populated below
                 backend: "local".to_string(),        // populated below
                 server_url: None,                    // populated below
+                repo_url: None,                      // populated below
             })
         })
         .map_err(|e| e.to_string())?
@@ -112,6 +113,7 @@ pub fn get_groups(orca_db: State<'_, OrcaDb>) -> Result<Vec<Group>, String> {
                 g.component_depth = s.component_depth;
                 g.backend = s.backend.clone();
                 g.server_url = s.server_url.clone();
+                g.repo_url = s.repo_url.clone();
             }
             // Backfill default_path so all consumers (GitHub issues, etc.) have it.
             if g.default_path.is_empty() {
@@ -165,6 +167,7 @@ pub fn update_group_settings(
     backend: Option<String>,
     server_url: Option<String>,
     server_password: Option<String>,
+    repo_url: Option<String>,
 ) -> Result<(), String> {
     orca_db.update_group_settings(
         &group_path,
@@ -175,6 +178,7 @@ pub fn update_group_settings(
         backend.as_deref().unwrap_or("local"),
         server_url.as_deref(),
         server_password.as_deref(),
+        repo_url.as_deref(),
     )
 }
 
