@@ -71,7 +71,18 @@ pub struct CrStatus {
 pub async fn cr_get_messages(server_url: String, token: String) -> Result<Vec<CrMessage>, String> {
     let client = build_client(&token)?;
     let url = format!("{}/messages", remote_common::normalize_url(&server_url));
-    let resp = checked_response(client.get(&url).send().await, "GET", &url).await?;
+    let raw_resp = client.get(&url).send().await.map_err(|e| {
+        log::error!("[claude-remote] GET {url} failed: {e}");
+        format!("GET {url} failed: {e}")
+    })?;
+
+    // 404 means no messages yet (new container) — return empty
+    if raw_resp.status() == reqwest::StatusCode::NOT_FOUND {
+        log::info!("[claude-remote] GET {url} -> 404 (no messages yet)");
+        return Ok(vec![]);
+    }
+
+    let resp = checked_response(Ok(raw_resp), "GET", &url).await?;
 
     let body = resp
         .text()

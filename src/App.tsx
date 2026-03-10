@@ -396,14 +396,8 @@ function App() {
               console.warn("Repo setup failed (non-fatal):", err);
             }
           }
-          // Generate a unique project ID for this session.
-          // agent-remote creates containers lazily when the first request
-          // hits /claude/<projectId>/*.
-          const projectId = `orca-${Date.now()}`;
-          const baseUrl = resolvedUrl.replace(/\/+$/, "");
-          const sessionUrl = `${baseUrl}/claude/${projectId}`;
           const syntheticSession: RemoteSession = {
-            id: projectId,
+            id: sessionSlug,
             title: title || "Claude Remote",
             status: "stable",
             summary: null,
@@ -413,16 +407,16 @@ function App() {
           };
           setRemoteSession(syntheticSession);
           setRemotePassword(resolvedToken ?? "");
-          setRemoteServerUrl(sessionUrl);
+          setRemoteServerUrl(resolvedUrl);
           setRemoteBackend("claude-remote");
           setRemoteInitialPrompt(prompt || null);
           setMessageStreamOpen(true);
           // Persist to DB so it survives hot reloads
           invoke("save_remote_session", {
-            id: projectId,
+            id: sessionSlug,
             groupPath: effectiveGroup.path,
             title: syntheticSession.title,
-            serverUrl: sessionUrl,
+            serverUrl: resolvedUrl,
             status: syntheticSession.status,
             summary: null,
             createdAt: syntheticSession.created_at,
