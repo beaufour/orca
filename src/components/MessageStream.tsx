@@ -86,28 +86,49 @@ export function MessageStream({
     return () => clearInterval(interval);
   }, [showWaiting, isClaude]);
 
-  // Load message history
+  // Load message history, retrying on 502 (container still starting)
   useEffect(() => {
-    setLoading(true);
-    const cmd = isClaude ? "cr_get_messages" : "oc_get_messages";
-    const params = isClaude
-      ? { serverUrl, token: serverPassword }
-      : { serverUrl, password: serverPassword, sessionId: session.id };
-    addDebug("send", `${cmd}`, JSON.stringify(params, null, 2));
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
 
-    const promise = invoke<RemoteMessage[]>(cmd, params);
+    const fetchMessages = () => {
+      setLoading(true);
+      setError(null);
+      const cmd = isClaude ? "cr_get_messages" : "oc_get_messages";
+      const params = isClaude
+        ? { serverUrl, token: serverPassword }
+        : { serverUrl, password: serverPassword, sessionId: session.id };
+      addDebug("send", `${cmd}`, JSON.stringify(params, null, 2));
 
-    promise
-      .then((msgs) => {
-        addDebug("recv", `${cmd} OK`, `${msgs.length} message(s)`);
-        setMessages(msgs);
-        setLoading(false);
-      })
-      .catch((err) => {
-        addDebug("error", `${cmd} FAILED`, String(err));
-        setError(String(err));
-        setLoading(false);
-      });
+      const promise = invoke<RemoteMessage[]>(cmd, params);
+
+      promise
+        .then((msgs) => {
+          if (cancelled) return;
+          addDebug("recv", `${cmd} OK`, `${msgs.length} message(s)`);
+          setMessages(msgs);
+          setLoading(false);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          const msg = String(err);
+          addDebug("error", `${cmd} FAILED`, msg);
+          if (msg.includes("502") || msg.includes("ECONNREFUSED")) {
+            // Container still starting — retry after a delay
+            setError("Container is starting up...");
+            timer = setTimeout(fetchMessages, 3000);
+          } else {
+            setError(msg);
+            setLoading(false);
+          }
+        });
+    };
+
+    fetchMessages();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [session.id, serverUrl, serverPassword, isClaude, addDebug]);
 
   // Start SSE subscription for claude-remote (with retry on failure)
