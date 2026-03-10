@@ -130,33 +130,6 @@ fn set_remote_auth_token(
 }
 
 #[tauri::command]
-fn save_remote_session(
-    orca_db: tauri::State<'_, orca_db::OrcaDb>,
-    id: &str,
-    group_path: &str,
-    title: &str,
-    server_url: &str,
-) -> Result<(), String> {
-    orca_db.save_remote_session(id, group_path, title, server_url)
-}
-
-#[tauri::command]
-fn list_remote_sessions(
-    orca_db: tauri::State<'_, orca_db::OrcaDb>,
-    group_path: &str,
-) -> Result<Vec<orca_db::RemoteSessionRow>, String> {
-    orca_db.list_remote_sessions(group_path)
-}
-
-#[tauri::command]
-fn delete_remote_session(
-    orca_db: tauri::State<'_, orca_db::OrcaDb>,
-    id: &str,
-) -> Result<(), String> {
-    orca_db.delete_remote_session(id)
-}
-
-#[tauri::command]
 fn get_resolved_credentials(
     orca_db: tauri::State<'_, orca_db::OrcaDb>,
     group_path: &str,

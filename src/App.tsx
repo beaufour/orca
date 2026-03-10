@@ -320,7 +320,7 @@ function App() {
 
   const { data: remoteSessions, refetch: refetchRemoteSessions } = useQuery<RemoteSession[]>({
     queryKey: queryKeys.remoteSessions(effectiveGroup?.path ?? ""),
-    queryFn: () => invoke("list_remote_sessions", { groupPath: effectiveGroup?.path ?? "" }),
+    queryFn: () => invoke("get_remote_sessions", { groupPath: effectiveGroup?.path ?? "" }),
     enabled: !!effectiveGroup && isRemoteGroup,
     refetchInterval: 10_000,
   });
@@ -710,6 +710,7 @@ function App() {
           summary: row.summary,
           created_at: row.created_at,
           last_accessed: row.last_accessed,
+          server_url: row.server_url,
         };
         setRemoteSession(restored);
         setRemoteServerUrl(row.server_url);
