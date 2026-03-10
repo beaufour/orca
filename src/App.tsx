@@ -375,10 +375,11 @@ function App() {
           { groupPath: effectiveGroup.path },
         );
         if (!baseUrl) return;
-        // Build the full DO URL: <base>/<backend-route>/<group-slug>
+        // Build the full DO URL: <base>/<backend-route>/<session-id>
+        // Each session gets its own unique container via a slug of the title + timestamp
         const backendRoute = effectiveGroup.backend === "claude-remote" ? "claude" : "opencode";
-        const groupSlug = slugify(effectiveGroup.name || "default");
-        const resolvedUrl = `${baseUrl.replace(/\/+$/, "")}/${backendRoute}/${groupSlug}`;
+        const sessionSlug = slugify(title || "session") + "-" + Date.now();
+        const resolvedUrl = `${baseUrl.replace(/\/+$/, "")}/${backendRoute}/${sessionSlug}`;
         if (effectiveGroup.backend === "claude-remote") {
           // Setup repo if configured (explicit repo_url, or auto-detected git remote)
           const repoUrl = effectiveGroup.repo_url || effectiveGroup.git_remote_url;
