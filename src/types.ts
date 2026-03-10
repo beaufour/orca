@@ -22,6 +22,7 @@ export interface RemoteSession {
   summary: string | null;
   created_at: number;
   last_accessed: number;
+  server_url: string;
 }
 
 export interface RemoteMessage {

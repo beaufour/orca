@@ -649,6 +649,70 @@ impl OrcaDb {
         Ok((url, token))
     }
 
+    // ── Remote sessions ─────────────────────────────────────────────
+
+    /// Persist a remote session so it survives UI reloads.
+    pub fn save_remote_session(
+        &self,
+        id: &str,
+        group_path: &str,
+        title: &str,
+        server_url: &str,
+    ) -> Result<(), String> {
+        let conn = self.lock()?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        conn.execute(
+            "INSERT INTO remote_sessions (id, group_path, title, server_url, created_at, last_accessed)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+             ON CONFLICT(id) DO UPDATE SET last_accessed = ?5",
+            rusqlite::params![id, group_path, title, server_url, now],
+        )
+        .map_err(|e| format!("Failed to save remote session: {e}"))?;
+        Ok(())
+    }
+
+    /// List all remote sessions for a group, most recent first.
+    pub fn list_remote_sessions(&self, group_path: &str) -> Result<Vec<RemoteSessionRow>, String> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, group_path, title, server_url, status, summary, created_at, last_accessed
+                 FROM remote_sessions WHERE group_path = ?1
+                 ORDER BY created_at DESC",
+            )
+            .map_err(|e| format!("Failed to prepare remote sessions query: {e}"))?;
+        let rows = stmt
+            .query_map([group_path], |row| {
+                Ok(RemoteSessionRow {
+                    id: row.get(0)?,
+                    group_path: row.get(1)?,
+                    title: row.get(2)?,
+                    server_url: row.get(3)?,
+                    status: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                    summary: row.get(5)?,
+                    created_at: row.get::<_, Option<i64>>(6)?.unwrap_or(0),
+                    last_accessed: row.get::<_, Option<i64>>(7)?.unwrap_or(0),
+                })
+            })
+            .map_err(|e| format!("Failed to query remote sessions: {e}"))?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(|e| format!("Failed to read remote session row: {e}"))?);
+        }
+        Ok(result)
+    }
+
+    /// Delete a remote session by id.
+    pub fn delete_remote_session(&self, id: &str) -> Result<(), String> {
+        let conn = self.lock()?;
+        conn.execute("DELETE FROM remote_sessions WHERE id = ?1", [id])
+            .map_err(|e| format!("Failed to delete remote session: {e}"))?;
+        Ok(())
+    }
+
     /// One-time migration: copy github_issues_enabled and prompt data from
     /// agent-deck's DB into Orca's own DB.
     fn run_migration_v1(&self, conn: &Connection) -> Result<(), String> {

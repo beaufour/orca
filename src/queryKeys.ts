@@ -12,6 +12,7 @@ export const queryKeys = {
   issues: (repoPath: string) => ["issues", repoPath] as const,
   githubUsername: (repoPath: string) => ["githubUsername", repoPath] as const,
   prStatus: (repoPath: string, branch: string) => ["prStatus", repoPath, branch] as const,
+  remoteSessions: (groupPath: string) => ["remoteSessions", groupPath] as const,
   globalRemoteUrl: ["globalRemoteUrl"] as const,
   globalRemoteToken: ["globalRemoteToken"] as const,
 };
