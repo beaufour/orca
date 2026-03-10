@@ -8,7 +8,6 @@ import { TodoList } from "./components/TodoList";
 import { AddSessionBar, type AddSessionBarHandle } from "./components/AddSessionBar";
 import { TerminalView } from "./components/TerminalView";
 import { MessageStream } from "./components/MessageStream";
-import { RemoteSessionList } from "./components/RemoteSessionList";
 import { ShortcutHelp } from "./components/ShortcutHelp";
 import { LogViewer } from "./components/LogViewer";
 import { RenameModal } from "./components/RenameModal";
@@ -315,16 +314,6 @@ function App() {
     return groups.find((g) => g.path === selectedGroup.path) ?? selectedGroup;
   }, [selectedGroup, groups]);
 
-  const isRemoteGroup =
-    effectiveGroup?.backend === "claude-remote" || effectiveGroup?.backend === "opencode-remote";
-
-  const { data: remoteSessions, refetch: refetchRemoteSessions } = useQuery<RemoteSession[]>({
-    queryKey: queryKeys.remoteSessions(effectiveGroup?.path ?? ""),
-    queryFn: () => invoke("get_remote_sessions", { groupPath: effectiveGroup?.path ?? "" }),
-    enabled: !!effectiveGroup && isRemoteGroup,
-    refetchInterval: 10_000,
-  });
-
   // Select a newly created group by refetching groups and finding it
   const handleGroupCreated = useCallback(
     async (groupName: string) => {
@@ -422,13 +411,6 @@ function App() {
             last_accessed: Date.now(),
             server_url: resolvedUrl,
           };
-          await invoke("save_remote_session", {
-            id: syntheticSession.id,
-            groupPath: effectiveGroup.path,
-            title: syntheticSession.title,
-            serverUrl: resolvedUrl,
-          });
-          refetchRemoteSessions();
           setRemoteSession(syntheticSession);
           setRemotePassword(resolvedToken ?? "");
           setRemoteServerUrl(sessionUrl);
@@ -456,13 +438,6 @@ function App() {
             initialMessage: prompt,
           });
           session.server_url = resolvedUrl;
-          await invoke("save_remote_session", {
-            id: session.id,
-            groupPath: effectiveGroup.path,
-            title: session.title,
-            serverUrl: resolvedUrl,
-          });
-          refetchRemoteSessions();
           setRemoteSession(session);
           setRemotePassword(resolvedToken ?? "");
           setRemoteServerUrl(resolvedUrl);
@@ -486,7 +461,7 @@ function App() {
         console.error("Failed to create remote session:", err);
       }
     },
-    [effectiveGroup, refetchRemoteSessions],
+    [effectiveGroup],
   );
 
   // Wrap setFocusedIndex to also clear confirming remove state
@@ -518,32 +493,6 @@ function App() {
       }
     },
     [navigableSessions, updateFocusedIndex, dismissedIds, handleUndismiss],
-  );
-
-  const handleSelectRemoteSession = useCallback(
-    async (session: RemoteSession) => {
-      if (!effectiveGroup) return;
-      try {
-        const [, resolvedToken] = await invoke<[string | null, string | null]>(
-          "get_resolved_credentials",
-          { groupPath: effectiveGroup.path },
-        );
-        setRemoteSession(session);
-        setRemotePassword(resolvedToken ?? "");
-        setRemoteServerUrl(session.server_url);
-      } catch (err) {
-        console.error("Failed to reconnect to remote session:", err);
-      }
-    },
-    [effectiveGroup],
-  );
-
-  const handleDeleteRemoteSession = useCallback(
-    async (id: string) => {
-      await invoke("delete_remote_session", { id }).catch(console.warn);
-      refetchRemoteSessions();
-    },
-    [refetchRemoteSessions],
   );
 
   // When closing the terminal, focus the session that was just open
@@ -783,13 +732,6 @@ function App() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-              )}
-              {isRemoteGroup && remoteSessions && remoteSessions.length > 0 && (
-                <RemoteSessionList
-                  sessions={remoteSessions}
-                  onSelect={handleSelectRemoteSession}
-                  onDelete={handleDeleteRemoteSession}
-                />
               )}
               {effectiveGroup &&
               !needsActionFilter &&
