@@ -302,12 +302,7 @@ export function GroupSettingsModal({ group, onClose, onGroupDeleted }: GroupSett
           <input
             className="wt-input"
             type="text"
-            placeholder={
-              globalUrl ||
-              (backend === "claude-remote"
-                ? "https://agent-remote.example.workers.dev/claude/project-id"
-                : "https://your-worker.workers.dev")
-            }
+            placeholder={globalUrl || "https://agent-remote.example.workers.dev"}
             value={serverUrl}
             onChange={(e) => setServerUrl(e.target.value)}
             spellCheck={false}

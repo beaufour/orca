@@ -370,11 +370,15 @@ function App() {
     async (title: string, prompt: string | null) => {
       if (!effectiveGroup) return;
       try {
-        const [resolvedUrl, resolvedToken] = await invoke<[string | null, string | null]>(
+        const [baseUrl, resolvedToken] = await invoke<[string | null, string | null]>(
           "get_resolved_credentials",
           { groupPath: effectiveGroup.path },
         );
-        if (!resolvedUrl) return;
+        if (!baseUrl) return;
+        // Build the full DO URL: <base>/<backend-route>/<group-slug>
+        const backendRoute = effectiveGroup.backend === "claude-remote" ? "claude" : "opencode";
+        const groupSlug = slugify(effectiveGroup.name || "default");
+        const resolvedUrl = `${baseUrl.replace(/\/+$/, "")}/${backendRoute}/${groupSlug}`;
         if (effectiveGroup.backend === "claude-remote") {
           // Setup repo if configured (explicit repo_url, or auto-detected git remote)
           const repoUrl = effectiveGroup.repo_url || effectiveGroup.git_remote_url;
