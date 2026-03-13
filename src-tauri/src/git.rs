@@ -784,21 +784,36 @@ fn find_repo_root(path: &str) -> Result<String, String> {
     Ok(cwd)
 }
 
-/// If a `setup-worktree.sh` script exists at the repo root, run it with
+/// If a `setup-worktree.sh` script exists in the repo, run it with
 /// the path to the default (main/master) branch worktree as its argument.
 /// This lets repos automate new-worktree initialization (installing deps,
 /// copying dot-files, etc.).
+///
+/// For bare worktree repos, the script lives in the default branch worktree
+/// (e.g. `<root>/main/setup-worktree.sh`), not at the bare root itself.
 pub fn run_setup_worktree_script(repo_root: &str, new_worktree_path: &str) {
-    let root = Path::new(repo_root);
-    let script = root.join("setup-worktree.sh");
-    if !script.is_file() {
-        return;
-    }
-
-    // Find the default branch worktree to pass as argument
+    // Find the default branch worktree first — we need it both to locate the
+    // script (in bare repos) and to pass as an argument.
     let Ok(main_path) = find_default_branch_worktree(repo_root) else {
-        log::warn!("setup-worktree.sh exists but could not determine default branch worktree");
+        // Can't find default worktree — check repo root as fallback for non-bare repos
+        let script = Path::new(repo_root).join("setup-worktree.sh");
+        if script.is_file() {
+            log::warn!("setup-worktree.sh exists but could not determine default branch worktree");
+        }
         return;
+    };
+
+    // In bare repos the script lives in the default branch worktree;
+    // in regular repos it lives at the repo root. Check both.
+    let script = Path::new(&main_path).join("setup-worktree.sh");
+    let script = if script.is_file() {
+        script
+    } else {
+        let fallback = Path::new(repo_root).join("setup-worktree.sh");
+        if !fallback.is_file() {
+            return;
+        }
+        fallback
     };
 
     let script_str = script.to_string_lossy();
