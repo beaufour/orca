@@ -3,7 +3,7 @@
 Documents the agent-deck interfaces Orca depends on. Use this to identify breaking changes when upgrading.
 
 **Repository:** https://github.com/asheshgoplani/agent-deck
-**Current version: v0.19.19**
+**Current version: v0.26.4**
 
 ## DB Path
 
@@ -233,6 +233,26 @@ Key details:
 - Optional Telegram bot integration for notifications
 
 ## Upgrade Log
+
+### v0.19.19 → v0.26.4 (analyzed 2026-03-20)
+
+**DB schema:** Core tables (`instances`, `groups`, `metadata`, `instance_heartbeats`) unchanged. Two new tables added — no Orca impact:
+
+- `recent_sessions` — stores deleted session history (id, title, project_path, group_path, command, wrapper, tool, tool_options, sandbox_enabled, gemini_yolo, deleted_at)
+- `cost_events` — token cost tracking per session (id, session_id, timestamp, model, input/output/cache tokens, cost_microdollars, budget_stop_triggered), indexed on `session_id` and `timestamp`
+
+**New CLI flags on `add` (no Orca impact):**
+
+- `-ssh` / `-remote-path` — SSH remote session support
+- `-gemini-yolo` / `-yolo` — Gemini YOLO mode
+- `-p` — short alias for `-parent`
+
+**New CLI flags on `session start` (no Orca impact):**
+
+- `-m` / `-message` — send initial message once agent is ready
+- `-yolo` — YOLO mode for Gemini/Codex sessions
+
+**Verdict:** Safe to upgrade with zero Orca code changes. Only `SUPPORTED_VERSION` and this doc needed updating.
 
 ### v0.19.11 → v0.19.19 (analyzed 2026-02-28)
 
