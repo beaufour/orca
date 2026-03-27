@@ -716,6 +716,8 @@ fn start_session_with_resume(session_id: &str, resume: bool) -> Result<(), Strin
 }
 
 /// Create a tmux session and run `claude --resume <session-id>` in it.
+/// If resume fails (e.g. session data no longer exists), falls back to
+/// `agent-deck session start` for a fresh session.
 fn start_tmux_with_resume(session_id: &str, info: &ResumeInfo) -> Result<(), String> {
     let project_path = expand_tilde(&info.project_path);
     let project_str = project_path.to_string_lossy();
@@ -755,6 +757,18 @@ fn start_tmux_with_resume(session_id: &str, info: &ResumeInfo) -> Result<(), Str
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("tmux new-session failed: {}", stderr.trim()));
+    }
+
+    // Give Claude a moment to start (or fail), then verify the session survived.
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    if !crate::tmux::is_tmux_session_alive(&info.tmux_session) {
+        log::warn!(
+            "tmux session {} died after claude --resume (session data may not exist), \
+             falling back to agent-deck session start",
+            info.tmux_session
+        );
+        return start_agent_deck_session(session_id);
     }
 
     // Update agent-deck's DB status so agent-deck TUI also sees it as running.
