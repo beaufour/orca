@@ -145,22 +145,6 @@ export function SessionCard({
       <div className="session-card-header">
         <div className="session-title-row">
           <span className="session-title">{session.title}</span>
-          {actions.isWorktree ? (
-            <span className="wt-badge wt-badge-yes" title={`Worktree: ${session.worktree_branch}`}>
-              wt:{session.worktree_branch}
-            </span>
-          ) : (
-            <span
-              className="wt-badge wt-badge-no wt-badge-clickable"
-              title="Click to create worktree"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowAddWorktree(true);
-              }}
-            >
-              no wt
-            </span>
-          )}
         </div>
         <div className="session-badges">
           {!tmuxAlive && (
@@ -235,6 +219,24 @@ export function SessionCard({
             <div className="session-path">
               {groupName && <span className="session-group">{groupName}</span>}
               {formatPath(session.project_path)}
+            </div>
+            <div className="session-wt-row">
+              {actions.isWorktree ? (
+                <span className="wt-badge wt-badge-yes" title={`Worktree: ${session.worktree_branch}`}>
+                  wt:{session.worktree_branch}
+                </span>
+              ) : (
+                <span
+                  className="wt-badge wt-badge-no wt-badge-clickable"
+                  title="Click to create worktree"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowAddWorktree(true);
+                  }}
+                >
+                  no wt
+                </span>
+              )}
             </div>
           </>
         )}

@@ -339,7 +339,7 @@ body {
 
 .session-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
   gap: 12px;
 }
 
@@ -529,6 +529,10 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.session-wt-row {
+  margin-top: 4px;
 }
 
 .wt-badge {
