@@ -339,7 +339,7 @@ body {
 
 .session-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
   gap: 12px;
 }
 
@@ -531,6 +531,10 @@ body {
   white-space: nowrap;
 }
 
+.session-wt-row {
+  margin-top: 4px;
+}
+
 .wt-badge {
   font-size: 10px;
   font-weight: 600;
@@ -665,6 +669,8 @@ body {
   font-size: 11px;
   color: var(--text-muted);
   margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* Restart All Bar (Needs Action / All Sessions views) */
