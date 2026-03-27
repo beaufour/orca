@@ -700,13 +700,23 @@ fn start_session_with_resume(session_id: &str, resume: bool) -> Result<(), Strin
 
     match get_resume_info(session_id)? {
         Some(info) => {
-            log::info!(
-                "Resuming Claude session {} in tmux {} for {}",
-                info.claude_session_id,
-                info.tmux_session,
-                session_id
-            );
-            start_tmux_with_resume(session_id, &info)
+            // Check if the JSONL session data still exists on disk
+            if claude_logs::find_jsonl_path(&info.project_path, &info.claude_session_id).is_some() {
+                log::info!(
+                    "Resuming Claude session {} in tmux {} for {}",
+                    info.claude_session_id,
+                    info.tmux_session,
+                    session_id
+                );
+                start_tmux_with_resume(session_id, &info)
+            } else {
+                log::info!(
+                    "Claude session {} has no JSONL data on disk, starting fresh for {}",
+                    info.claude_session_id,
+                    session_id
+                );
+                start_agent_deck_session(session_id)
+            }
         }
         None => {
             // Not a Claude session or no session ID — normal start
