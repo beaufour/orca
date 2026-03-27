@@ -802,6 +802,7 @@ function App() {
                 createSession={createSession}
                 pendingCreations={pendingCreations}
                 onCreateRemoteSession={handleCreateRemoteSession}
+                liveTmuxSessions={liveTmuxSet}
               />
             )}
           </>

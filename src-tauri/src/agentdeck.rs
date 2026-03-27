@@ -650,9 +650,194 @@ fn create_session_impl(
     Ok(session_id)
 }
 
+/// Look up a session's Claude session ID and project path for resume.
+fn get_session_resume_info(
+    session_id: &str,
+) -> Result<(Option<String>, String, Option<String>), String> {
+    let conn = open_db_readonly()?;
+    let mut stmt = conn
+        .prepare("SELECT tool, tool_data, project_path FROM instances WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
+    stmt.query_row([session_id], |row| {
+        let tool: String = row.get(0)?;
+        let tool_data_str: String = row.get(1)?;
+        let project_path: String = row.get(2)?;
+        let claude_session_id = serde_json::from_str::<serde_json::Value>(&tool_data_str)
+            .ok()
+            .and_then(|v| v.get("claude_session_id")?.as_str().map(String::from));
+        Ok((
+            if tool == "claude" {
+                claude_session_id
+            } else {
+                None
+            },
+            project_path,
+            if tool == "claude" { Some(tool) } else { None },
+        ))
+    })
+    .map_err(|e| format!("Session {session_id} not found: {e}"))
+}
+
+/// Start a session via agent-deck, optionally resuming the Claude conversation.
+///
+/// When `resume` is true and the session has a `claude_session_id`, we pass
+/// `--resume <id>` to Claude instead of letting agent-deck start a fresh session.
+/// This is done by sending keys to the tmux pane after agent-deck creates it.
+fn start_session_with_resume(session_id: &str, resume: bool) -> Result<(), String> {
+    if !resume {
+        return start_agent_deck_session(session_id);
+    }
+
+    let (claude_session_id, _project_path, is_claude) = get_session_resume_info(session_id)?;
+    match (is_claude, claude_session_id) {
+        (Some(_), Some(ref csid)) => {
+            log::info!("Resuming Claude session {csid} for {session_id}");
+            // Start via agent-deck to create the tmux session normally,
+            // but also send /resume to continue the conversation.
+            start_agent_deck_session(session_id)?;
+
+            // Give Claude a moment to start, then send /resume
+            let sid = session_id.to_string();
+            let resume_id = csid.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = send_resume_command(&sid, &resume_id) {
+                    log::error!("Failed to send resume for {sid}: {e}");
+                }
+            });
+            Ok(())
+        }
+        _ => {
+            // Not a Claude session or no session ID — normal start
+            start_agent_deck_session(session_id)
+        }
+    }
+}
+
+/// Wait for Claude to be ready in the tmux session, then send `/resume <id>`.
+fn send_resume_command(session_id: &str, claude_session_id: &str) -> Result<(), String> {
+    let conn = open_db_readonly()?;
+    let tmux_name: String = conn
+        .query_row(
+            "SELECT tmux_session FROM instances WHERE id = ?1",
+            [session_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Session not found: {e}"))?;
+
+    if tmux_name.is_empty() {
+        return Err("No tmux session for this session".to_string());
+    }
+
+    // Wait for Claude to show its input prompt (up to 30 seconds)
+    for _ in 0..30 {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        if crate::tmux::is_waiting_for_input(&tmux_name) {
+            let cmd = format!("/resume {claude_session_id}");
+            crate::tmux::paste_and_submit(&tmux_name, &cmd)?;
+            log::info!("Sent /resume {claude_session_id} to {tmux_name}");
+            return Ok(());
+        }
+    }
+    log::warn!("Timed out waiting for Claude prompt in {tmux_name}, resume not sent");
+    Ok(())
+}
+
 #[tauri::command]
-pub fn restart_session(session_id: String) -> Result<(), String> {
-    start_agent_deck_session(&session_id)
+pub fn restart_session(session_id: String, resume: Option<bool>) -> Result<(), String> {
+    start_session_with_resume(&session_id, resume.unwrap_or(false))
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct RestartAllProgress {
+    pub total: usize,
+    pub started: usize,
+    pub failed: usize,
+    pub session_id: String,
+    pub session_title: String,
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub fn restart_all_sessions(
+    app: tauri::AppHandle,
+    group_path: Option<String>,
+    resume: Option<bool>,
+) -> Result<(), String> {
+    let resume = resume.unwrap_or(true);
+    let conn = open_db_readonly()?;
+
+    // Find all sessions (optionally filtered by group) that have no live tmux session
+    let sql = match group_path {
+        Some(_) => {
+            "SELECT id, title, tmux_session FROM instances WHERE group_path = ?1 ORDER BY sort_order"
+        }
+        None => "SELECT id, title, tmux_session FROM instances ORDER BY group_path, sort_order",
+    };
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+
+    fn map_row(row: &rusqlite::Row) -> rusqlite::Result<(String, String, String)> {
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    }
+
+    let sessions: Vec<(String, String, String)> = match &group_path {
+        Some(gp) => stmt.query_map([gp.as_str()], map_row),
+        None => stmt.query_map([], map_row),
+    }
+    .map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| e.to_string())?;
+
+    // Filter to dead sessions
+    let dead_sessions: Vec<(String, String)> = sessions
+        .into_iter()
+        .filter(|(_, _, tmux)| tmux.is_empty() || !crate::tmux::is_tmux_session_alive(tmux))
+        .map(|(id, title, _)| (id, title))
+        .collect();
+
+    let total = dead_sessions.len();
+    if total == 0 {
+        log::info!("restart_all_sessions: no dead sessions found");
+        return Ok(());
+    }
+
+    log::info!("restart_all_sessions: restarting {total} dead sessions (resume={resume})");
+
+    // Spawn to background so we don't block the UI
+    std::thread::spawn(move || {
+        let mut started = 0usize;
+        let mut failed = 0usize;
+        for (id, title) in &dead_sessions {
+            let result = start_session_with_resume(id, resume);
+            let (success, error) = match result {
+                Ok(()) => {
+                    started += 1;
+                    (true, None)
+                }
+                Err(e) => {
+                    failed += 1;
+                    (false, Some(e))
+                }
+            };
+            let _ = app.emit(
+                "restart-all-progress",
+                RestartAllProgress {
+                    total,
+                    started,
+                    failed,
+                    session_id: id.to_string(),
+                    session_title: title.to_string(),
+                    success,
+                    error,
+                },
+            );
+            // Small delay between starts to avoid overwhelming tmux/agent-deck
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        log::info!("restart_all_sessions: done — {started} started, {failed} failed");
+    });
+
+    Ok(())
 }
 
 #[tauri::command]
