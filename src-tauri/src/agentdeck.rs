@@ -757,6 +757,18 @@ fn start_tmux_with_resume(session_id: &str, info: &ResumeInfo) -> Result<(), Str
         return Err(format!("tmux new-session failed: {}", stderr.trim()));
     }
 
+    // Update agent-deck's DB status so agent-deck TUI also sees it as running.
+    let conn = open_db()?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    conn.execute(
+        "UPDATE instances SET status = 'running', last_accessed = ?1 WHERE id = ?2",
+        rusqlite::params![now, session_id],
+    )
+    .map_err(|e| format!("Failed to update session status: {e}"))?;
+
     log::info!(
         "tmux session {} created with claude --resume",
         info.tmux_session
