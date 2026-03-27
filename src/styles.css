@@ -667,6 +667,15 @@ body {
   margin-left: auto;
 }
 
+/* Restart All Bar (Needs Action / All Sessions views) */
+.restart-all-bar {
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  padding: 12px 24px;
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* Add Session Bar */
 .add-session-bar {
   border-top: 1px solid var(--border);
