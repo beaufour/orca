@@ -1,9 +1,10 @@
-import { useState, useImperativeHandle, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useImperativeHandle, useRef, useEffect, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import type { Session } from "../types";
 import type { PendingCreation, CreateSessionParams } from "../hooks/useSessionCreation";
 import { isMainSession, validateBranchName } from "../utils";
+import { queryKeys } from "../queryKeys";
 
 export interface AddSessionBarHandle {
   toggleForm: () => void;
@@ -22,6 +23,7 @@ interface AddSessionBarProps {
   createSession: (params: CreateSessionParams) => void;
   pendingCreations: Map<string, PendingCreation>;
   onCreateRemoteSession?: (title: string, prompt: string | null) => void;
+  liveTmuxSessions?: Set<string>;
 }
 
 type SessionMode = "worktree" | "plain";
@@ -144,7 +146,9 @@ export function AddSessionBar({
   createSession,
   pendingCreations,
   onCreateRemoteSession,
+  liveTmuxSessions,
 }: AddSessionBarProps) {
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   useImperativeHandle(ref, () => ({
     toggleForm: () => setShowForm((prev) => !prev),
@@ -155,8 +159,29 @@ export function AddSessionBar({
   const [mode, setMode] = useState<SessionMode>(isGitRepo ? "worktree" : "plain");
   const [tool, setTool] = useState<SessionTool>("claude");
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
+  const [restartingAll, setRestartingAll] = useState(false);
 
   const hasMainSession = sessions.some((s) => isMainSession(s.worktree_branch));
+
+  // Count dead sessions for the restart all button
+  const deadSessionCount = sessions.filter(
+    (s) => s.tmux_session && liveTmuxSessions && !liveTmuxSessions.has(s.tmux_session),
+  ).length;
+
+  const handleRestartAll = useCallback(async () => {
+    setRestartingAll(true);
+    try {
+      await invoke("restart_all_sessions", { groupPath, resume: true });
+      // Give sessions time to start, then refresh
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
+        setRestartingAll(false);
+      }, 2000);
+    } catch (err) {
+      console.error("Restart all failed:", err);
+      setRestartingAll(false);
+    }
+  }, [groupPath, queryClient]);
   const branchError = branchName.trim() ? validateBranchName(branchName.trim()) : null;
   const needsComponent = mode === "worktree" && !!worktreeCommand?.includes("{component}");
 
@@ -238,6 +263,16 @@ export function AddSessionBar({
       <div className="add-session-header">
         <span className="add-session-group-name">{groupName}</span>
         <div className="add-session-buttons">
+          {!isRemote && deadSessionCount > 0 && (
+            <button
+              className="wt-btn wt-btn-action"
+              onClick={handleRestartAll}
+              disabled={restartingAll}
+              title={`Restart ${deadSessionCount} dead session${deadSessionCount === 1 ? "" : "s"} and resume Claude conversations`}
+            >
+              {restartingAll ? "Restarting..." : `Restart All (${deadSessionCount})`}
+            </button>
+          )}
           {!isRemote && isGitRepo && !hasMainSession && (
             <button
               className="wt-btn wt-btn-main"

@@ -6,6 +6,7 @@ import { Sidebar } from "./components/Sidebar";
 import { SessionList } from "./components/SessionList";
 import { TodoList } from "./components/TodoList";
 import { AddSessionBar, type AddSessionBarHandle } from "./components/AddSessionBar";
+import { RestartAllBar } from "./components/RestartAllBar";
 import { TerminalView } from "./components/TerminalView";
 import { MessageStream } from "./components/MessageStream";
 import { ShortcutHelp } from "./components/ShortcutHelp";
@@ -787,7 +788,7 @@ function App() {
                 />
               )}
             </main>
-            {effectiveGroup && (
+            {effectiveGroup ? (
               <AddSessionBar
                 key={`${effectiveGroup.path}:${effectiveGroup.is_git_repo}`}
                 ref={addSessionBarRef}
@@ -802,7 +803,10 @@ function App() {
                 createSession={createSession}
                 pendingCreations={pendingCreations}
                 onCreateRemoteSession={handleCreateRemoteSession}
+                liveTmuxSessions={liveTmuxSet}
               />
+            ) : (
+              <RestartAllBar sessions={sessions} liveTmuxSessions={liveTmuxSet} />
             )}
           </>
         )}

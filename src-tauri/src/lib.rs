@@ -344,6 +344,7 @@ pub fn run() {
             agentdeck::remove_session,
             agentdeck::remove_session_background,
             agentdeck::restart_session,
+            agentdeck::restart_all_sessions,
             agentdeck::update_session_worktree,
             agentdeck::rename_session,
             agentdeck::move_session,

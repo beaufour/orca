@@ -332,7 +332,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
   const handleRestart = useCallback(async () => {
     setRestarting(true);
     try {
-      await invoke("restart_session", { sessionId: session.id });
+      await invoke("restart_session", { sessionId: session.id, resume: true });
       // Invalidate and wait for refetch; the parent syncs selectedSession
       // from query data, which re-triggers our setup effect with the new tmux_session
       await queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
