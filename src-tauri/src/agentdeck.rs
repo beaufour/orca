@@ -650,95 +650,117 @@ fn create_session_impl(
     Ok(session_id)
 }
 
-/// Look up a session's Claude session ID and project path for resume.
-fn get_session_resume_info(
-    session_id: &str,
-) -> Result<(Option<String>, String, Option<String>), String> {
-    let conn = open_db_readonly()?;
-    let mut stmt = conn
-        .prepare("SELECT tool, tool_data, project_path FROM instances WHERE id = ?1")
-        .map_err(|e| e.to_string())?;
-    stmt.query_row([session_id], |row| {
-        let tool: String = row.get(0)?;
-        let tool_data_str: String = row.get(1)?;
-        let project_path: String = row.get(2)?;
-        let claude_session_id = serde_json::from_str::<serde_json::Value>(&tool_data_str)
-            .ok()
-            .and_then(|v| v.get("claude_session_id")?.as_str().map(String::from));
-        Ok((
-            if tool == "claude" {
-                claude_session_id
-            } else {
-                None
-            },
-            project_path,
-            if tool == "claude" { Some(tool) } else { None },
-        ))
-    })
-    .map_err(|e| format!("Session {session_id} not found: {e}"))
+/// Info needed to resume a Claude session directly via tmux.
+struct ResumeInfo {
+    claude_session_id: String,
+    tmux_session: String,
+    project_path: String,
 }
 
-/// Start a session via agent-deck, optionally resuming the Claude conversation.
+/// Look up resume info for a session. Returns None if the session is not a
+/// Claude session or has no stored claude_session_id.
+fn get_resume_info(session_id: &str) -> Result<Option<ResumeInfo>, String> {
+    let conn = open_db_readonly()?;
+    conn.query_row(
+        "SELECT tool, tool_data, project_path, tmux_session FROM instances WHERE id = ?1",
+        [session_id],
+        |row| {
+            let tool: String = row.get(0)?;
+            let tool_data_str: String = row.get(1)?;
+            let project_path: String = row.get(2)?;
+            let tmux_session: String = row.get(3)?;
+            Ok((tool, tool_data_str, project_path, tmux_session))
+        },
+    )
+    .map_err(|e| format!("Session {session_id} not found: {e}"))
+    .map(|(tool, tool_data_str, project_path, tmux_session)| {
+        if tool != "claude" {
+            return None;
+        }
+        let csid = serde_json::from_str::<serde_json::Value>(&tool_data_str)
+            .ok()
+            .and_then(|v| v.get("claude_session_id")?.as_str().map(String::from));
+        csid.map(|claude_session_id| ResumeInfo {
+            claude_session_id,
+            tmux_session,
+            project_path,
+        })
+    })
+}
+
+/// Start a session, optionally resuming a previous Claude conversation.
 ///
-/// When `resume` is true and the session has a `claude_session_id`, we pass
-/// `--resume <id>` to Claude instead of letting agent-deck start a fresh session.
-/// This is done by sending keys to the tmux pane after agent-deck creates it.
+/// When `resume` is true and the session has a `claude_session_id`, we create
+/// the tmux session directly with `claude --resume <id>` instead of going
+/// through `agent-deck session start` (which uses `--session-id` and starts fresh).
 fn start_session_with_resume(session_id: &str, resume: bool) -> Result<(), String> {
     if !resume {
         return start_agent_deck_session(session_id);
     }
 
-    let (claude_session_id, _project_path, is_claude) = get_session_resume_info(session_id)?;
-    match (is_claude, claude_session_id) {
-        (Some(_), Some(ref csid)) => {
-            log::info!("Resuming Claude session {csid} for {session_id}");
-            // Start via agent-deck to create the tmux session normally,
-            // but also send /resume to continue the conversation.
-            start_agent_deck_session(session_id)?;
-
-            // Give Claude a moment to start, then send /resume
-            let sid = session_id.to_string();
-            let resume_id = csid.clone();
-            std::thread::spawn(move || {
-                if let Err(e) = send_resume_command(&sid, &resume_id) {
-                    log::error!("Failed to send resume for {sid}: {e}");
-                }
-            });
-            Ok(())
+    match get_resume_info(session_id)? {
+        Some(info) => {
+            log::info!(
+                "Resuming Claude session {} in tmux {} for {}",
+                info.claude_session_id,
+                info.tmux_session,
+                session_id
+            );
+            start_tmux_with_resume(session_id, &info)
         }
-        _ => {
+        None => {
             // Not a Claude session or no session ID — normal start
             start_agent_deck_session(session_id)
         }
     }
 }
 
-/// Wait for Claude to be ready in the tmux session, then send `/resume <id>`.
-fn send_resume_command(session_id: &str, claude_session_id: &str) -> Result<(), String> {
-    let conn = open_db_readonly()?;
-    let tmux_name: String = conn
-        .query_row(
-            "SELECT tmux_session FROM instances WHERE id = ?1",
-            [session_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| format!("Session not found: {e}"))?;
+/// Create a tmux session and run `claude --resume <session-id>` in it.
+fn start_tmux_with_resume(session_id: &str, info: &ResumeInfo) -> Result<(), String> {
+    let project_path = expand_tilde(&info.project_path);
+    let project_str = project_path.to_string_lossy();
 
-    if tmux_name.is_empty() {
-        return Err("No tmux session for this session".to_string());
+    // Build the shell command that tmux will run.
+    // Set environment variables agent-deck expects, then exec claude --resume.
+    let shell_cmd = format!(
+        "export COLORFGBG='7;0' \
+         && export AGENTDECK_INSTANCE_ID={} \
+         && export CLAUDE_SESSION_ID={} \
+         && exec claude --resume {}",
+        session_id, info.claude_session_id, info.claude_session_id
+    );
+
+    log::info!(
+        "Creating tmux session {} in {} with claude --resume {}",
+        info.tmux_session,
+        project_str,
+        info.claude_session_id
+    );
+
+    let output = new_command("tmux")
+        .args([
+            "new-session",
+            "-d",
+            "-s",
+            &info.tmux_session,
+            "-c",
+            &project_str,
+            "sh",
+            "-c",
+            &shell_cmd,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to create tmux session: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tmux new-session failed: {}", stderr.trim()));
     }
 
-    // Wait for Claude to show its input prompt (up to 30 seconds)
-    for _ in 0..30 {
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        if crate::tmux::is_waiting_for_input(&tmux_name) {
-            let cmd = format!("/resume {claude_session_id}");
-            crate::tmux::paste_and_submit(&tmux_name, &cmd)?;
-            log::info!("Sent /resume {claude_session_id} to {tmux_name}");
-            return Ok(());
-        }
-    }
-    log::warn!("Timed out waiting for Claude prompt in {tmux_name}, resume not sent");
+    log::info!(
+        "tmux session {} created with claude --resume",
+        info.tmux_session
+    );
     Ok(())
 }
 
