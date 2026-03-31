@@ -100,6 +100,14 @@ export interface PrInfo {
   state: string;
 }
 
+export interface GitHubPr {
+  number: number;
+  title: string;
+  branch: string;
+  author: string;
+  url: string;
+}
+
 export interface RebaseResult {
   success: boolean;
   conflict_message: string | null;

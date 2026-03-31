@@ -383,6 +383,67 @@ pub async fn check_pr_status(repo_path: String, branch: String) -> Result<PrInfo
     .await
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubPr {
+    pub number: u64,
+    pub title: String,
+    pub branch: String,
+    pub author: String,
+    pub url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhPrListItem {
+    number: u64,
+    title: String,
+    #[serde(rename = "headRefName")]
+    head_ref_name: String,
+    author: GhPrAuthor,
+    url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhPrAuthor {
+    login: String,
+}
+
+#[tauri::command]
+pub async fn list_open_prs(repo_path: String) -> Result<Vec<GitHubPr>, String> {
+    spawn_gh(move || {
+        log::info!("list_open_prs: repo_path={repo_path}");
+        let nwo = get_repo_nwo(&repo_path)?;
+        let output = run_gh(
+            &repo_path,
+            &[
+                "pr",
+                "list",
+                "-R",
+                &nwo,
+                "--state",
+                "open",
+                "--limit",
+                "100",
+                "--json",
+                "number,title,headRefName,author,url",
+            ],
+        )?;
+
+        let raw: Vec<GhPrListItem> =
+            serde_json::from_str(&output).map_err(|e| format!("Failed to parse gh output: {e}"))?;
+        Ok(raw
+            .into_iter()
+            .map(|p| GitHubPr {
+                number: p.number,
+                title: p.title,
+                branch: p.head_ref_name,
+                author: p.author.login,
+                url: p.url,
+            })
+            .collect())
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn get_github_username(repo_path: String) -> Result<String, String> {
     spawn_gh(move || {

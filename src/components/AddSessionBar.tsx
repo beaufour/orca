@@ -1,7 +1,7 @@
 import { useState, useImperativeHandle, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
-import type { Session } from "../types";
+import type { Session, GitHubPr } from "../types";
 import type { PendingCreation, CreateSessionParams } from "../hooks/useSessionCreation";
 import { isMainSession, validateBranchName } from "../utils";
 import { queryKeys } from "../queryKeys";
@@ -26,8 +26,103 @@ interface AddSessionBarProps {
   liveTmuxSessions?: Set<string>;
 }
 
-type SessionMode = "worktree" | "plain";
+type SessionMode = "worktree" | "plain" | "from-pr";
 type SessionTool = "claude" | "opencode" | "shell";
+
+function PrPicker({ repoPath, onSelect }: { repoPath: string; onSelect: (pr: GitHubPr) => void }) {
+  const [filter, setFilter] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const { data: allPrs = [], isLoading } = useQuery({
+    queryKey: queryKeys.openPrs(repoPath),
+    queryFn: () => invoke<GitHubPr[]>("list_open_prs", { repoPath }),
+    staleTime: 30_000,
+  });
+
+  const filtered = allPrs.filter((pr) => {
+    if (!filter) return true;
+    const q = filter.toLowerCase();
+    // Allow searching by PR number (with or without #)
+    const numStr = String(pr.number);
+    if (numStr === q || numStr === q.replace("#", "")) return true;
+    return (
+      pr.title.toLowerCase().includes(q) ||
+      pr.branch.toLowerCase().includes(q) ||
+      pr.author.toLowerCase().includes(q)
+    );
+  });
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node) &&
+        inputRef.current &&
+        !inputRef.current.contains(e.target as Node)
+      ) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="component-input-wrapper">
+      <input
+        ref={inputRef}
+        className="wt-input"
+        type="text"
+        placeholder={isLoading ? "Loading PRs..." : "Search PRs by #, title, branch, or author..."}
+        value={filter}
+        onChange={(e) => {
+          setFilter(e.target.value);
+          setShowDropdown(true);
+        }}
+        onFocus={() => setShowDropdown(true)}
+        disabled={isLoading}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoFocus
+      />
+      {showDropdown && filtered.length > 0 && (
+        <div ref={dropdownRef} className="component-dropdown pr-dropdown">
+          {filtered.slice(0, 30).map((pr) => (
+            <button
+              key={pr.number}
+              type="button"
+              className="component-dropdown-item pr-dropdown-item"
+              onClick={() => {
+                onSelect(pr);
+                setFilter("");
+                setShowDropdown(false);
+              }}
+            >
+              <span className="pr-number">#{pr.number}</span>
+              <span className="pr-title">{pr.title}</span>
+              <span className="pr-meta">
+                {pr.branch} &middot; {pr.author}
+              </span>
+            </button>
+          ))}
+          {filtered.length > 30 && (
+            <div className="component-dropdown-more">{filtered.length - 30} more...</div>
+          )}
+          {filtered.length === 0 && !isLoading && (
+            <div className="component-dropdown-more">No matching PRs</div>
+          )}
+        </div>
+      )}
+      {showDropdown && !isLoading && allPrs.length === 0 && (
+        <div ref={dropdownRef} className="component-dropdown">
+          <div className="component-dropdown-more">No open PRs found</div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ComponentPicker({
   repoPath,
@@ -159,6 +254,7 @@ export function AddSessionBar({
   const [mode, setMode] = useState<SessionMode>(isGitRepo ? "worktree" : "plain");
   const [tool, setTool] = useState<SessionTool>("claude");
   const [selectedComponents, setSelectedComponents] = useState<string[]>([]);
+  const [selectedPr, setSelectedPr] = useState<GitHubPr | null>(null);
   const [restartingAll, setRestartingAll] = useState(false);
 
   const hasMainSession = sessions.some((s) => isMainSession(s.worktree_branch));
@@ -196,6 +292,7 @@ export function AddSessionBar({
     setMode(isGitRepo ? "worktree" : "plain");
     setTool("claude");
     setSelectedComponents([]);
+    setSelectedPr(null);
     setShowForm(false);
   };
 
@@ -217,7 +314,21 @@ export function AddSessionBar({
       return;
     }
 
-    if (mode === "worktree") {
+    if (mode === "from-pr") {
+      if (!selectedPr) return;
+      createSession({
+        projectPath: repoPath,
+        group: groupPath,
+        title: deriveTitle(`PR #${selectedPr.number}: ${selectedPr.title}`),
+        tool,
+        worktreeBranch: selectedPr.branch,
+        newBranch: false,
+        start: true,
+        prompt: promptValue,
+        prNumber: selectedPr.number,
+        prUrl: selectedPr.url,
+      });
+    } else if (mode === "worktree") {
       if (!branchName.trim() || branchError) return;
       if (needsComponent && selectedComponents.length === 0) return;
       createSession({
@@ -314,14 +425,21 @@ export function AddSessionBar({
                   className={`mode-btn ${mode === "worktree" ? "mode-btn-active" : ""}`}
                   onClick={() => setMode("worktree")}
                 >
-                  With Worktree
+                  New Branch
+                </button>
+                <button
+                  type="button"
+                  className={`mode-btn ${mode === "from-pr" ? "mode-btn-active" : ""}`}
+                  onClick={() => setMode("from-pr")}
+                >
+                  From PR
                 </button>
                 <button
                   type="button"
                   className={`mode-btn ${mode === "plain" ? "mode-btn-active" : ""}`}
                   onClick={() => setMode("plain")}
                 >
-                  Without Worktree
+                  No Worktree
                 </button>
               </div>
             )}
@@ -352,6 +470,28 @@ export function AddSessionBar({
             )}
           </div>
           <div className="add-session-fields">
+            {!isRemote && mode === "from-pr" && (
+              <>
+                {selectedPr ? (
+                  <div className="pr-selected">
+                    <span className="pr-selected-info">
+                      <span className="pr-number">#{selectedPr.number}</span> {selectedPr.title}
+                      <span className="pr-meta"> ({selectedPr.branch})</span>
+                    </span>
+                    <button
+                      type="button"
+                      className="component-chip-remove"
+                      onClick={() => setSelectedPr(null)}
+                      aria-label="Clear PR selection"
+                    >
+                      x
+                    </button>
+                  </div>
+                ) : (
+                  <PrPicker repoPath={repoPath} onSelect={(pr) => setSelectedPr(pr)} />
+                )}
+              </>
+            )}
             {!isRemote && mode === "worktree" && (
               <>
                 <input
@@ -408,7 +548,8 @@ export function AddSessionBar({
               type="submit"
               disabled={
                 !isRemote &&
-                ((mode === "worktree" && (!branchName.trim() || !!branchError)) ||
+                ((mode === "from-pr" && !selectedPr) ||
+                  (mode === "worktree" && (!branchName.trim() || !!branchError)) ||
                   (needsComponent && selectedComponents.length === 0) ||
                   (mode === "plain" && !title.trim() && !prompt.trim()))
               }

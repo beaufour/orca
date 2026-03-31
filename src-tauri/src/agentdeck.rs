@@ -492,6 +492,8 @@ pub fn create_session(
     start: Option<bool>,
     prompt: Option<String>,
     components: Option<Vec<String>>,
+    pr_number: Option<u64>,
+    pr_url: Option<String>,
 ) -> Result<(), String> {
     let orca_db = orca_db.inner().clone();
     // Spawn the work to a background thread and return immediately
@@ -515,6 +517,17 @@ pub fn create_session(
                         if let Err(e) = orca_db.store_prompt(&session_id, prompt_text) {
                             log::error!("Failed to store prompt for {session_id}: {e}");
                         }
+                    }
+                }
+                // Store PR info if creating from a PR
+                if let (Some(number), Some(ref url)) = (pr_number, &pr_url) {
+                    if let Err(e) = store_session_pr_info_impl(
+                        &session_id,
+                        url.clone(),
+                        number,
+                        "OPEN".to_string(),
+                    ) {
+                        log::error!("Failed to store PR info for {session_id}: {e}");
                     }
                 }
                 let _ = app.emit(
@@ -570,6 +583,15 @@ fn create_session_impl(
                 if let Ok(default_wt) = find_default_branch_worktree(&effective_path) {
                     effective_path = default_wt;
                 }
+            }
+        }
+    }
+
+    // When checking out an existing remote branch (e.g. from a PR), fetch it first
+    if !new_branch {
+        if let Some(ref branch) = worktree_branch {
+            if let Err(e) = crate::git::fetch_branch_sync(&effective_path, branch) {
+                log::warn!("Failed to fetch branch '{branch}' (may already exist locally): {e}");
             }
         }
     }
@@ -1343,10 +1365,8 @@ fn fix_last_accessed(sessions: &mut [Session]) {
     }
 }
 
-/// Store PR info in the session's tool_data JSON.
-#[tauri::command]
-pub fn store_session_pr_info(
-    session_id: String,
+fn store_session_pr_info_impl(
+    session_id: &str,
     pr_url: String,
     pr_number: u64,
     pr_state: String,
@@ -1357,7 +1377,7 @@ pub fn store_session_pr_info(
     let current: String = conn
         .query_row(
             "SELECT tool_data FROM instances WHERE id = ?1",
-            [&session_id],
+            [session_id],
             |row| row.get(0),
         )
         .map_err(|e| format!("Failed to read tool_data for {session_id}: {e}"))?;
@@ -1376,6 +1396,17 @@ pub fn store_session_pr_info(
     .map_err(|e| format!("Failed to update tool_data for {session_id}: {e}"))?;
 
     Ok(())
+}
+
+/// Store PR info in the session's tool_data JSON.
+#[tauri::command]
+pub fn store_session_pr_info(
+    session_id: String,
+    pr_url: String,
+    pr_number: u64,
+    pr_state: String,
+) -> Result<(), String> {
+    store_session_pr_info_impl(&session_id, pr_url, pr_number, pr_state)
 }
 
 /// Look up the tmux session name for a given session ID from the agent-deck DB.

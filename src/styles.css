@@ -2116,6 +2116,72 @@ body {
   font-style: italic;
 }
 
+/* PR picker dropdown */
+.pr-dropdown {
+  max-height: 300px;
+}
+
+.pr-dropdown-item {
+  display: flex !important;
+  flex-direction: column;
+  align-items: flex-start !important;
+  gap: 2px;
+  padding: 8px 10px !important;
+}
+
+.pr-dropdown-item .pr-number {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 12px;
+  margin-right: 6px;
+}
+
+.pr-dropdown-item .pr-title {
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.pr-dropdown-item .pr-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.pr-selected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.pr-selected-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-selected .pr-number {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.pr-selected .pr-meta {
+  color: var(--text-muted);
+}
+
 /* PR button */
 .wt-btn-pr {
   color: #a78bfa;

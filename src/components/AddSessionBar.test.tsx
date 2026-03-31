@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AddSessionBar } from "./AddSessionBar";
-import type { Session } from "../types";
+import type { GitHubPr, Session } from "../types";
 
 // Mock tauri invoke
 const mockInvoke = vi.fn();
@@ -156,5 +156,154 @@ describe("AddSessionBar restart all", () => {
     );
 
     expect(screen.queryByText(/Restart All/)).not.toBeInTheDocument();
+  });
+});
+
+const samplePrs: GitHubPr[] = [
+  {
+    number: 42,
+    title: "Fix login bug",
+    branch: "fix-login",
+    author: "alice",
+    url: "https://github.com/org/repo/pull/42",
+  },
+  {
+    number: 99,
+    title: "Add search feature",
+    branch: "feat-search",
+    author: "bob",
+    url: "https://github.com/org/repo/pull/99",
+  },
+];
+
+describe("AddSessionBar From PR mode", () => {
+  it("shows From PR button in the mode toggle for git repos", () => {
+    render(
+      <Wrapper>
+        <AddSessionBar {...defaultProps} sessions={[]} />
+      </Wrapper>,
+    );
+
+    fireEvent.click(screen.getByText("+ Add Session"));
+    expect(screen.getByText("From PR")).toBeInTheDocument();
+  });
+
+  it("loads and displays open PRs when From PR mode is selected", async () => {
+    mockInvoke.mockResolvedValue(samplePrs);
+
+    render(
+      <Wrapper>
+        <AddSessionBar {...defaultProps} sessions={[]} />
+      </Wrapper>,
+    );
+
+    fireEvent.click(screen.getByText("+ Add Session"));
+    fireEvent.click(screen.getByText("From PR"));
+
+    // The PR picker input should appear
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Search PRs/)).toBeInTheDocument();
+    });
+
+    // PRs should be fetched
+    expect(mockInvoke).toHaveBeenCalledWith("list_open_prs", { repoPath: "/repo" });
+  });
+
+  it("filters PRs by title and selects one", async () => {
+    mockInvoke.mockResolvedValue(samplePrs);
+
+    render(
+      <Wrapper>
+        <AddSessionBar {...defaultProps} sessions={[]} />
+      </Wrapper>,
+    );
+
+    fireEvent.click(screen.getByText("+ Add Session"));
+    fireEvent.click(screen.getByText("From PR"));
+
+    const input = await screen.findByPlaceholderText(/Search PRs/);
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "login" } });
+
+    // Should show the matching PR
+    await waitFor(() => {
+      expect(screen.getByText("Fix login bug")).toBeInTheDocument();
+    });
+    // Should NOT show the non-matching PR
+    expect(screen.queryByText("Add search feature")).not.toBeInTheDocument();
+
+    // Select the PR
+    fireEvent.click(screen.getByText("Fix login bug"));
+
+    // Should show the selected PR info
+    await waitFor(() => {
+      expect(screen.getByText("#42")).toBeInTheDocument();
+    });
+  });
+
+  it("creates session with PR info when submitted", async () => {
+    mockInvoke.mockResolvedValue(samplePrs);
+    const createSession = vi.fn();
+
+    render(
+      <Wrapper>
+        <AddSessionBar {...defaultProps} sessions={[]} createSession={createSession} />
+      </Wrapper>,
+    );
+
+    fireEvent.click(screen.getByText("+ Add Session"));
+    fireEvent.click(screen.getByText("From PR"));
+
+    const input = await screen.findByPlaceholderText(/Search PRs/);
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "" } });
+
+    // Select the first PR
+    await waitFor(() => {
+      expect(screen.getByText("Fix login bug")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Fix login bug"));
+
+    // Submit the form
+    fireEvent.click(screen.getByText("Create"));
+
+    expect(createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        worktreeBranch: "fix-login",
+        newBranch: false,
+        prNumber: 42,
+        prUrl: "https://github.com/org/repo/pull/42",
+      }),
+    );
+  });
+
+  it("disables Create button when no PR is selected", async () => {
+    mockInvoke.mockResolvedValue(samplePrs);
+
+    render(
+      <Wrapper>
+        <AddSessionBar {...defaultProps} sessions={[]} />
+      </Wrapper>,
+    );
+
+    fireEvent.click(screen.getByText("+ Add Session"));
+    fireEvent.click(screen.getByText("From PR"));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Search PRs/)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Create")).toBeDisabled();
+  });
+
+  it("does not show From PR for non-git repos", () => {
+    render(
+      <Wrapper>
+        <AddSessionBar {...defaultProps} isGitRepo={false} sessions={[]} />
+      </Wrapper>,
+    );
+
+    fireEvent.click(screen.getByText("+ Add Session"));
+    expect(screen.queryByText("From PR")).not.toBeInTheDocument();
   });
 });

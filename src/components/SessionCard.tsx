@@ -222,7 +222,10 @@ export function SessionCard({
             </div>
             <div className="session-wt-row">
               {actions.isWorktree ? (
-                <span className="wt-badge wt-badge-yes" title={`Worktree: ${session.worktree_branch}`}>
+                <span
+                  className="wt-badge wt-badge-yes"
+                  title={`Worktree: ${session.worktree_branch}`}
+                >
                   wt:{session.worktree_branch}
                 </span>
               ) : (
