@@ -104,13 +104,10 @@ fn parse_repo_nwo(url: &str) -> Result<String, String> {
     Err(format!("Cannot parse GitHub owner/repo from URL: {url}"))
 }
 
-/// For github.com, return just `owner/repo`. For other hosts, prefix with `host/`.
+/// Always return `host/owner/repo` so `gh -R` targets the correct server
+/// regardless of which host is configured as the default.
 fn with_host(host: &str, owner_repo: &str) -> String {
-    if host == "github.com" {
-        owner_repo.to_string()
-    } else {
-        format!("{host}/{owner_repo}")
-    }
+    format!("{host}/{owner_repo}")
 }
 
 fn run_gh(repo_path: &str, args: &[&str]) -> Result<String, String> {
@@ -416,7 +413,7 @@ mod tests {
     fn test_parse_ssh_url() {
         assert_eq!(
             parse_repo_nwo("git@github.com:owner/repo.git").unwrap(),
-            "owner/repo"
+            "github.com/owner/repo"
         );
     }
 
@@ -424,7 +421,7 @@ mod tests {
     fn test_parse_ssh_url_no_dotgit() {
         assert_eq!(
             parse_repo_nwo("git@github.com:owner/repo").unwrap(),
-            "owner/repo"
+            "github.com/owner/repo"
         );
     }
 
@@ -432,7 +429,7 @@ mod tests {
     fn test_parse_https_url() {
         assert_eq!(
             parse_repo_nwo("https://github.com/owner/repo.git").unwrap(),
-            "owner/repo"
+            "github.com/owner/repo"
         );
     }
 
@@ -440,7 +437,7 @@ mod tests {
     fn test_parse_https_url_no_dotgit() {
         assert_eq!(
             parse_repo_nwo("https://github.com/owner/repo").unwrap(),
-            "owner/repo"
+            "github.com/owner/repo"
         );
     }
 
@@ -469,7 +466,7 @@ mod tests {
     fn test_parse_http_url() {
         assert_eq!(
             parse_repo_nwo("http://github.com/owner/repo.git").unwrap(),
-            "owner/repo"
+            "github.com/owner/repo"
         );
     }
 
@@ -478,19 +475,22 @@ mod tests {
         // SSH URLs with nested paths: everything after the colon is treated as the repo path
         assert_eq!(
             parse_repo_nwo("git@github.com:org/sub/repo.git").unwrap(),
-            "org/sub/repo"
+            "github.com/org/sub/repo"
         );
     }
 
     #[test]
     fn test_parse_https_url_trailing_slash() {
         let result = parse_repo_nwo("https://github.com/owner/repo/").unwrap();
-        assert_eq!(result, "owner/repo");
+        assert_eq!(result, "github.com/owner/repo");
     }
 
     #[test]
     fn test_with_host_github_com() {
-        assert_eq!(with_host("github.com", "owner/repo"), "owner/repo");
+        assert_eq!(
+            with_host("github.com", "owner/repo"),
+            "github.com/owner/repo"
+        );
     }
 
     #[test]
