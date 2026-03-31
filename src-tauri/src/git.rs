@@ -774,6 +774,17 @@ pub async fn update_main_branch(
     .await
 }
 
+/// Fetch a specific branch from origin so it's available locally for worktree checkout.
+pub fn fetch_branch_sync(repo_path: &str, branch: &str) -> Result<(), String> {
+    let effective_repo = find_repo_root(repo_path)?;
+    run_git(
+        &effective_repo,
+        &["fetch", "origin", &format!("{branch}:{branch}")],
+    )
+    .map_err(|e| format!("Failed to fetch branch '{branch}' from origin: {e}"))?;
+    Ok(())
+}
+
 fn find_repo_root(path: &str) -> Result<String, String> {
     // Validate this is a git repository by checking rev-parse succeeds.
     // Returns the expanded path since git commands work from any worktree.

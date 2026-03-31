@@ -387,6 +387,7 @@ pub fn run() {
             github::unassign_issue,
             github::create_pr,
             github::check_pr_status,
+            github::list_open_prs,
             github::get_github_username,
             pty::attach_pty,
             pty::write_pty,

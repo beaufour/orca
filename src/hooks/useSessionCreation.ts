@@ -22,6 +22,8 @@ export interface CreateSessionParams {
   start?: boolean;
   prompt?: string | null;
   components?: string[];
+  prNumber?: number | null;
+  prUrl?: string | null;
 }
 
 interface UseSessionCreationOptions {
@@ -94,6 +96,8 @@ export function useSessionCreation({ onCreated }: UseSessionCreationOptions = {}
       start: params.start ?? false,
       prompt: params.prompt ?? null,
       components: params.components ?? null,
+      prNumber: params.prNumber ?? null,
+      prUrl: params.prUrl ?? null,
     }).catch((err) => {
       // Handle invoke-level errors (e.g. command not found)
       setPendingCreations((prev) => {
