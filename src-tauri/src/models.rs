@@ -72,3 +72,22 @@ pub struct VersionCheck {
     pub supported: String,
     pub installed: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StaleClaudeSession {
+    pub id: String,
+    pub title: String,
+    /// Display name of the session's group, for disambiguating sessions with
+    /// the same title (e.g. "main") across different groups. Empty when the
+    /// group row isn't found.
+    pub group_name: String,
+    pub running_version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StaleClaudeReport {
+    /// Current `claude --version` on PATH, or None if not resolvable.
+    pub current_version: Option<String>,
+    /// Sessions with a live tmux whose JSONL records an older version.
+    pub stale: Vec<StaleClaudeSession>,
+}

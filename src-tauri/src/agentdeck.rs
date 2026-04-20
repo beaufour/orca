@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 use tauri::{Emitter, State};
 
 use crate::claude_logs::{self, AttentionStatus};
-use crate::models::{AttentionCounts, Group, Session, VersionCheck};
+use crate::command::get_current_claude_version;
+use crate::models::{
+    AttentionCounts, Group, Session, StaleClaudeReport, StaleClaudeSession, VersionCheck,
+};
 
 const SUPPORTED_VERSION: &str = "0.26.4";
 
@@ -699,10 +702,22 @@ fn get_resume_info(session_id: &str) -> Result<Option<ResumeInfo>, String> {
         if tool != "claude" {
             return None;
         }
-        let csid = serde_json::from_str::<serde_json::Value>(&tool_data_str)
+        let stored = serde_json::from_str::<serde_json::Value>(&tool_data_str)
             .ok()
             .and_then(|v| v.get("claude_session_id")?.as_str().map(String::from));
-        csid.map(|claude_session_id| ResumeInfo {
+        // Prefer the newest JSONL on disk over the stored id: if the user ran
+        // `/clear` and chatted again, a fresh JSONL with a new session id
+        // exists, and the stored id points at the pre-clear conversation.
+        let latest = claude_logs::find_latest_session_id(&project_path);
+        if let (Some(ref s), Some(ref l)) = (&stored, &latest) {
+            if s != l {
+                log::info!(
+                    "resume: using newer on-disk session {l} instead of stored {s} for {session_id}"
+                );
+            }
+        }
+        let claude_session_id = latest.or(stored)?;
+        Some(ResumeInfo {
             claude_session_id,
             tmux_session,
             project_path,
@@ -822,8 +837,45 @@ fn start_tmux_with_resume(session_id: &str, info: &ResumeInfo) -> Result<(), Str
     Ok(())
 }
 
+/// Kill the tmux session associated with an agent-deck session, if one is alive.
+/// Best-effort — errors are logged but not returned, since a dead or missing
+/// tmux is the desired state for the caller.
+fn kill_tmux_for_session(session_id: &str) {
+    let conn = match open_db_readonly() {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("kill_tmux_for_session: failed to open DB: {e}");
+            return;
+        }
+    };
+    let tmux: Result<String, _> = conn.query_row(
+        "SELECT tmux_session FROM instances WHERE id = ?1",
+        [session_id],
+        |row| row.get::<_, String>(0),
+    );
+    let Ok(tmux) = tmux else {
+        return;
+    };
+    if tmux.is_empty() {
+        return;
+    }
+    if !crate::tmux::is_tmux_session_alive(&tmux) {
+        return;
+    }
+    log::info!("restart: killing live tmux session {tmux} for {session_id}");
+    let res = new_command("tmux")
+        .args(["kill-session", "-t", &tmux])
+        .output();
+    if let Err(e) = res {
+        log::warn!("kill_tmux_for_session: kill-session failed: {e}");
+    }
+}
+
 #[tauri::command]
 pub fn restart_session(session_id: String, resume: Option<bool>) -> Result<(), String> {
+    // Kill any live tmux first so we spawn a fresh claude process with the
+    // current binary on PATH (rather than keeping the old long-running one).
+    kill_tmux_for_session(&session_id);
     start_session_with_resume(&session_id, resume.unwrap_or(false))
 }
 
@@ -836,6 +888,93 @@ pub struct RestartAllProgress {
     pub session_title: String,
     pub success: bool,
     pub error: Option<String>,
+}
+
+/// Compare two dotted version strings (e.g. "2.1.69" vs "2.1.114") as numeric
+/// tuples. Missing components are treated as 0. Non-numeric components sort
+/// before numeric ones as a safety fallback.
+fn version_lt(a: &str, b: &str) -> bool {
+    let a_parts: Vec<i64> = a.split('.').map(|p| p.parse().unwrap_or(-1)).collect();
+    let b_parts: Vec<i64> = b.split('.').map(|p| p.parse().unwrap_or(-1)).collect();
+    let len = a_parts.len().max(b_parts.len());
+    for i in 0..len {
+        let ai = a_parts.get(i).copied().unwrap_or(0);
+        let bi = b_parts.get(i).copied().unwrap_or(0);
+        if ai != bi {
+            return ai < bi;
+        }
+    }
+    false
+}
+
+/// Find sessions whose long-running claude process is older than the current
+/// `claude --version` on PATH — i.e. sessions that need a restart to pick up
+/// the newer binary. Only considers sessions with a live tmux pane.
+#[tauri::command]
+pub fn get_stale_claude_sessions() -> Result<StaleClaudeReport, String> {
+    let current_version = get_current_claude_version();
+    let Some(ref current) = current_version else {
+        return Ok(StaleClaudeReport {
+            current_version,
+            stale: Vec::new(),
+        });
+    };
+
+    let conn = open_db_readonly()?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT i.id, i.title, i.project_path, i.tmux_session, i.tool_data, \
+                    COALESCE(g.name, '') \
+             FROM instances i \
+             LEFT JOIN groups g ON g.path = i.group_path \
+             WHERE i.tool = 'claude'",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let mut stale = Vec::new();
+    for (id, title, project_path, tmux_session, tool_data_str, group_name) in rows {
+        if tmux_session.is_empty() || !crate::tmux::is_tmux_session_alive(&tmux_session) {
+            continue;
+        }
+        let Some(claude_session_id) = serde_json::from_str::<serde_json::Value>(&tool_data_str)
+            .ok()
+            .and_then(|v| v.get("claude_session_id")?.as_str().map(String::from))
+        else {
+            continue;
+        };
+        let Some(running) = claude_logs::extract_session_version(&project_path, &claude_session_id)
+        else {
+            continue;
+        };
+        if version_lt(&running, current) {
+            stale.push(StaleClaudeSession {
+                id,
+                title,
+                group_name,
+                running_version: running,
+            });
+        }
+    }
+
+    Ok(StaleClaudeReport {
+        current_version,
+        stale,
+    })
 }
 
 #[tauri::command]
@@ -1547,6 +1686,35 @@ pub fn set_dismissed(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn version_lt_basic() {
+        assert!(version_lt("2.1.69", "2.1.114"));
+        assert!(!version_lt("2.1.114", "2.1.69"));
+    }
+
+    #[test]
+    fn version_lt_numeric_not_lexical() {
+        // Lexical "2" < "10" would be wrong — patch numbers are numeric
+        assert!(version_lt("2.1.2", "2.1.10"));
+    }
+
+    #[test]
+    fn version_lt_equal_returns_false() {
+        assert!(!version_lt("2.1.114", "2.1.114"));
+    }
+
+    #[test]
+    fn version_lt_different_lengths() {
+        // Missing trailing components are treated as zero
+        assert!(version_lt("2.1", "2.1.1"));
+        assert!(!version_lt("2.1.0", "2.1"));
+    }
+
+    #[test]
+    fn version_lt_major_beats_minor() {
+        assert!(version_lt("1.999.999", "2.0.0"));
+    }
 
     #[test]
     fn parse_session_id_json() {

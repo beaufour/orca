@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionSummary {
@@ -70,6 +71,84 @@ pub fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<Pa
     }
 
     log::debug!("find_jsonl_path: no JSONL file found for session {claude_session_id}");
+    None
+}
+
+/// Return the session id (JSONL stem) of the most-recently-modified top-level
+/// `.jsonl` in a directory. Ignores subdirectories (e.g. `subagents/`).
+fn latest_session_id_in_dir(dir: &Path) -> Option<String> {
+    let mut best: Option<(SystemTime, String)> = None;
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Ok(mtime) = entry.metadata().and_then(|m| m.modified()) else {
+            continue;
+        };
+        if best.as_ref().map(|(t, _)| *t < mtime).unwrap_or(true) {
+            best = Some((mtime, stem.to_string()));
+        }
+    }
+    best.map(|(_, id)| id)
+}
+
+/// Find the session id of the newest JSONL for a given project path. Used on
+/// restart so that if the user ran `/clear` and chatted again (producing a
+/// fresh JSONL), we resume the new session rather than the stale stored one.
+///
+/// Mirrors [`find_jsonl_path`]'s directory-lookup strategy: exact encoded path
+/// first, falling back to sibling directories that start with the encoded path
+/// (Claude Code sometimes appends a suffix for worktrees).
+pub fn find_latest_session_id(project_path: &str) -> Option<String> {
+    let expanded = expand_tilde(project_path);
+    let encoded = expanded.to_string_lossy().replace('/', "-");
+    let base = claude_projects_dir()?;
+
+    if let Some(id) = latest_session_id_in_dir(&base.join(&encoded)) {
+        return Some(id);
+    }
+
+    // Fallback: scan sibling dirs starting with the encoded path and pick the
+    // globally-newest JSONL across them.
+    let mut best: Option<(SystemTime, String)> = None;
+    for entry in std::fs::read_dir(&base).ok()?.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name == encoded || !name.starts_with(&encoded) {
+            continue;
+        }
+        let Some(id) = latest_session_id_in_dir(&entry.path()) else {
+            continue;
+        };
+        let jsonl = entry.path().join(format!("{id}.jsonl"));
+        let Ok(mtime) = std::fs::metadata(&jsonl).and_then(|m| m.modified()) else {
+            continue;
+        };
+        if best.as_ref().map(|(t, _)| *t < mtime).unwrap_or(true) {
+            best = Some((mtime, id));
+        }
+    }
+    best.map(|(_, id)| id)
+}
+
+/// Extract the most recent Claude Code `version` field from a session's JSONL.
+/// Claude Code writes `"version":"X.Y.Z"` on message records, so the latest
+/// line tells us which binary is actually running the session. Returns None
+/// when no JSONL exists or no version field is found.
+pub fn extract_session_version(project_path: &str, claude_session_id: &str) -> Option<String> {
+    let jsonl_path = find_jsonl_path(project_path, claude_session_id)?;
+    // 128KB of tail is more than enough for the latest version field.
+    let lines = read_tail_lines(&jsonl_path, 128 * 1024);
+    for line in lines.iter().rev() {
+        if let Some(v) = line.get("version").and_then(|v| v.as_str()) {
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
     None
 }
 
@@ -756,6 +835,99 @@ mod tests {
             Some("nonexistent-session-xyz-999"),
         );
         assert!(matches!(result, AttentionStatus::Running));
+    }
+
+    // ── version extraction ──
+    // extract_session_version depends on file I/O, so we test the inner lookup
+    // logic against parsed JSONL values directly.
+
+    fn latest_version(lines: &[serde_json::Value]) -> Option<String> {
+        for line in lines.iter().rev() {
+            if let Some(v) = line.get("version").and_then(|v| v.as_str()) {
+                if !v.is_empty() {
+                    return Some(v.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn version_latest_line_wins() {
+        let lines = vec![
+            json!({"type": "assistant", "version": "2.1.69"}),
+            json!({"type": "user"}),
+            json!({"type": "assistant", "version": "2.1.114"}),
+        ];
+        assert_eq!(latest_version(&lines), Some("2.1.114".into()));
+    }
+
+    #[test]
+    fn version_none_when_missing() {
+        let lines = vec![json!({"type": "user"}), json!({"type": "assistant"})];
+        assert_eq!(latest_version(&lines), None);
+    }
+
+    // ── latest_session_id_in_dir ──
+
+    #[test]
+    fn latest_session_id_picks_newest_jsonl() {
+        let tmp = tempfile::tempdir().unwrap();
+        let older = tmp
+            .path()
+            .join("aaaaaaaa-0000-0000-0000-000000000001.jsonl");
+        let newer = tmp
+            .path()
+            .join("bbbbbbbb-0000-0000-0000-000000000002.jsonl");
+        std::fs::write(&older, "{}").unwrap();
+        // Sleep briefly so mtimes differ on filesystems with second resolution.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(&newer, "{}").unwrap();
+
+        let id = latest_session_id_in_dir(tmp.path()).unwrap();
+        assert_eq!(id, "bbbbbbbb-0000-0000-0000-000000000002");
+    }
+
+    #[test]
+    fn latest_session_id_ignores_non_jsonl() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("foo.txt"), "nope").unwrap();
+        std::fs::write(tmp.path().join("session-1.jsonl"), "{}").unwrap();
+        let id = latest_session_id_in_dir(tmp.path()).unwrap();
+        assert_eq!(id, "session-1");
+    }
+
+    #[test]
+    fn latest_session_id_ignores_subdirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("session-1.jsonl"), "{}").unwrap();
+        let sub = tmp.path().join("subagents");
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(sub.join("agent-aaa.jsonl"), "{}").unwrap();
+        let id = latest_session_id_in_dir(tmp.path()).unwrap();
+        assert_eq!(id, "session-1");
+    }
+
+    #[test]
+    fn latest_session_id_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(latest_session_id_in_dir(tmp.path()), None);
+    }
+
+    #[test]
+    fn latest_session_id_missing_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("does-not-exist");
+        assert_eq!(latest_session_id_in_dir(&missing), None);
+    }
+
+    #[test]
+    fn version_skips_empty_string() {
+        let lines = vec![
+            json!({"type": "assistant", "version": "2.1.69"}),
+            json!({"type": "assistant", "version": ""}),
+        ];
+        assert_eq!(latest_version(&lines), Some("2.1.69".into()));
     }
 
     #[test]
