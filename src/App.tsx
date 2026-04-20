@@ -24,6 +24,11 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { VersionWarning } from "./components/VersionWarning";
 import {
+  StaleSessionsPrompt,
+  STALE_SESSIONS_DISMISS_KEY,
+  type StaleClaudeSession,
+} from "./components/StaleSessionsPrompt";
+import {
   PrerequisiteCheck,
   DISMISS_KEY as PREREQ_DISMISS_KEY,
   type PrerequisiteStatus,
@@ -160,6 +165,10 @@ function App() {
   } | null>(null);
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const [missingPrereqs, setMissingPrereqs] = useState<PrerequisiteStatus[] | null>(null);
+  const [staleClaude, setStaleClaude] = useState<{
+    currentVersion: string;
+    stale: StaleClaudeSession[];
+  } | null>(null);
 
   const handleDismiss = useCallback((sessionId: string) => {
     setDismissedIds((prev) => {
@@ -257,6 +266,28 @@ function App() {
       })
       .catch((err) => {
         console.warn("Failed to check for updates:", err);
+      });
+  }, []);
+
+  // Detect running sessions that are pinned to an older claude binary
+  // (long-running tmux sessions don't pick up new claude versions until
+  // they're killed and restarted).
+  useEffect(() => {
+    invoke<{ current_version: string | null; stale: StaleClaudeSession[] }>(
+      "get_stale_claude_sessions",
+    )
+      .then((report) => {
+        if (!report.current_version || report.stale.length === 0) return;
+        const key = report.stale
+          .map((s) => `${s.id}:${s.running_version}`)
+          .sort()
+          .join(",");
+        const dismissed = storageGet(STALE_SESSIONS_DISMISS_KEY);
+        if (dismissed === `${report.current_version}:${key}`) return;
+        setStaleClaude({ currentVersion: report.current_version, stale: report.stale });
+      })
+      .catch((err) => {
+        console.warn("Failed to check for stale claude sessions:", err);
       });
   }, []);
 
@@ -869,6 +900,13 @@ function App() {
             storageSet(ANALYTICS_PROMPTED_KEY, "true");
             setShowAnalyticsPrompt(false);
           }}
+        />
+      )}
+      {staleClaude && (
+        <StaleSessionsPrompt
+          currentVersion={staleClaude.currentVersion}
+          stale={staleClaude.stale}
+          onClose={() => setStaleClaude(null)}
         />
       )}
       {pendingUpdate && (

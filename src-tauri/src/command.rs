@@ -80,6 +80,30 @@ pub fn new_command(program: &str) -> Command {
     Command::new(program)
 }
 
+/// Parse the `X.Y.Z` portion out of `claude --version` output
+/// (e.g. `"2.1.114 (Claude Code)"` → `"2.1.114"`).
+pub fn parse_claude_version(raw: &str) -> Option<String> {
+    let first = raw.split_whitespace().next()?;
+    // Require at least one dot — defensive against unexpected output.
+    if first.contains('.') {
+        Some(first.to_string())
+    } else {
+        None
+    }
+}
+
+/// Resolve the current `claude --version` on PATH. Returns None if the binary
+/// can't be found, doesn't exit cleanly, or prints something unparseable.
+#[tauri::command]
+pub fn get_current_claude_version() -> Option<String> {
+    let output = new_command("claude").arg("--version").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_claude_version(stdout.trim())
+}
+
 /// Run a command in a directory, returning stdout on success or an error on non-zero exit.
 pub fn run_cmd(program: &str, cwd: &str, args: &[&str]) -> Result<String, String> {
     let expanded = expand_tilde(cwd);
@@ -163,5 +187,29 @@ mod tests {
         // Just "~" without "/" should NOT expand
         let result = expand_tilde("~");
         assert_eq!(result, PathBuf::from("~"));
+    }
+
+    #[test]
+    fn parse_claude_version_standard_output() {
+        assert_eq!(
+            parse_claude_version("2.1.114 (Claude Code)"),
+            Some("2.1.114".into())
+        );
+    }
+
+    #[test]
+    fn parse_claude_version_bare_version() {
+        assert_eq!(parse_claude_version("2.1.114"), Some("2.1.114".into()));
+    }
+
+    #[test]
+    fn parse_claude_version_empty() {
+        assert_eq!(parse_claude_version(""), None);
+    }
+
+    #[test]
+    fn parse_claude_version_without_dot() {
+        // Without a dot we can't be sure — refuse to guess
+        assert_eq!(parse_claude_version("2"), None);
     }
 }

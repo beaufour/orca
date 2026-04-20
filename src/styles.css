@@ -1844,6 +1844,73 @@ body {
   margin-bottom: 16px;
 }
 
+/* Stale Claude sessions prompt */
+.stale-sessions-title {
+  color: #f59e0b;
+}
+
+.stale-sessions-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.stale-sessions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.stale-sessions-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.stale-sessions-list li:last-child {
+  border-bottom: none;
+}
+
+.stale-sessions-item-title {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stale-sessions-item-version {
+  color: var(--text-muted);
+  font-family: "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.stale-sessions-progress {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 8px 0;
+}
+
+.stale-sessions-errors {
+  list-style: none;
+  padding: 6px 10px;
+  margin: 0 0 12px 0;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--status-needs-input);
+  border-radius: 4px;
+  color: var(--status-needs-input);
+  font-size: 12px;
+}
+
 /* Prerequisite check */
 .prereq-title {
   color: #f59e0b;

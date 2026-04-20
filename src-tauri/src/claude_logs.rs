@@ -73,6 +73,24 @@ pub fn find_jsonl_path(project_path: &str, claude_session_id: &str) -> Option<Pa
     None
 }
 
+/// Extract the most recent Claude Code `version` field from a session's JSONL.
+/// Claude Code writes `"version":"X.Y.Z"` on message records, so the latest
+/// line tells us which binary is actually running the session. Returns None
+/// when no JSONL exists or no version field is found.
+pub fn extract_session_version(project_path: &str, claude_session_id: &str) -> Option<String> {
+    let jsonl_path = find_jsonl_path(project_path, claude_session_id)?;
+    // 128KB of tail is more than enough for the latest version field.
+    let lines = read_tail_lines(&jsonl_path, 128 * 1024);
+    for line in lines.iter().rev() {
+        if let Some(v) = line.get("version").and_then(|v| v.as_str()) {
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
 /// Read the last N bytes of a file and parse JSONL lines from it
 fn read_tail_lines(path: &Path, max_bytes: u64) -> Vec<serde_json::Value> {
     let Ok(file) = File::open(path) else {
@@ -756,6 +774,46 @@ mod tests {
             Some("nonexistent-session-xyz-999"),
         );
         assert!(matches!(result, AttentionStatus::Running));
+    }
+
+    // ── version extraction ──
+    // extract_session_version depends on file I/O, so we test the inner lookup
+    // logic against parsed JSONL values directly.
+
+    fn latest_version(lines: &[serde_json::Value]) -> Option<String> {
+        for line in lines.iter().rev() {
+            if let Some(v) = line.get("version").and_then(|v| v.as_str()) {
+                if !v.is_empty() {
+                    return Some(v.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn version_latest_line_wins() {
+        let lines = vec![
+            json!({"type": "assistant", "version": "2.1.69"}),
+            json!({"type": "user"}),
+            json!({"type": "assistant", "version": "2.1.114"}),
+        ];
+        assert_eq!(latest_version(&lines), Some("2.1.114".into()));
+    }
+
+    #[test]
+    fn version_none_when_missing() {
+        let lines = vec![json!({"type": "user"}), json!({"type": "assistant"})];
+        assert_eq!(latest_version(&lines), None);
+    }
+
+    #[test]
+    fn version_skips_empty_string() {
+        let lines = vec![
+            json!({"type": "assistant", "version": "2.1.69"}),
+            json!({"type": "assistant", "version": ""}),
+        ];
+        assert_eq!(latest_version(&lines), Some("2.1.69".into()));
     }
 
     #[test]
