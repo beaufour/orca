@@ -1886,6 +1886,10 @@ body {
   white-space: nowrap;
 }
 
+.stale-sessions-item-group {
+  color: var(--text-muted);
+}
+
 .stale-sessions-item-version {
   color: var(--text-muted);
   font-family: "SF Mono", Menlo, monospace;

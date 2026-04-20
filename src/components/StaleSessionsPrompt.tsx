@@ -10,6 +10,7 @@ export const STALE_SESSIONS_DISMISS_KEY = "orca-stale-sessions-dismissed";
 export interface StaleClaudeSession {
   id: string;
   title: string;
+  group_name: string;
   running_version: string;
 }
 
@@ -71,7 +72,10 @@ export function StaleSessionsPrompt({ currentVersion, stale, onClose }: StaleSes
       <ul className="stale-sessions-list">
         {stale.map((s) => (
           <li key={s.id}>
-            <span className="stale-sessions-item-title">{s.title}</span>
+            <span className="stale-sessions-item-title">
+              {s.group_name && <span className="stale-sessions-item-group">{s.group_name} / </span>}
+              {s.title}
+            </span>
             <span className="stale-sessions-item-version">v{s.running_version}</span>
           </li>
         ))}

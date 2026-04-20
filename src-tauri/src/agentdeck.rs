@@ -923,7 +923,11 @@ pub fn get_stale_claude_sessions() -> Result<StaleClaudeReport, String> {
     let conn = open_db_readonly()?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, title, project_path, tmux_session, tool_data FROM instances WHERE tool = 'claude'",
+            "SELECT i.id, i.title, i.project_path, i.tmux_session, i.tool_data, \
+                    COALESCE(g.name, '') \
+             FROM instances i \
+             LEFT JOIN groups g ON g.path = i.group_path \
+             WHERE i.tool = 'claude'",
         )
         .map_err(|e| e.to_string())?;
 
@@ -935,6 +939,7 @@ pub fn get_stale_claude_sessions() -> Result<StaleClaudeReport, String> {
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
                 row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
             ))
         })
         .map_err(|e| e.to_string())?
@@ -942,7 +947,7 @@ pub fn get_stale_claude_sessions() -> Result<StaleClaudeReport, String> {
         .map_err(|e| e.to_string())?;
 
     let mut stale = Vec::new();
-    for (id, title, project_path, tmux_session, tool_data_str) in rows {
+    for (id, title, project_path, tmux_session, tool_data_str, group_name) in rows {
         if tmux_session.is_empty() || !crate::tmux::is_tmux_session_alive(&tmux_session) {
             continue;
         }
@@ -960,6 +965,7 @@ pub fn get_stale_claude_sessions() -> Result<StaleClaudeReport, String> {
             stale.push(StaleClaudeSession {
                 id,
                 title,
+                group_name,
                 running_version: running,
             });
         }

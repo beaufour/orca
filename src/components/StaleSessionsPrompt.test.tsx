@@ -26,8 +26,8 @@ describe("StaleSessionsPrompt", () => {
         <StaleSessionsPrompt
           currentVersion="2.1.114"
           stale={[
-            { id: "a", title: "main", running_version: "2.1.69" },
-            { id: "b", title: "feature", running_version: "2.1.100" },
+            { id: "a", title: "main", group_name: "orca", running_version: "2.1.69" },
+            { id: "b", title: "feature", group_name: "services", running_version: "2.1.100" },
           ]}
           onClose={() => {}}
         />
@@ -36,6 +36,18 @@ describe("StaleSessionsPrompt", () => {
 
     expect(screen.getByText("main")).toBeInTheDocument();
     expect(screen.getByText("feature")).toBeInTheDocument();
+    // Group prefix is split across text nodes ("orca" and " / "); match by content
+    expect(
+      screen.getByText(
+        (_, el) => el?.className === "stale-sessions-item-group" && el.textContent === "orca / ",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.className === "stale-sessions-item-group" && el.textContent === "services / ",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("v2.1.69")).toBeInTheDocument();
     expect(screen.getByText("v2.1.100")).toBeInTheDocument();
     // Target version appears in the body text (inside a <strong>)
@@ -54,8 +66,8 @@ describe("StaleSessionsPrompt", () => {
         <StaleSessionsPrompt
           currentVersion="2.1.114"
           stale={[
-            { id: "a", title: "main", running_version: "2.1.69" },
-            { id: "b", title: "feature", running_version: "2.1.100" },
+            { id: "a", title: "main", group_name: "orca", running_version: "2.1.69" },
+            { id: "b", title: "feature", group_name: "services", running_version: "2.1.100" },
           ]}
           onClose={onClose}
         />
@@ -83,7 +95,7 @@ describe("StaleSessionsPrompt", () => {
       <Wrapper>
         <StaleSessionsPrompt
           currentVersion="2.1.114"
-          stale={[{ id: "a", title: "main", running_version: "2.1.69" }]}
+          stale={[{ id: "a", title: "main", group_name: "orca", running_version: "2.1.69" }]}
           onClose={onClose}
         />
       </Wrapper>,
