@@ -702,10 +702,22 @@ fn get_resume_info(session_id: &str) -> Result<Option<ResumeInfo>, String> {
         if tool != "claude" {
             return None;
         }
-        let csid = serde_json::from_str::<serde_json::Value>(&tool_data_str)
+        let stored = serde_json::from_str::<serde_json::Value>(&tool_data_str)
             .ok()
             .and_then(|v| v.get("claude_session_id")?.as_str().map(String::from));
-        csid.map(|claude_session_id| ResumeInfo {
+        // Prefer the newest JSONL on disk over the stored id: if the user ran
+        // `/clear` and chatted again, a fresh JSONL with a new session id
+        // exists, and the stored id points at the pre-clear conversation.
+        let latest = claude_logs::find_latest_session_id(&project_path);
+        if let (Some(ref s), Some(ref l)) = (&stored, &latest) {
+            if s != l {
+                log::info!(
+                    "resume: using newer on-disk session {l} instead of stored {s} for {session_id}"
+                );
+            }
+        }
+        let claude_session_id = latest.or(stored)?;
+        Some(ResumeInfo {
             claude_session_id,
             tmux_session,
             project_path,
