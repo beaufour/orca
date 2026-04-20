@@ -410,11 +410,18 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     <div className="terminal-view">
       <div className="terminal-header">
         <span className="terminal-title">{session.title}</span>
-        {attachFailed && (
-          <button className="wt-btn wt-btn-add" onClick={handleRestart} disabled={restarting}>
-            {restarting ? "Restarting..." : "Restart"}
-          </button>
-        )}
+        <button
+          className={attachFailed ? "wt-btn wt-btn-add" : "wt-btn wt-btn-action"}
+          onClick={handleRestart}
+          disabled={restarting}
+          title={
+            attachFailed
+              ? "Restart this session"
+              : "Kill and restart — resumes the Claude conversation with the current claude binary"
+          }
+        >
+          {restarting ? "Restarting..." : "Restart"}
+        </button>
         <button
           className="wt-btn wt-btn-action"
           onClick={() =>
