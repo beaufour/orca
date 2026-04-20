@@ -27,6 +27,7 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
   onCloseRef.current = onClose;
   const [attachFailed, setAttachFailed] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [restartGen, setRestartGen] = useState(0);
   const [terminalReady, setTerminalReady] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -286,7 +287,10 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
         cleanupRef.current = null;
       }
     };
-  }, [session.id, session.tmux_session]);
+    // restartGen is intentional: a restart reuses the same tmux_session name
+    // (set by start_tmux_with_resume), so the effect wouldn't otherwise re-run
+    // and we'd be left attached to a dead "[exited]" PTY.
+  }, [session.id, session.tmux_session, restartGen]);
 
   // Handle file drag-and-drop: paste file paths into tmux session
   useEffect(() => {
@@ -333,9 +337,10 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
     setRestarting(true);
     try {
       await invoke("restart_session", { sessionId: session.id, resume: true });
-      // Invalidate and wait for refetch; the parent syncs selectedSession
-      // from query data, which re-triggers our setup effect with the new tmux_session
       await queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
+      // Bump the restart generation so the setup effect re-runs even when the
+      // tmux session name stays the same (which it does for a live restart).
+      setRestartGen((n) => n + 1);
     } catch (err) {
       terminalRef.current?.write(`\r\n  \x1b[31mRestart failed:\x1b[0m ${String(err)}\r\n`);
     } finally {
