@@ -822,8 +822,45 @@ fn start_tmux_with_resume(session_id: &str, info: &ResumeInfo) -> Result<(), Str
     Ok(())
 }
 
+/// Kill the tmux session associated with an agent-deck session, if one is alive.
+/// Best-effort — errors are logged but not returned, since a dead or missing
+/// tmux is the desired state for the caller.
+fn kill_tmux_for_session(session_id: &str) {
+    let conn = match open_db_readonly() {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("kill_tmux_for_session: failed to open DB: {e}");
+            return;
+        }
+    };
+    let tmux: Result<String, _> = conn.query_row(
+        "SELECT tmux_session FROM instances WHERE id = ?1",
+        [session_id],
+        |row| row.get::<_, String>(0),
+    );
+    let Ok(tmux) = tmux else {
+        return;
+    };
+    if tmux.is_empty() {
+        return;
+    }
+    if !crate::tmux::is_tmux_session_alive(&tmux) {
+        return;
+    }
+    log::info!("restart: killing live tmux session {tmux} for {session_id}");
+    let res = new_command("tmux")
+        .args(["kill-session", "-t", &tmux])
+        .output();
+    if let Err(e) = res {
+        log::warn!("kill_tmux_for_session: kill-session failed: {e}");
+    }
+}
+
 #[tauri::command]
 pub fn restart_session(session_id: String, resume: Option<bool>) -> Result<(), String> {
+    // Kill any live tmux first so we spawn a fresh claude process with the
+    // current binary on PATH (rather than keeping the old long-running one).
+    kill_tmux_for_session(&session_id);
     start_session_with_resume(&session_id, resume.unwrap_or(false))
 }
 
