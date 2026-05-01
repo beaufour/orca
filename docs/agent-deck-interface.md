@@ -3,7 +3,7 @@
 Documents the agent-deck interfaces Orca depends on. Use this to identify breaking changes when upgrading.
 
 **Repository:** https://github.com/asheshgoplani/agent-deck
-**Current version: v0.26.4**
+**Current version: v1.7.78**
 
 ## DB Path
 
@@ -233,6 +233,44 @@ Key details:
 - Optional Telegram bot integration for notifications
 
 ## Upgrade Log
+
+### v0.26.4 → v1.7.78 (analyzed 2026-05-01)
+
+Versioning scheme jumped from 0.x to 1.x somewhere in this range — the layout is the same project, not a fork or rewrite.
+
+**DB schema:** Core tables (`instances`, `groups`, `metadata`, `instance_heartbeats`) intact. Additive-only changes:
+
+- `instances` gained 4 new columns — none used by Orca: `tmux_socket_name` (per-session tmux `-L` socket), `is_conductor` (conductor flag moved out of group convention), `no_transition_notify` (suppress parent notifications), `title_locked` (prevents Claude from overriding the title, #697).
+- New tables `watchers` and `watcher_events` — drive the new external watcher/notification system. Not used by Orca.
+- `recent_sessions` and `cost_events` (introduced earlier in the 0.26.4 entry) unchanged.
+
+Orca's SELECTs use named columns, so the new `instances` columns are transparent.
+
+**New CLI commands (no Orca impact):**
+
+- `try <name>` — quick experiment helper (creates dated folder + session)
+- `remote` — manage remote agent-deck instances over SSH
+- `skill` — project skill management (list/attach/detach, plus `skill source list`)
+- `codex-hooks`, `gemini-hooks` — hook installation for Codex/Gemini integration
+- `debug-dump` — dump debug ring buffer
+- `uninstall` — uninstaller subcommand
+- `profile` — manage agent-deck profiles
+- Global flags: `-p/--profile`, `-g/--group`, `--select <id|title>` for scoping the TUI
+
+**New `add` flags (no Orca impact):**
+
+- `-channel`, `-extra-arg` — Claude plugin channels and extra CLI tokens
+- `-no-parent`, `-no-transition-notify` — parent linking / notification controls
+- `-title-lock`, `-no-title-sync` — lock title against Claude overrides (#697)
+- `-tmux-socket` — override `[tmux].socket_name` per session
+- `-q/-quiet` — minimal output
+
+**Notable behavior:**
+
+- `agent-deck remove <id|title>` now accepts a title in addition to a UUID. Orca always passes IDs, so no impact.
+- A tmux startup warning is printed to **stderr** (NULL-deref mitigation notice for tmux 3.6a). Does not affect Orca's stdout-based parsers; can be silenced with `AGENTDECK_SUPPRESS_TMUX_WARNING=1`.
+
+**Verdict:** Safe to upgrade with zero Orca code changes. Only `SUPPORTED_VERSION` and this doc needed updating. Rust tests under `agentdeck::tests` all pass.
 
 ### v0.19.19 → v0.26.4 (analyzed 2026-03-20)
 

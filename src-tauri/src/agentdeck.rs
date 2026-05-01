@@ -10,7 +10,7 @@ use crate::models::{
     AttentionCounts, Group, Session, StaleClaudeReport, StaleClaudeSession, VersionCheck,
 };
 
-const SUPPORTED_VERSION: &str = "0.26.4";
+const SUPPORTED_VERSION: &str = "1.7.78";
 
 fn db_path() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
