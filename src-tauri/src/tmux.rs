@@ -155,13 +155,18 @@ pub(crate) fn paste_and_submit(tmux_session: &str, text: &str) -> Result<(), Str
     // Brief pause so the TUI processes the pasted text before submitting
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    let enter_output = new_command("tmux")
+    send_enter(tmux_session)
+}
+
+/// Send a literal CR (Enter) to a tmux pane.
+pub(crate) fn send_enter(tmux_session: &str) -> Result<(), String> {
+    let output = new_command("tmux")
         .args(["send-keys", "-l", "-t", tmux_session, "\r"])
         .output()
         .map_err(|e| format!("Failed to send Enter via tmux: {e}"))?;
 
-    if !enter_output.status.success() {
-        let stderr = String::from_utf8_lossy(&enter_output.stderr);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("tmux send-keys (Enter) failed: {}", stderr.trim()));
     }
 
