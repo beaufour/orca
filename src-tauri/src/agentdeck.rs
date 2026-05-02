@@ -407,29 +407,15 @@ fn create_scripted_worktree(
     Ok((matching.path.clone(), cwd_str, branch.to_string()))
 }
 
-/// Append `-extra-arg --session-id -extra-arg <uuid>` to agent-deck add args
-/// so Claude uses our pre-generated UUID. The JSONL on disk ends up named
-/// with our UUID, which agent-deck will then pick up into its own tool_data.
-///
-/// We deliberately do NOT pre-write the UUID into agent-deck's
-/// `tool_data.claude_session_id`: agent-deck reads that field on
-/// `session start` and treats a non-empty value as "resume this session",
-/// so pre-writing for a fresh session would launch `claude --resume <uuid>`
-/// against a JSONL that doesn't exist yet — the process exits and the
-/// tmux pane dies before the user sees anything.
-fn append_session_id_args(args: &mut Vec<String>, tool_name: &str, claude_session_id: &str) {
-    if tool_name != "claude" {
-        return;
-    }
-    args.push("-extra-arg".to_string());
-    args.push("--session-id".to_string());
-    args.push("-extra-arg".to_string());
-    args.push(claude_session_id.to_string());
-}
-
-/// Append `-extra-arg <prompt>` to agent-deck add args so Claude is launched
+/// Append `-extra-arg=<prompt>` to agent-deck add args so Claude is launched
 /// as `claude "<prompt>"` with the prompt pre-filled in its input box. Only
 /// applies to Claude — other tools don't accept a positional initial prompt.
+///
+/// The `=` form is required: agent-deck uses Go's `flag` package to parse
+/// `-extra-arg`, and with the space-separated form (`-extra-arg <value>`)
+/// the parser silently drops subsequent `-extra-arg` directives whose value
+/// starts with `-` or whose presence creates parse ambiguity. The `=` form
+/// always associates the value with the flag unambiguously.
 fn append_initial_prompt_args(args: &mut Vec<String>, tool_name: &str, prompt: Option<&str>) {
     if tool_name != "claude" {
         return;
@@ -441,8 +427,7 @@ fn append_initial_prompt_args(args: &mut Vec<String>, tool_name: &str, prompt: O
     if trimmed.is_empty() {
         return;
     }
-    args.push("-extra-arg".to_string());
-    args.push(trimmed.to_string());
+    args.push(format!("-extra-arg={trimmed}"));
 }
 
 /// Run `agent-deck add` and parse the session ID from the output.
@@ -682,16 +667,13 @@ fn create_session_impl(
         }
     }
 
-    // Pre-generate Claude's session UUID and pass it via `--session-id` so the
-    // JSONL log on disk is named with our UUID. agent-deck will pick it up
-    // into its own tool_data once the session starts writing — we don't
-    // pre-write that field ourselves because agent-deck treats a non-empty
-    // tool_data.claude_session_id as "resume", which fails for fresh sessions.
-    if tool_name == "claude" {
-        let csid = uuid::Uuid::new_v4().to_string();
-        append_session_id_args(&mut args, &tool_name, &csid);
-    }
-
+    // We used to also pass `--session-id <our-uuid>` here so we'd know the
+    // JSONL path before agent-deck observed it. Doesn't work: agent-deck
+    // always passes its OWN `--session-id <its-uuid>` ahead of our extras,
+    // and stores its own UUID in tool_data — but Claude uses the LAST
+    // --session-id seen, so the JSONL on disk ends up with our UUID and
+    // every JSONL lookup keyed on tool_data.claude_session_id misses.
+    // Letting agent-deck own the UUID is the only consistent option.
     append_initial_prompt_args(&mut args, &tool_name, prompt.as_deref());
 
     let session_id = run_agent_deck_add(&args)?;
@@ -1842,64 +1824,18 @@ mod tests {
         assert_eq!(result, "plain command");
     }
 
-    // ── append_session_id_args tests ─────────────────────────────────
-
-    #[test]
-    fn session_id_args_emit_for_claude() {
-        let mut args = vec!["add".to_string()];
-        append_session_id_args(&mut args, "claude", "abc-123");
-        assert_eq!(
-            args,
-            vec!["add", "-extra-arg", "--session-id", "-extra-arg", "abc-123"]
-                .into_iter()
-                .map(String::from)
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn session_id_args_skipped_for_non_claude() {
-        let mut args = vec!["add".to_string()];
-        append_session_id_args(&mut args, "opencode", "abc-123");
-        assert_eq!(args, vec!["add".to_string()]);
-        append_session_id_args(&mut args, "codex", "abc-123");
-        assert_eq!(args, vec!["add".to_string()]);
-    }
-
-    #[test]
-    fn session_id_combines_with_initial_prompt_in_order() {
-        // Claude argv must end up as: --session-id <uuid> "<prompt>"
-        // because that's what `claude --session-id <uuid> "prompt"` expects.
-        let mut args = vec!["add".to_string(), "/tmp".to_string()];
-        append_session_id_args(&mut args, "claude", "uuid-1");
-        append_initial_prompt_args(&mut args, "claude", Some("hello"));
-        assert_eq!(
-            args,
-            vec![
-                "add",
-                "/tmp",
-                "-extra-arg",
-                "--session-id",
-                "-extra-arg",
-                "uuid-1",
-                "-extra-arg",
-                "hello",
-            ]
-            .into_iter()
-            .map(String::from)
-            .collect::<Vec<_>>()
-        );
-    }
-
     // ── append_initial_prompt_args tests ─────────────────────────────
 
     #[test]
-    fn extra_arg_appended_for_claude_with_prompt() {
+    fn extra_arg_uses_equals_form_for_claude_with_prompt() {
+        // The `=` form is required: with `-extra-arg <value>` (space form)
+        // agent-deck's flag parser silently drops subsequent -extra-arg
+        // directives, so the prompt would be lost.
         let mut args = vec!["add".to_string(), "/tmp".to_string()];
         append_initial_prompt_args(&mut args, "claude", Some("fix the bug"));
         assert_eq!(
             args,
-            vec!["add", "/tmp", "-extra-arg", "fix the bug"]
+            vec!["add", "/tmp", "-extra-arg=fix the bug"]
                 .into_iter()
                 .map(String::from)
                 .collect::<Vec<_>>()
@@ -1935,21 +1871,16 @@ mod tests {
     fn extra_arg_trims_whitespace_around_prompt() {
         let mut args = vec![];
         append_initial_prompt_args(&mut args, "claude", Some("  hello world  "));
-        assert_eq!(
-            args,
-            vec!["-extra-arg".to_string(), "hello world".to_string()]
-        );
+        assert_eq!(args, vec!["-extra-arg=hello world".to_string()]);
     }
 
     #[test]
     fn extra_arg_preserves_internal_newlines_in_prompt() {
-        // Multi-line prompts must survive intact through argv.
+        // Multi-line prompts must survive intact through argv. The `=` form
+        // works with embedded newlines too — the value extends to argv end.
         let mut args = vec![];
         append_initial_prompt_args(&mut args, "claude", Some("line one\nline two"));
-        assert_eq!(
-            args,
-            vec!["-extra-arg".to_string(), "line one\nline two".to_string()]
-        );
+        assert_eq!(args, vec!["-extra-arg=line one\nline two".to_string()]);
     }
 
     #[test]
