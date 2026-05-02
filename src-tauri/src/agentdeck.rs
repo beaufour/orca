@@ -407,6 +407,45 @@ fn create_scripted_worktree(
     Ok((matching.path.clone(), cwd_str, branch.to_string()))
 }
 
+/// Append `-extra-arg --session-id -extra-arg <uuid>` to agent-deck add args
+/// so Claude uses our pre-generated UUID. Lets us know the JSONL path the
+/// moment the session starts, instead of waiting for agent-deck to learn it.
+fn append_session_id_args(args: &mut Vec<String>, tool_name: &str, claude_session_id: &str) {
+    if tool_name != "claude" {
+        return;
+    }
+    args.push("-extra-arg".to_string());
+    args.push("--session-id".to_string());
+    args.push("-extra-arg".to_string());
+    args.push(claude_session_id.to_string());
+}
+
+/// Write a `claude_session_id` into agent-deck's `tool_data` JSON column so
+/// downstream code (JSONL lookup, summary fetch) can correlate immediately
+/// without waiting for agent-deck to populate it on its own.
+fn store_claude_session_id(session_id: &str, claude_session_id: &str) -> Result<(), String> {
+    let conn = open_db()?;
+    let current: String = conn
+        .query_row(
+            "SELECT tool_data FROM instances WHERE id = ?1",
+            [session_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to read tool_data for {session_id}: {e}"))?;
+
+    let mut data: serde_json::Value =
+        serde_json::from_str(&current).unwrap_or(serde_json::json!({}));
+    data["claude_session_id"] = serde_json::Value::String(claude_session_id.to_string());
+
+    let updated = serde_json::to_string(&data).map_err(|e| format!("JSON serialize error: {e}"))?;
+    conn.execute(
+        "UPDATE instances SET tool_data = ?1 WHERE id = ?2",
+        rusqlite::params![updated, session_id],
+    )
+    .map_err(|e| format!("Failed to update tool_data for {session_id}: {e}"))?;
+    Ok(())
+}
+
 /// Append `-extra-arg <prompt>` to agent-deck add args so Claude is launched
 /// as `claude "<prompt>"` with the prompt pre-filled in its input box. Only
 /// applies to Claude — other tools don't accept a positional initial prompt.
@@ -662,9 +701,30 @@ fn create_session_impl(
         }
     }
 
+    // Pre-generate Claude's session UUID and pass it via `--session-id` so we
+    // know the JSONL log path the moment the session starts (no waiting for
+    // agent-deck to populate it from the JSONL after the fact).
+    let claude_session_id = if tool_name == "claude" {
+        Some(uuid::Uuid::new_v4().to_string())
+    } else {
+        None
+    };
+    if let Some(ref csid) = claude_session_id {
+        append_session_id_args(&mut args, &tool_name, csid);
+    }
+
     append_initial_prompt_args(&mut args, &tool_name, prompt.as_deref());
 
     let session_id = run_agent_deck_add(&args)?;
+
+    // Persist our pre-generated UUID into agent-deck's tool_data so existing
+    // JSONL lookup paths see it immediately, before agent-deck would have
+    // learned it from disk.
+    if let Some(ref csid) = claude_session_id {
+        if let Err(e) = store_claude_session_id(&session_id, csid) {
+            log::warn!("Failed to pre-store claude_session_id for {session_id}: {e}");
+        }
+    }
 
     // For bare repos where we created the worktree ourselves, update the
     // session's worktree metadata in the DB.
@@ -1810,6 +1870,55 @@ mod tests {
     fn template_no_placeholders() {
         let result = expand_command_template("plain command", "feat", None).unwrap();
         assert_eq!(result, "plain command");
+    }
+
+    // ── append_session_id_args tests ─────────────────────────────────
+
+    #[test]
+    fn session_id_args_emit_for_claude() {
+        let mut args = vec!["add".to_string()];
+        append_session_id_args(&mut args, "claude", "abc-123");
+        assert_eq!(
+            args,
+            vec!["add", "-extra-arg", "--session-id", "-extra-arg", "abc-123"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn session_id_args_skipped_for_non_claude() {
+        let mut args = vec!["add".to_string()];
+        append_session_id_args(&mut args, "opencode", "abc-123");
+        assert_eq!(args, vec!["add".to_string()]);
+        append_session_id_args(&mut args, "codex", "abc-123");
+        assert_eq!(args, vec!["add".to_string()]);
+    }
+
+    #[test]
+    fn session_id_combines_with_initial_prompt_in_order() {
+        // Claude argv must end up as: --session-id <uuid> "<prompt>"
+        // because that's what `claude --session-id <uuid> "prompt"` expects.
+        let mut args = vec!["add".to_string(), "/tmp".to_string()];
+        append_session_id_args(&mut args, "claude", "uuid-1");
+        append_initial_prompt_args(&mut args, "claude", Some("hello"));
+        assert_eq!(
+            args,
+            vec![
+                "add",
+                "/tmp",
+                "-extra-arg",
+                "--session-id",
+                "-extra-arg",
+                "uuid-1",
+                "-extra-arg",
+                "hello",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>()
+        );
     }
 
     // ── append_initial_prompt_args tests ─────────────────────────────
