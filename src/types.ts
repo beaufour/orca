@@ -134,3 +134,12 @@ export interface GitHubLabel {
   name: string;
   color: string;
 }
+
+export interface HookStatus {
+  installed: boolean;
+  settings_path: string;
+  shim_path: string;
+  events_path: string;
+  last_event_age_secs: number | null;
+  tracked_session_count: number;
+}

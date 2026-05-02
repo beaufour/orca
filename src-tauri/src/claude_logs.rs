@@ -411,6 +411,19 @@ pub fn compute_attention(
         "compute_attention: session_id={claude_session_id:?}, agentdeck_status={agentdeck_status}, tmux={tmux_session:?}"
     );
 
+    // Hook events from Claude Code are the most accurate signal for live
+    // sessions (Notification/Stop fire exactly when Claude is waiting on the
+    // user). We trust them when tmux is alive — if it's not, the session is
+    // dormant and we'd rather rely on JSONL/agentdeck heuristics that can
+    // surface "Idle"/"Stale". "Error" still wins because hooks don't report
+    // crashes.
+    if agentdeck_status != "error" {
+        if let Some(status) = attention_from_hook_event(claude_session_id, tmux_session) {
+            log::debug!("compute_attention: hook signal -> {status:?}");
+            return status;
+        }
+    }
+
     let Some(claude_session_id) = claude_session_id else {
         let attention = match agentdeck_status {
             "running" => AttentionStatus::Running,
@@ -436,6 +449,26 @@ pub fn compute_attention(
     let result = refine_with_tmux(extract_attention(&lines, agentdeck_status), tmux_session);
     log::debug!("compute_attention: result={result:?}");
     result
+}
+
+/// Translate the latest hook event for a session into an attention status.
+/// Returns None when there is no event, no live tmux, or the event type is
+/// one we don't act on — caller falls back to JSONL/tmux heuristics.
+fn attention_from_hook_event(
+    claude_session_id: Option<&str>,
+    tmux_session: Option<&str>,
+) -> Option<AttentionStatus> {
+    let csid = claude_session_id?;
+    let ts = tmux_session?;
+    if ts.is_empty() || !crate::tmux::is_tmux_session_alive(ts) {
+        return None;
+    }
+    let event = crate::claude_hooks::latest_event_for(csid)?;
+    match event.event.as_str() {
+        "Notification" | "Stop" => Some(AttentionStatus::NeedsInput),
+        "UserPromptSubmit" => Some(AttentionStatus::Running),
+        _ => None,
+    }
 }
 
 /// Refine attention status by checking the tmux session.
@@ -472,20 +505,32 @@ pub fn get_session_summary(
     agentdeck_status: String,
     tmux_session: Option<String>,
 ) -> SessionSummary {
+    // Hook events take precedence (when tmux is alive and not in error state),
+    // matching the logic in compute_attention so both code paths agree.
+    let hook_attention = (agentdeck_status != "error")
+        .then(|| attention_from_hook_event(Some(&claude_session_id), tmux_session.as_deref()))
+        .flatten();
+
     let Some(jsonl_path) = find_jsonl_path(&project_path, &claude_session_id) else {
         log::debug!("get_session_summary: no JSONL for session {claude_session_id}, using agentdeck_status={agentdeck_status}");
-        let attention = match agentdeck_status.as_str() {
-            "running" => AttentionStatus::Running,
-            // No JSONL file means no conversation yet — just the initial prompt
-            "waiting" => AttentionStatus::Idle,
-            "error" => AttentionStatus::Error,
-            "idle" => AttentionStatus::Idle,
-            _ => AttentionStatus::Unknown,
+        let final_attention = match hook_attention {
+            Some(a) => a, // hook signal is authoritative
+            None => {
+                let fallback = match agentdeck_status.as_str() {
+                    "running" => AttentionStatus::Running,
+                    // No JSONL file means no conversation yet — just the initial prompt
+                    "waiting" => AttentionStatus::Idle,
+                    "error" => AttentionStatus::Error,
+                    "idle" => AttentionStatus::Idle,
+                    _ => AttentionStatus::Unknown,
+                };
+                refine_with_tmux(fallback, tmux_session.as_deref())
+            }
         };
         return SessionSummary {
             summary: None,
             initial_prompt: None,
-            attention: refine_with_tmux(attention, tmux_session.as_deref()),
+            attention: final_attention,
             last_tool: None,
             last_text: None,
         };
@@ -498,8 +543,12 @@ pub fn get_session_summary(
 
     // Read last 256KB of the file
     let lines = read_tail_lines(&jsonl_path, 256 * 1024);
-    let attention = extract_attention(&lines, &agentdeck_status);
-    let final_attention = refine_with_tmux(attention, tmux_session.as_deref());
+    let final_attention = hook_attention.unwrap_or_else(|| {
+        refine_with_tmux(
+            extract_attention(&lines, &agentdeck_status),
+            tmux_session.as_deref(),
+        )
+    });
 
     log::debug!(
         "get_session_summary: attention={final_attention:?} for session {claude_session_id}"
