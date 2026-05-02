@@ -451,23 +451,18 @@ fn refine_with_tmux(attention: AttentionStatus, tmux_session: Option<&str>) -> A
     }
 
     match attention {
-        AttentionStatus::Running => {
-            if crate::tmux::is_waiting_for_input(ts) {
-                log::debug!("refine_with_tmux: tmux check upgraded Running -> NeedsInput for {ts}");
-                return AttentionStatus::NeedsInput;
-            }
+        AttentionStatus::Running if crate::tmux::is_waiting_for_input(ts) => {
+            log::debug!("refine_with_tmux: tmux check upgraded Running -> NeedsInput for {ts}");
+            AttentionStatus::NeedsInput
         }
-        AttentionStatus::Idle => {
-            if crate::tmux::is_tmux_session_alive(ts) {
-                log::debug!(
-                    "refine_with_tmux: tmux session alive, upgraded Idle -> NeedsInput for {ts}"
-                );
-                return AttentionStatus::NeedsInput;
-            }
+        AttentionStatus::Idle if crate::tmux::is_tmux_session_alive(ts) => {
+            log::debug!(
+                "refine_with_tmux: tmux session alive, upgraded Idle -> NeedsInput for {ts}"
+            );
+            AttentionStatus::NeedsInput
         }
-        _ => {}
+        _ => attention,
     }
-    attention
 }
 
 #[tauri::command]
