@@ -61,6 +61,7 @@ export function MessageStream({
 
   // Log mount info
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot debug log on mount
     addDebug(
       "event",
       "MessageStream mounted",
@@ -79,6 +80,7 @@ export function MessageStream({
   // Elapsed timer while waiting
   useEffect(() => {
     if (!showWaiting || !isClaude) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset counter when waiting ends
       setElapsed(0);
       return;
     }
@@ -166,6 +168,7 @@ export function MessageStream({
     if (!isClaude || !initialPrompt || initialPromptSent.current) return;
     if (agentStatus !== "stable") return;
     initialPromptSent.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot debug log + invoke on first stable transition
     addDebug(
       "send",
       "cr_send_message (initial)",

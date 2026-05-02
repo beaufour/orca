@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useQuery } from "@tanstack/react-query";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { Modal } from "./Modal";
 
@@ -8,27 +9,19 @@ interface LogViewerProps {
 }
 
 export function LogViewer({ onClose }: LogViewerProps) {
-  const [logText, setLogText] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
-
-  const fetchLog = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const text = await invoke<string>("read_app_log");
-      setLogText(text);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchLog();
-  }, [fetchLog]);
+  const {
+    data: logText,
+    error,
+    isFetching: loading,
+    refetch,
+  } = useQuery({
+    queryKey: ["app-log"],
+    queryFn: () => invoke<string>("read_app_log"),
+  });
+  const fetchLog = () => {
+    void refetch();
+  };
 
   useEffect(() => {
     if (logText && bodyRef.current) {
@@ -52,9 +45,9 @@ export function LogViewer({ onClose }: LogViewerProps) {
         </div>
       </div>
       <div className="log-viewer-body" ref={bodyRef}>
-        {error && <div className="error-row">{error}</div>}
-        {logText !== null && <pre className="log-viewer-content">{logText}</pre>}
-        {logText !== null && logText.length === 0 && !loading && (
+        {error && <div className="error-row">{String(error)}</div>}
+        {logText !== undefined && <pre className="log-viewer-content">{logText}</pre>}
+        {logText !== undefined && logText.length === 0 && !loading && (
           <div className="diff-empty">No log entries</div>
         )}
       </div>

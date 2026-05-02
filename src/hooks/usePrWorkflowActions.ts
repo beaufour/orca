@@ -188,7 +188,6 @@ export function usePrWorkflowActions({
     if (handledMergeRef.current) return;
     handledMergeRef.current = true;
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting to polled external data
     setPrState("pr_merged");
     setPrInfo(prStatusData);
     // Persist merged state

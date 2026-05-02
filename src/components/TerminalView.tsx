@@ -24,7 +24,9 @@ export function TerminalView({ session, onClose }: TerminalViewProps) {
   const fitAddonRef = useRef<FitAddon | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
   const [attachFailed, setAttachFailed] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [restartGen, setRestartGen] = useState(0);
