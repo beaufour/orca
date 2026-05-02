@@ -11,6 +11,10 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
     exclude: [...configDefaults.exclude, "src-tauri/**"],
+    // Node 25 ships an experimental built-in `localStorage` that shadows
+    // jsdom's implementation in the worker globals. Disable it so tests
+    // see jsdom's localStorage instead.
+    execArgv: ["--no-experimental-webstorage"],
     coverage: {
       provider: "v8",
       reporter: ["text", "text-summary", "json-summary", "html"],
