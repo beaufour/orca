@@ -194,6 +194,7 @@ export function slugify(text: string): string {
 
 export const SCROLL_SPEED_KEY = "orca-scroll-speed";
 export const SCROLL_SPEED_DEFAULT = 1.0;
+export const HOOKS_PROMPT_DISMISS_KEY = "orca-hooks-prompt-dismissed";
 
 /** Safe localStorage.getItem — returns null on error (e.g. private browsing). */
 export function storageGet(key: string): string | null {

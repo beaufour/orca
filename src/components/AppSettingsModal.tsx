@@ -6,6 +6,7 @@ import { storageGet, storageSet, SCROLL_SPEED_KEY, SCROLL_SPEED_DEFAULT } from "
 import { setAnalyticsEnabled } from "../analytics";
 import { setSentryEnabled } from "../sentry";
 import { queryKeys } from "../queryKeys";
+import type { HookStatus } from "../types";
 import { Modal } from "./Modal";
 
 interface AppSettingsModalProps {
@@ -24,6 +25,15 @@ export function AppSettingsModal({ onClose }: AppSettingsModalProps) {
   const [remoteAuthToken, setRemoteAuthToken] = useState("");
   const [initialRemoteUrl, setInitialRemoteUrl] = useState("");
   const [initialRemoteToken, setInitialRemoteToken] = useState("");
+  const [hookStatus, setHookStatus] = useState<HookStatus | null>(null);
+  const [hookBusy, setHookBusy] = useState(false);
+  const [hookError, setHookError] = useState<string | null>(null);
+
+  const refreshHookStatus = () => {
+    invoke<HookStatus>("get_claude_hooks_status")
+      .then(setHookStatus)
+      .catch((err) => console.warn("Failed to get hook status:", err));
+  };
 
   useEffect(() => {
     invoke<boolean>("get_analytics_enabled")
@@ -43,7 +53,34 @@ export function AppSettingsModal({ onClose }: AppSettingsModalProps) {
         setInitialRemoteToken(val);
       })
       .catch((err) => console.warn("Failed to get remote auth token:", err));
+    refreshHookStatus();
   }, []);
+
+  const handleInstallHooks = async () => {
+    setHookBusy(true);
+    setHookError(null);
+    try {
+      const status = await invoke<HookStatus>("install_claude_hooks");
+      setHookStatus(status);
+    } catch (e) {
+      setHookError(typeof e === "string" ? e : String(e));
+    } finally {
+      setHookBusy(false);
+    }
+  };
+
+  const handleUninstallHooks = async () => {
+    setHookBusy(true);
+    setHookError(null);
+    try {
+      const status = await invoke<HookStatus>("uninstall_claude_hooks");
+      setHookStatus(status);
+    } catch (e) {
+      setHookError(typeof e === "string" ? e : String(e));
+    } finally {
+      setHookBusy(false);
+    }
+  };
 
   const handleScrollSpeedChange = (value: number) => {
     setScrollSpeed(value);
@@ -156,6 +193,45 @@ export function AppSettingsModal({ onClose }: AppSettingsModalProps) {
           onChange={(e) => setRemoteAuthToken(e.target.value)}
           spellCheck={false}
         />
+      </div>
+
+      <div className="app-settings-field">
+        <label className="app-settings-label">Claude Code Hooks</label>
+        <p className="settings-toggle-description" style={{ marginTop: 0 }}>
+          When installed, Claude Code notifies Orca the moment a session is waiting on you
+          (permission prompts, end of turn, etc.) instead of Orca having to guess from log files.
+        </p>
+        {hookStatus && (
+          <p
+            className="settings-toggle-description"
+            style={{ marginTop: 4, color: "var(--text-muted)", fontSize: "12px" }}
+          >
+            Status: {hookStatus.installed ? "installed" : "not installed"} ·{" "}
+            {hookStatus.tracked_session_count} sessions tracked
+            {hookStatus.last_event_age_secs !== null && (
+              <> · last event {hookStatus.last_event_age_secs}s ago</>
+            )}
+          </p>
+        )}
+        {hookError && (
+          <p
+            className="settings-toggle-description"
+            style={{ marginTop: 4, color: "var(--accent-error)" }}
+          >
+            {hookError}
+          </p>
+        )}
+        <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+          {hookStatus?.installed ? (
+            <button className="wt-btn" onClick={handleUninstallHooks} disabled={hookBusy}>
+              {hookBusy ? "Working…" : "Uninstall"}
+            </button>
+          ) : (
+            <button className="wt-btn wt-btn-add" onClick={handleInstallHooks} disabled={hookBusy}>
+              {hookBusy ? "Installing…" : "Install"}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="modal-actions">

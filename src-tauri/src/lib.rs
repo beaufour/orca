@@ -1,4 +1,5 @@
 mod agentdeck;
+mod claude_hooks;
 mod claude_logs;
 mod claude_remote;
 mod command;
@@ -324,6 +325,11 @@ pub fn run() {
                 .map_err(|e| format!("Failed to init Orca DB: {e}"))?;
             app.manage(orca_db);
 
+            // Watch ~/.orca/events.jsonl for hook events from Claude Code so
+            // attention detection can rely on Notification/Stop signals
+            // instead of JSONL/tmux scraping.
+            claude_hooks::start_tail_loop();
+
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -358,6 +364,9 @@ pub fn run() {
             agentdeck::get_dismissed_ids,
             agentdeck::set_dismissed,
             claude_logs::get_session_summary,
+            claude_hooks::get_claude_hooks_status,
+            claude_hooks::install_claude_hooks,
+            claude_hooks::uninstall_claude_hooks,
             git::get_default_branch,
             git::list_worktrees,
             git::add_worktree,

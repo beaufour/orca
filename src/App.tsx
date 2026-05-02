@@ -34,9 +34,10 @@ import {
   type PrerequisiteStatus,
 } from "./components/PrerequisiteCheck";
 import { UpdateNotification } from "./components/UpdateNotification";
+import { HooksPrompt } from "./components/HooksPrompt";
 import { useSessionCreation } from "./hooks/useSessionCreation";
-import type { Group, Session, RemoteSession } from "./types";
-import { isMainSession, slugify, storageGet, storageSet } from "./utils";
+import type { Group, Session, RemoteSession, HookStatus } from "./types";
+import { isMainSession, slugify, storageGet, storageSet, HOOKS_PROMPT_DISMISS_KEY } from "./utils";
 import { queryKeys } from "./queryKeys";
 import { useSidebarResize } from "./hooks/useSidebarResize";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -169,6 +170,7 @@ function App() {
     currentVersion: string;
     stale: StaleClaudeSession[];
   } | null>(null);
+  const [hooksPrompt, setHooksPrompt] = useState<HookStatus | null>(null);
 
   const handleDismiss = useCallback((sessionId: string) => {
     setDismissedIds((prev) => {
@@ -253,6 +255,20 @@ function App() {
       })
       .catch((err) => {
         console.warn("Failed to check prerequisites:", err);
+      });
+  }, []);
+
+  // Offer to install Claude Code hooks for reliable attention detection.
+  useEffect(() => {
+    if (storageGet(HOOKS_PROMPT_DISMISS_KEY) === "true") return;
+    invoke<HookStatus>("get_claude_hooks_status")
+      .then((status) => {
+        if (!status.installed) {
+          setHooksPrompt(status);
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to read Claude hooks status:", err);
       });
   }, []);
 
@@ -920,6 +936,7 @@ function App() {
           onDismiss={() => setPendingUpdate(null)}
         />
       )}
+      {hooksPrompt && <HooksPrompt status={hooksPrompt} onClose={() => setHooksPrompt(null)} />}
     </div>
   );
 }

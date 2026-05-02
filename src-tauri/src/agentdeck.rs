@@ -407,6 +407,29 @@ fn create_scripted_worktree(
     Ok((matching.path.clone(), cwd_str, branch.to_string()))
 }
 
+/// Append `-extra-arg=<prompt>` to agent-deck add args so Claude is launched
+/// as `claude "<prompt>"` with the prompt pre-filled in its input box. Only
+/// applies to Claude — other tools don't accept a positional initial prompt.
+///
+/// The `=` form is required: agent-deck uses Go's `flag` package to parse
+/// `-extra-arg`, and with the space-separated form (`-extra-arg <value>`)
+/// the parser silently drops subsequent `-extra-arg` directives whose value
+/// starts with `-` or whose presence creates parse ambiguity. The `=` form
+/// always associates the value with the flag unambiguously.
+fn append_initial_prompt_args(args: &mut Vec<String>, tool_name: &str, prompt: Option<&str>) {
+    if tool_name != "claude" {
+        return;
+    }
+    let Some(prompt_text) = prompt else {
+        return;
+    };
+    let trimmed = prompt_text.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    args.push(format!("-extra-arg={trimmed}"));
+}
+
 /// Run `agent-deck add` and parse the session ID from the output.
 fn run_agent_deck_add(args: &[String]) -> Result<String, String> {
     log::info!("agent-deck {}", args.join(" "));
@@ -629,7 +652,7 @@ fn create_session_impl(
         "-t".to_string(),
         title,
         "-c".to_string(),
-        tool_name,
+        tool_name.clone(),
         "-json".to_string(),
     ];
 
@@ -643,6 +666,15 @@ fn create_session_impl(
             }
         }
     }
+
+    // We used to also pass `--session-id <our-uuid>` here so we'd know the
+    // JSONL path before agent-deck observed it. Doesn't work: agent-deck
+    // always passes its OWN `--session-id <its-uuid>` ahead of our extras,
+    // and stores its own UUID in tool_data — but Claude uses the LAST
+    // --session-id seen, so the JSONL on disk ends up with our UUID and
+    // every JSONL lookup keyed on tool_data.claude_session_id misses.
+    // Letting agent-deck own the UUID is the only consistent option.
+    append_initial_prompt_args(&mut args, &tool_name, prompt.as_deref());
 
     let session_id = run_agent_deck_add(&args)?;
 
@@ -1567,13 +1599,19 @@ fn is_opencode_ready(content: &str) -> bool {
     content.contains("tab agents")
 }
 
-/// Send a prompt to a session's tmux session. Waits for the tmux session
-/// to exist and for the AI to start rendering before sending.
+/// Submit the initial prompt for a freshly-started session. Waits for the
+/// tmux session to exist and for the AI to be ready to accept input.
+///
+/// For Claude, the prompt is already pre-filled in the input box because we
+/// passed it as a positional CLI arg via `agent-deck add -extra-arg <prompt>`,
+/// so we just send Enter once the input prompt is rendered. For other tools
+/// (opencode, etc.) we paste the prompt and submit.
+///
 /// Runs on a background thread — must not block the UI.
 fn send_prompt_to_session(session_id: &str, prompt: &str, tool: &str) -> Result<(), String> {
     let tmux_name = get_tmux_session_name(session_id)?;
     log::info!(
-        "Sending prompt to tmux session '{tmux_name}' for session {session_id} (tool={tool})"
+        "Submitting prompt to tmux session '{tmux_name}' for session {session_id} (tool={tool})"
     );
 
     let max_attempts = 100;
@@ -1623,11 +1661,16 @@ fn send_prompt_to_session(session_id: &str, prompt: &str, tool: &str) -> Result<
         ));
     }
 
-    // Use bracketed paste + Enter — same mechanism as paste_to_tmux_pane
-    // with submit=true, which is known to work reliably.
-    crate::tmux::paste_and_submit(&tmux_name, prompt)?;
+    if tool == "claude" {
+        // Prompt was pre-filled via `claude "<prompt>"` (positional CLI arg
+        // passed through agent-deck's -extra-arg). Just submit it.
+        crate::tmux::send_enter(&tmux_name)?;
+    } else {
+        // Other tools don't have a positional-prompt mode; paste + submit.
+        crate::tmux::paste_and_submit(&tmux_name, prompt)?;
+    }
 
-    log::debug!("Prompt sent successfully to tmux session '{tmux_name}'");
+    log::debug!("Prompt submitted successfully to tmux session '{tmux_name}'");
     Ok(())
 }
 
@@ -1779,6 +1822,65 @@ mod tests {
     fn template_no_placeholders() {
         let result = expand_command_template("plain command", "feat", None).unwrap();
         assert_eq!(result, "plain command");
+    }
+
+    // ── append_initial_prompt_args tests ─────────────────────────────
+
+    #[test]
+    fn extra_arg_uses_equals_form_for_claude_with_prompt() {
+        // The `=` form is required: with `-extra-arg <value>` (space form)
+        // agent-deck's flag parser silently drops subsequent -extra-arg
+        // directives, so the prompt would be lost.
+        let mut args = vec!["add".to_string(), "/tmp".to_string()];
+        append_initial_prompt_args(&mut args, "claude", Some("fix the bug"));
+        assert_eq!(
+            args,
+            vec!["add", "/tmp", "-extra-arg=fix the bug"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn extra_arg_skipped_for_non_claude_tools() {
+        let mut args = vec!["add".to_string()];
+        append_initial_prompt_args(&mut args, "opencode", Some("hello"));
+        assert_eq!(args, vec!["add".to_string()]);
+        append_initial_prompt_args(&mut args, "codex", Some("hello"));
+        assert_eq!(args, vec!["add".to_string()]);
+    }
+
+    #[test]
+    fn extra_arg_skipped_when_no_prompt() {
+        let mut args = vec!["add".to_string()];
+        append_initial_prompt_args(&mut args, "claude", None);
+        assert_eq!(args, vec!["add".to_string()]);
+    }
+
+    #[test]
+    fn extra_arg_skipped_for_empty_or_whitespace_prompt() {
+        let mut args = vec!["add".to_string()];
+        append_initial_prompt_args(&mut args, "claude", Some(""));
+        assert_eq!(args, vec!["add".to_string()]);
+        append_initial_prompt_args(&mut args, "claude", Some("   \n\t  "));
+        assert_eq!(args, vec!["add".to_string()]);
+    }
+
+    #[test]
+    fn extra_arg_trims_whitespace_around_prompt() {
+        let mut args = vec![];
+        append_initial_prompt_args(&mut args, "claude", Some("  hello world  "));
+        assert_eq!(args, vec!["-extra-arg=hello world".to_string()]);
+    }
+
+    #[test]
+    fn extra_arg_preserves_internal_newlines_in_prompt() {
+        // Multi-line prompts must survive intact through argv. The `=` form
+        // works with embedded newlines too — the value extends to argv end.
+        let mut args = vec![];
+        append_initial_prompt_args(&mut args, "claude", Some("line one\nline two"));
+        assert_eq!(args, vec!["-extra-arg=line one\nline two".to_string()]);
     }
 
     #[test]
