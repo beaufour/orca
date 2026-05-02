@@ -408,8 +408,15 @@ fn create_scripted_worktree(
 }
 
 /// Append `-extra-arg --session-id -extra-arg <uuid>` to agent-deck add args
-/// so Claude uses our pre-generated UUID. Lets us know the JSONL path the
-/// moment the session starts, instead of waiting for agent-deck to learn it.
+/// so Claude uses our pre-generated UUID. The JSONL on disk ends up named
+/// with our UUID, which agent-deck will then pick up into its own tool_data.
+///
+/// We deliberately do NOT pre-write the UUID into agent-deck's
+/// `tool_data.claude_session_id`: agent-deck reads that field on
+/// `session start` and treats a non-empty value as "resume this session",
+/// so pre-writing for a fresh session would launch `claude --resume <uuid>`
+/// against a JSONL that doesn't exist yet — the process exits and the
+/// tmux pane dies before the user sees anything.
 fn append_session_id_args(args: &mut Vec<String>, tool_name: &str, claude_session_id: &str) {
     if tool_name != "claude" {
         return;
@@ -418,32 +425,6 @@ fn append_session_id_args(args: &mut Vec<String>, tool_name: &str, claude_sessio
     args.push("--session-id".to_string());
     args.push("-extra-arg".to_string());
     args.push(claude_session_id.to_string());
-}
-
-/// Write a `claude_session_id` into agent-deck's `tool_data` JSON column so
-/// downstream code (JSONL lookup, summary fetch) can correlate immediately
-/// without waiting for agent-deck to populate it on its own.
-fn store_claude_session_id(session_id: &str, claude_session_id: &str) -> Result<(), String> {
-    let conn = open_db()?;
-    let current: String = conn
-        .query_row(
-            "SELECT tool_data FROM instances WHERE id = ?1",
-            [session_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| format!("Failed to read tool_data for {session_id}: {e}"))?;
-
-    let mut data: serde_json::Value =
-        serde_json::from_str(&current).unwrap_or(serde_json::json!({}));
-    data["claude_session_id"] = serde_json::Value::String(claude_session_id.to_string());
-
-    let updated = serde_json::to_string(&data).map_err(|e| format!("JSON serialize error: {e}"))?;
-    conn.execute(
-        "UPDATE instances SET tool_data = ?1 WHERE id = ?2",
-        rusqlite::params![updated, session_id],
-    )
-    .map_err(|e| format!("Failed to update tool_data for {session_id}: {e}"))?;
-    Ok(())
 }
 
 /// Append `-extra-arg <prompt>` to agent-deck add args so Claude is launched
@@ -701,30 +682,19 @@ fn create_session_impl(
         }
     }
 
-    // Pre-generate Claude's session UUID and pass it via `--session-id` so we
-    // know the JSONL log path the moment the session starts (no waiting for
-    // agent-deck to populate it from the JSONL after the fact).
-    let claude_session_id = if tool_name == "claude" {
-        Some(uuid::Uuid::new_v4().to_string())
-    } else {
-        None
-    };
-    if let Some(ref csid) = claude_session_id {
-        append_session_id_args(&mut args, &tool_name, csid);
+    // Pre-generate Claude's session UUID and pass it via `--session-id` so the
+    // JSONL log on disk is named with our UUID. agent-deck will pick it up
+    // into its own tool_data once the session starts writing — we don't
+    // pre-write that field ourselves because agent-deck treats a non-empty
+    // tool_data.claude_session_id as "resume", which fails for fresh sessions.
+    if tool_name == "claude" {
+        let csid = uuid::Uuid::new_v4().to_string();
+        append_session_id_args(&mut args, &tool_name, &csid);
     }
 
     append_initial_prompt_args(&mut args, &tool_name, prompt.as_deref());
 
     let session_id = run_agent_deck_add(&args)?;
-
-    // Persist our pre-generated UUID into agent-deck's tool_data so existing
-    // JSONL lookup paths see it immediately, before agent-deck would have
-    // learned it from disk.
-    if let Some(ref csid) = claude_session_id {
-        if let Err(e) = store_claude_session_id(&session_id, csid) {
-            log::warn!("Failed to pre-store claude_session_id for {session_id}: {e}");
-        }
-    }
 
     // For bare repos where we created the worktree ourselves, update the
     // session's worktree metadata in the DB.
